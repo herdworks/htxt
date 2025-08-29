@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/herdworks/hypertexting-monorepo/hypertemplates"
+	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
 	"gopkg.in/yaml.v3"
 )
 

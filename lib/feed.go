@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/herdworks/hypertexting-monorepo/hypergraph"
-	"github.com/herdworks/hypertexting-monorepo/hypertemplates"
-	"github.com/herdworks/hypertexting-monorepo/hypertemplates/atom"
+	hypergraph "github.com/herdworks/hypergraph-go/lib"
+	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
+	atom "github.com/herdworks/hypertemplates-go/lib/atom"
 )
 
 type HyperFeed struct {

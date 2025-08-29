@@ -12,10 +12,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/herdworks/hypertexting-monorepo/hypergraph"
-	"github.com/herdworks/hypertexting-monorepo/hyperproviders"
-	"github.com/herdworks/hypertexting-monorepo/hypertemplates"
-	"github.com/herdworks/hypertexting-monorepo/hypertemplates/bootstrap"
+	hypergraph "github.com/herdworks/hypergraph-go/lib"
+	hyperproviders "github.com/herdworks/hyperproviders-go/lib"
+	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
+	bootstrap "github.com/herdworks/hypertemplates-go/lib/bootstrap"
 	"gopkg.in/yaml.v3"
 )
 

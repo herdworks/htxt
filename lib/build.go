@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/herdworks/hypertexting-monorepo/hypertemplates"
+	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
 	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 )
