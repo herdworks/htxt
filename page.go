@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	hypergraph "github.com/herdworks/hypergraph-go/lib"
-	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
-	atom "github.com/herdworks/hypertemplates-go/lib/atom"
+	hypergraph "github.com/herdworks/hypergraph-go"
+	hypertemplates "github.com/herdworks/hypertemplates-go"
+	atom "github.com/herdworks/hypertemplates-go/atom"
 	"gopkg.in/yaml.v3"
 
 	"golang.org/x/sync/errgroup"

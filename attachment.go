@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	hypergraph "github.com/herdworks/hypergraph-go/lib"
-	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
+	hypergraph "github.com/herdworks/hypergraph-go"
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
 const (

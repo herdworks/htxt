@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go/lib"
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
 type Environment struct {

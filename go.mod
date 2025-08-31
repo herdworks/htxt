@@ -4,9 +4,9 @@ go 1.23.5
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/herdworks/hypergraph-go v0.0.0-20250829065905-dc2a05444ab7
-	github.com/herdworks/hyperproviders-go v0.0.0-20250829160320-5f99e84a4578
-	github.com/herdworks/hypertemplates-go v0.0.0-20250829001807-16318766f8ff
+	github.com/herdworks/hypergraph-go v0.17.3
+	github.com/herdworks/hyperproviders-go v0.17.3
+	github.com/herdworks/hypertemplates-go v0.17.3
 	golang.org/x/net v0.32.0
 	golang.org/x/sync v0.10.0
 	gopkg.in/yaml.v3 v3.0.1
