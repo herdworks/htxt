@@ -3,13 +3,16 @@ module github.com/herdworks/hypertexting-go
 go 1.23.5
 
 require (
+	golang.org/x/net v0.32.0
+	golang.org/x/sync v0.10.0
+
+	gopkg.in/yaml.v3 v3.0.1
+
 	github.com/google/uuid v1.6.0
+
 	github.com/herdworks/hypergraph-go v0.17.3
 	github.com/herdworks/hyperproviders-go v0.17.3
 	github.com/herdworks/hypertemplates-go v0.17.3
-	golang.org/x/net v0.32.0
-	golang.org/x/sync v0.10.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
