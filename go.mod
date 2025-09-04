@@ -1,7 +1,11 @@
+// hypertexting-go module
+//
+// reference: https://go.dev/doc/modules/gomod-ref#replace
 module github.com/herdworks/hypertexting-go
 
 go 1.23.5
 
+// direct dependencies
 require (
 	golang.org/x/net v0.32.0
 	golang.org/x/sync v0.10.0
@@ -15,6 +19,14 @@ require (
 	github.com/herdworks/hypertemplates-go v0.17.3
 )
 
+// local development dependencies (replacements)
+//
+// uncomment to use local dependencies
+// replace github.com/herdworks/hypertemplates-go => ../hypertemplates-go
+// replace github.com/herdworks/hypergraph-go => ../hypergraph-go
+// replace github.com/herdworks/hyperproviders-go => ../hyperproviders-go
+
+// transitive dependencies
 require (
 	github.com/alecthomas/chroma/v2 v2.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
