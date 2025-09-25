@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	hypergraph "github.com/herdworks/hypergraph-go"
-	hyperproviders "github.com/herdworks/hyperproviders-go"
+	hyperprovidertypes "github.com/herdworks/hyperproviders-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	bootstrap "github.com/herdworks/hypertemplates-go/bootstrap"
 	"gopkg.in/yaml.v3"
@@ -37,7 +37,7 @@ type Website struct {
 	Links []HTMLLink`json:"links,omitempty" yaml:"links,omitempty"`
 	Metadata []HTMLMeta `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Config WebsiteConfig `json:"config" yaml:"config"`
-	Provider hyperproviders.HyperProviderConfig `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Providers hyperprovidertypes.ProvidersConfig `json:"providers,omitempty" yaml:"providers,omitempty"`
 
 	Theme hypertemplates.HyperTheme `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
