@@ -1,9 +1,9 @@
 package hypertexting
 
 func Version() (version string) {
-	return "0.17.3"
+	return "0.18.0-dev"
 }
 
 func ReleaseDate() (date string) {
-	return "2025-09-02T13:00:00-07:00"
+	return "2025-11-05T16:00:00-07:00"
 }

@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,13 +41,15 @@ func (attachment *Attachment) Process(verbose bool) (err error) {
 	}
 }
 func (attachment *Attachment) ProcessLink(verbose bool) (err error) {
+	var ctx context.Context = context.Background()
 	attachment.document = &hypergraph.Document{ Href: attachment.Href }
-	if err = attachment.document.Download(verbose); err != nil { return err }
-	if err = attachment.document.ParseHTML(); err != nil { return err }
-	attachment.Data["hypergraph"] = attachment.document.HyperGraphMetaData(verbose)
-	attachment.Data["opengraph"] = attachment.document.OpenGraphMetaData(verbose)
-	attachment.Data["oembed"] = attachment.document.OEmbedMetadata(verbose)
-	attachment.Data["twitter"] = attachment.document.TwitterCardMetaData(verbose)
+	if err = attachment.document.Download(ctx, verbose, nil); err != nil { return err }
+	if err = attachment.document.Scrape(ctx, verbose, nil); err != nil { return err }
+	// TODO: replace this with attachment.Data = attachment.document.Metadata.TemplateData() ??
+	attachment.Data["hypergraph"] = attachment.document.Metadata.HyperGraph.TemplateData()
+	attachment.Data["opengraph"] = attachment.document.Metadata.OpenGraph.TemplateData()
+	attachment.Data["twitter"] = attachment.document.Metadata.Twitter.TemplateData()
+	attachment.Data["oembed"] = attachment.document.Metadata.OEmbed.TemplateData()
 	return nil
 }
 

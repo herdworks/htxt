@@ -7,16 +7,13 @@ go 1.23.5
 
 // direct dependencies
 require (
-	golang.org/x/net v0.32.0
-	golang.org/x/sync v0.10.0
-
-	gopkg.in/yaml.v3 v3.0.1
-
 	github.com/google/uuid v1.6.0
-
-	github.com/herdworks/hypergraph-go v0.17.3
+	github.com/herdworks/hypergraph-go v0.17.4-0.20251106001504-7b3ffe11d015
 	github.com/herdworks/hyperproviders-go v0.17.3
 	github.com/herdworks/hypertemplates-go v0.17.3
+	golang.org/x/net v0.32.0
+	golang.org/x/sync v0.10.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 // local development dependencies (replacements)

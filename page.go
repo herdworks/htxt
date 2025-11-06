@@ -77,8 +77,8 @@ func (page *Page) Validate() (err error) {
 	if len(page.LayoutRef) == 0 { return fmt.Errorf("page.layout missing (%s)", page.URI.Path) }
 	if strings.Contains(page.Slug, "/") { return fmt.Errorf("page.slug cannot contain a slash (%s)", page.Slug) }
 	if page.Author == nil { return nil } // early return
-	if err = page.Author.Validate("page.author"); err != nil { 
-		return fmt.Errorf("%w (%s)", err, page.URI.Path)
+	if !page.Author.Ready() {
+		return fmt.Errorf("page.author invalid (%s)", page.URI.Path)
 	}
 	return nil
 }

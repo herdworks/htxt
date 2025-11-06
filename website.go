@@ -79,7 +79,7 @@ func (website *Website) Validate() (error) {
 	if len(website.Description) == 0 { return fmt.Errorf("site.description is required") }
 	if website.Author == nil { return fmt.Errorf("site.author is required") }
 	if err := website.Theme.Validate(); err != nil { return err }
-	if err := website.Author.Validate("site.author"); err != nil { return err }
+	if !website.Author.Ready() { return fmt.Errorf("site.author is not valid") }
 	return nil
 }
 
