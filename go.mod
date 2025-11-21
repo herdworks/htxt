@@ -10,7 +10,7 @@ require (
 	github.com/herdworks/hyperfeed-go v0.0.31
 	github.com/herdworks/hypergraph-go v0.17.4-0.20251115031643-7d9bed6c6659
 	github.com/herdworks/hyperproviders-go v0.17.3
-	github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab
+	github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121173120-05d3835d8d1c
 )
 
 // direct dependencies

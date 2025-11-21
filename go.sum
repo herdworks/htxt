@@ -58,6 +58,8 @@ github.com/herdworks/hyperproviders-go v0.17.3 h1:q/2+zdBB0ssAufuru7Fo4i+7rITD0R
 github.com/herdworks/hyperproviders-go v0.17.3/go.mod h1:Tz6Xii/pE613GeMK9g2FBZvgOxLMxvsp1PwYmDCmNe8=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab h1:aMdYXUI/CoM2kiLIf3lbrK4HTQ2kbR02SBAY+2Xw4FY=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
+github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121173120-05d3835d8d1c h1:Dc+Hv7JcIA8SO15IS1ONAncDLLxIqTQbE+XI95NgKM0=
+github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121173120-05d3835d8d1c/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
