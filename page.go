@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	hypergraph "github.com/herdworks/hypergraph-go"
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	atom "github.com/herdworks/hypertemplates-go/atom"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/herdworks/hyperfeed-go/types/atom"
+	hypergraph "github.com/herdworks/hypergraph-go"
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
 // Page
@@ -116,6 +116,10 @@ func (page *Page) DeleteFiles() (err error) {
 // Applies computed properties to the page template data.
 func (page *Page) ApplyComputedProperties(website *Website) {
 	if len(page.Path) > 0 { page.TemplateData.Set("path", page.Path) }
+	if len(page.Path) > 0 {
+		path, _ := url.Parse(page.Path)
+		page.TemplateData.Set("canonical_url", website.URL().ResolveReference(path).String())
+	}
 	if len(page.Redirect) > 0 { page.TemplateData.Set("refresh", fmt.Sprintf("%d; url=%s", website.Config.RefreshInterval, page.Redirect)) }
 	if len(page.Assets) > 0 { page.TemplateData.Set("assets", page.Assets.FileNames()) }
 	if page.Feed != nil { page.TemplateData.Set("feed", page.Feed.TemplateData()) }
@@ -274,8 +278,8 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool) {
 
 func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
 	var atomLinks []atom.Link
-	var atomAuthor *atom.Person
-	var atomContributors []*atom.Person
+	var atomAuthor *atom.Author
+	var atomContributors []*atom.Author
 	var err error
 	if atomLinks,err = page.AtomEntryLinks(website); err != nil { return nil }
 	if atomAuthor,err = page.AtomEntryAuthor(website); err != nil { return nil }
@@ -283,11 +287,11 @@ func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
 	return &atom.Entry{
 		Title: page.AtomEntryTitle(),
 		ID: atomLinks[len(atomLinks)-1].Href,
-		Link: atomLinks,
-		Published: atom.TimeStamp{ RawValue: page.CreatedAt },
-		Updated: atom.TimeStamp{ RawValue: page.UpdatedAt },
-		Author: atomAuthor,
-		Contributor: atomContributors,
+		Links: atomLinks,
+		Published: atom.TimeStamp(page.CreatedAt),
+		Updated: atom.TimeStamp(page.UpdatedAt),
+		Authors: []*atom.Author{atomAuthor},
+		Contributors: atomContributors,
 		Summary: page.AtomSummary(),
 		Content: page.AtomContent(),
 	}
@@ -312,12 +316,12 @@ func (page *Page) AtomEntryLink() (string) {
 	return page.Path
 }
 
-func (page *Page) AtomEntryAuthor(website *Website) (person *atom.Person, err error) {
+func (page *Page) AtomEntryAuthor(website *Website) (person *atom.Author, err error) {
 	if page.Author == nil { page.Author = website.Author }
 	return HyperFeed{}.AtomPerson(website, page.Author)
 }
 
-func (page *Page) AtomEntryContributors(website *Website) (contributors []*atom.Person, err error) {
+func (page *Page) AtomEntryContributors(website *Website) (contributors []*atom.Author, err error) {
 	return HyperFeed{}.AtomPersons(website, page.Contributors)
 }
 

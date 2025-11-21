@@ -10,8 +10,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"gopkg.in/yaml.v3"
+
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
 var (

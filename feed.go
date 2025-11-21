@@ -9,10 +9,11 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/herdworks/hyperfeed-go/types/atom"
 	hypergraph "github.com/herdworks/hypergraph-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	atom "github.com/herdworks/hypertemplates-go/atom"
 )
 
 type HyperFeed struct {
@@ -35,24 +36,24 @@ func (feed HyperFeed) TemplateData() (data hypertemplates.TemplateData) {
 	return data
 }
 
-func (feed *HyperFeed) Atom(website *Website, path string) (atomFeed *atom.Feed, err error) {
+func (feed *HyperFeed) Atom(website *Website, path string) (atomFeed *atom.Atom, err error) {
 	var identifier *url.URL
-	var author *atom.Person
+	var author *atom.Author
 	if identifier,err = feed.ResolvedLink(website, path); err != nil { return nil, err }
 	if author,err = feed.AtomPerson(website, feed.Author); err != nil { return nil,err }
-	atomFeed = &atom.Feed{
+	atomFeed = &atom.Atom{
 		ID: identifier.String(),
 		Title: author.Username,
 		// Author: author, // TODO: omit feed author? Should this be configurable?
-		Link: []atom.Link{
+		Links: []atom.Link{
 			{ Href: identifier.String(), Rel: "alternate", Type: "text/html" },
 			{ Href: identifier.String() + "atom.xml", Rel: "self", Type: "application/atom+xml" },
 		},
-		Updated: atom.TimeStamp{ Time: feed.Pages.LastModified() },
+		Updated: atom.TimeStamp(feed.Pages.LastModified().Format(time.RFC3339)),
 	}
 	for _,page := range feed.Pages {
 		entry := page.AtomEntry(website)
-		atomFeed.Entry = append(atomFeed.Entry, entry)
+		atomFeed.Entries = append(atomFeed.Entries, entry)
 	}
 	return atomFeed,nil
 }
@@ -120,8 +121,8 @@ func (feed *HyperFeed) AddPages(pages ...*Page) (err error) {
 	return nil
 }
 
-func (feed HyperFeed) AtomPersons(website *Website, entities []*hypergraph.Entity) (persons []*atom.Person, err error) {
-	persons = []*atom.Person{}
+func (feed HyperFeed) AtomPersons(website *Website, entities []*hypergraph.Entity) (persons []*atom.Author, err error) {
+	persons = []*atom.Author{}
 	for _,entity := range entities {
 		person,err := feed.AtomPerson(website, entity)
 		if err != nil { return nil, err }
@@ -130,12 +131,12 @@ func (feed HyperFeed) AtomPersons(website *Website, entities []*hypergraph.Entit
 	return persons, nil
 }
 
-func (feed HyperFeed) AtomPerson(website *Website, entity *hypergraph.Entity) (person *atom.Person, err error) {
+func (feed HyperFeed) AtomPerson(website *Website, entity *hypergraph.Entity) (person *atom.Author, err error) {
 	uri,err := website.ResolveHref(entity.Href)
 	if err != nil { return nil, err }
 	favicon,err := website.ResolveHref(entity.Favicon)
 	if err != nil { return nil, err }
-	return &atom.Person{
+	return &atom.Author{
 		Name: entity.Name,
 		URI: uri.String(),
 		Username: entity.Username,
@@ -145,7 +146,7 @@ func (feed HyperFeed) AtomPerson(website *Website, entity *hypergraph.Entity) (p
 }
 
 func (feed *HyperFeed) WriteAtom(build *HyperBuild, path string) (err error) {
-	var atomFeed *atom.Feed
+	var atomFeed *atom.Atom
 	var atomPath string = filepath.Join(build.URI.Path, strings.ToLower(filepath.Join(path, "atom.xml")))
 	var atomBytes []byte
 	if atomFeed,err = feed.Atom(build.Website, path); err != nil { return err }

@@ -5,23 +5,29 @@ module github.com/herdworks/hypertexting-go
 
 go 1.23.5
 
+// first-party dependencies
+require (
+	github.com/herdworks/hyperfeed-go v0.0.31
+	github.com/herdworks/hypergraph-go v0.17.4-0.20251115031643-7d9bed6c6659
+	github.com/herdworks/hyperproviders-go v0.17.3
+	github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab
+)
+
 // direct dependencies
 require (
 	github.com/google/uuid v1.6.0
-	github.com/herdworks/hypergraph-go v0.17.4-0.20251106001504-7b3ffe11d015
-	github.com/herdworks/hyperproviders-go v0.17.3
-	github.com/herdworks/hypertemplates-go v0.17.3
-	golang.org/x/net v0.32.0
-	golang.org/x/sync v0.10.0
+	golang.org/x/net v0.43.0
+	golang.org/x/sync v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 // local development dependencies (replacements)
 //
 // uncomment to use local dependencies
-// replace github.com/herdworks/hypertemplates-go => ../hypertemplates-go
 // replace github.com/herdworks/hypergraph-go => ../hypergraph-go
+// replace github.com/herdworks/hyperfeed-go => ../hyperfeed-go
 // replace github.com/herdworks/hyperproviders-go => ../hyperproviders-go
+// replace github.com/herdworks/hypertemplates-go => ../hypertemplates-go
 
 // transitive dependencies
 require (

@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
+
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
 type HyperBuild struct {
@@ -44,6 +45,12 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 			"date": time.Now().Format(time.RFC3339),
 		})
 	}
+	if Version() != "" { build.Website.GlobalData.Set(
+		"ht", hypertemplates.TemplateData{
+			"version": Version(),
+			"release_date": ReleaseDate(),
+		})
+	}
 	if build.Environment.TemplateData != nil { build.Website.GlobalData.Set("env", build.Environment.TemplateData) }
 	if build.Website.Pages,err = GetPages(build.Website, build.Website.ContentDir()); err != nil { return err }
 	if build.Website.Drafts,err = GetPages(build.Website, build.Website.DraftsDir()); err != nil { return err }
@@ -64,7 +71,7 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	writegroup.Go(func() (error) { return build.WriteAssets(ctx) })
 	writegroup.Go(func() (error) { return build.WriteFeeds(ctx) })
 	writegroup.Go(func() (error) { return build.WritePages(ctx) })
-	writegroup.Wait()
+	if err = writegroup.Wait(); err != nil { return err }
 
 	// finalize build
 	build.BuildStats(time.Since(start))
