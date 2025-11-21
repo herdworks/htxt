@@ -1,0 +1,11 @@
+{
+    "name": "HyperTemplates Bootstrap Theme",
+    "description": "A barebones theme for bootstrapping new HyperTemplates website projects.",
+    "version": "0.1.0",
+    "config": {
+        "layouts_dir": "layouts",
+        "static_dir": "static",
+        "blocks_dir": "blocks",
+        "contenttypes_dir": "types"
+    }
+}

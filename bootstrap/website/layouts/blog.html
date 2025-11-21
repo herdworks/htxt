@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta ht-include='partials/head' />
+
+        <!-- Layout Metadata -->
+        <meta name='layout:name' content='default' />
+
+        <!-- Layout Components -->
+        <script src='/js/components/example-component.js' defer></script>
+        <script src='/js/components/relative-time.js' defer></script>
+
+        <!-- Layout Styles -->
+        <style id='layout'>
+            blog-post {
+                display: block;
+                width: 100%;
+                margin-bottom: var(--gutter-3x, 45px);
+            }
+            blog-post content-row { margin-bottom: var(--gutter-1x, 15px); }
+        </style>
+    </head>
+    <body>
+        <header ht-include='partials/header'></header>
+        <main>
+            <section>
+                <content-container>
+                    <blog-post ht-template='post:page.feed.pages,page:page,site:site' ht-base='src:post.path;href:post.path'>
+                        <content-row flex spread>
+                            <a ht-attrs='href:post.path'>
+                                <h3>
+                                    <param ht-param='post.title' />
+                                </h3>
+                            </a>
+                            <relative-time>
+                                <time ht-attrs='datetime:post.updated_at,post.created_at'>
+                                    <param ht-param='post.updated_at,post.created_at' />
+                                </time>
+                            </relative-time>
+                        </content-row>
+                        <param ht-param='markdown:post.summary,post.content' />
+                        <continue-reading ht-if='post.more'>
+                            <a ht-attrs='href:post.path' href='#'>Continue Reading →</a>
+                        </continue-reading>
+                    </blog-post>
+                </content-container>
+            </section>
+        </main>
+        <content-whitespace></content-whitespace>
+        <footer ht-include='partials/footer'></footer>
+    </body>
+</html>

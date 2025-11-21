@@ -1,0 +1,95 @@
+/* default variables */
+:root {
+    --responsive-mode: "default";
+    --container-width: 1024px;
+    --container-gutter: calc(calc(100% - var(--container-width)) / 2);
+    --gutter-default: 15px;
+    --whitespace: 50px;
+    --system-ui-fonts: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    --gutter-sm: calc(var(--gutter-default) / 2);
+    --gutter-1x: calc(var(--gutter-default) * 1);
+    --gutter-2x: calc(var(--gutter-default) * 2);
+    --gutter-3x: calc(var(--gutter-default) * 3);
+}
+
+/* base styles */
+body {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    font-family: var(--system-ui-fonts);
+    font-size: 18px;
+}
+
+header,
+section,
+footer {
+    padding: var(--whitespace, 30px) 0;
+}
+
+/* typography */
+p:not(:last-child) { margin-bottom: 0.75em; }
+a { color: inherit; }
+a:visited { color: inherit; } /* don't change the color of visited links */
+pre:has(code) { overflow-x: scroll; }
+pre:has(code) { margin-bottom: var(--gutter-1x, 15px); }
+svg { color: inherit; }
+
+/* simple grid system */
+content-container {
+    display: block;
+    width: var(--container-width);
+    margin-left: var(--container-gutter);
+    margin-right: var(--container-gutter);
+    padding: 0;
+}
+content-whitespace {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+content-row {
+    width: 100%;
+    max-width: 100%;
+    gap: var(--gutter-1x, 15px);
+    align-items: center;
+}
+content-row[grid] {
+    display: grid;
+    box-sizing: content-box;
+    grid-template-columns: repeat(auto-fit, minmax(250px,1fr)); /* MAGIC */
+    grid-template-rows: auto;
+    grid-auto-flow: column;
+}
+content-row[flex] {
+    display: flex;
+    flex-direction: row;
+}
+content-row[spread] { justify-content: space-between; }
+content-row[spread] > :first-child { text-align: start; }
+content-row[spread] > :last-child { text-align: end; }
+
+/* responsive */
+@media only screen and (min-width: 1024px) {
+    :root {
+        --responsive-mode: "lg";
+    }
+}
+
+@media only screen and (min-width: 768px) and (max-width: 1023px) {
+    :root {
+        --responsive-mode: "md";
+        --container-width: 720px;
+    }
+}
+
+@media only screen and (max-width: 767px) {
+    :root {
+        --responsive-mode: "sm";
+        --container-width: 92vw;
+        --container-gutter: 4vw;
+        --gutter-default: 10px;
+    }
+}

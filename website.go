@@ -17,7 +17,7 @@ import (
 	hypergraph "github.com/herdworks/hypergraph-go"
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	bootstrap "github.com/herdworks/hypertemplates-go/bootstrap"
+	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"
 )
 
 var (

@@ -1,0 +1,32 @@
+<footer>
+    <style ht-pipe='css:style#components'>
+        footer { --icon-size: 36px; }
+        footer { background-color: rgba(0,0,0,1.0); }
+        footer { color: rgba(255,255,255,0.75); }
+        footer content-row[grid] { grid-template-columns: 1fr var(--icon-size) 1fr; }
+        footer svg { height: var(--icon-size); aspect-ratio: 1; }
+    </style>
+    <content-container>
+        <nav>
+            <menu>
+                <a ht-if='data.nav' ht-template='link:data.nav.links' ht-attrs='link.href,layout' href='#'>
+                    <param ht-param='link.title,link.label,link.name,link.text' />
+                </a>
+            </menu>
+        </nav>
+        <content-row grid spread>
+            <span>
+                &copy; 2025
+                <a ht-attrs='href:site.author.href' ht-content='site.author.name,site.author.username' target='_blank'></a>
+            </span>
+
+            <a href='/blog/atom.xml'>
+                <svg ht-include='partials/icons/feed.svg'></svg>
+            </a>
+
+            <span>
+                Made with ❤️ using <a href='https://preview.hypertemplates.net/'>HyperTemplates</a>
+            </span>
+        </content-row>
+    </content-container>
+</footer>
