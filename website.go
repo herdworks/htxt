@@ -14,7 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	hypergraph "github.com/herdworks/hypergraph-go"
+	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"

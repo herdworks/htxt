@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	hypergraph "github.com/herdworks/hypergraph-go"
+	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
@@ -43,8 +43,8 @@ func (attachment *Attachment) Process(verbose bool) (err error) {
 func (attachment *Attachment) ProcessLink(verbose bool) (err error) {
 	var ctx context.Context = context.Background()
 	attachment.document = &hypergraph.Document{ Href: attachment.Href }
-	if err = attachment.document.Download(ctx, verbose, nil); err != nil { return err }
-	if err = attachment.document.Scrape(ctx, verbose, nil); err != nil { return err }
+	if err = attachment.document.Download(ctx, verbose, nil, 10); err != nil { return err }
+	if err = attachment.document.Scrape(ctx, verbose, nil, 10); err != nil { return err }
 	// TODO: replace this with attachment.Data = attachment.document.Metadata.TemplateData() ??
 	attachment.Data["hypergraph"] = attachment.document.Metadata.HyperGraph.TemplateData()
 	attachment.Data["opengraph"] = attachment.document.Metadata.OpenGraph.TemplateData()

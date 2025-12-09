@@ -16,7 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/herdworks/hyperfeed-go/types/atom"
-	hypergraph "github.com/herdworks/hypergraph-go"
+	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/herdworks/hyperfeed-go/types/atom"
-	hypergraph "github.com/herdworks/hypergraph-go"
+	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
@@ -132,9 +132,9 @@ func (feed HyperFeed) AtomPersons(website *Website, entities []*hypergraph.Entit
 }
 
 func (feed HyperFeed) AtomPerson(website *Website, entity *hypergraph.Entity) (person *atom.Author, err error) {
-	uri,err := website.ResolveHref(entity.Href)
+	uri,err := website.ResolveHref(entity.HTMLURL)
 	if err != nil { return nil, err }
-	favicon,err := website.ResolveHref(entity.Favicon)
+	favicon,err := website.ResolveHref(entity.FaviconURL)
 	if err != nil { return nil, err }
 	return &atom.Author{
 		Name: entity.Name,
