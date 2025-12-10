@@ -61,6 +61,8 @@ github.com/herdworks/hyperfeed-go v0.0.32-0.20251210062608-291edc356f22 h1:J7FV2
 github.com/herdworks/hyperfeed-go v0.0.32-0.20251210062608-291edc356f22/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
 github.com/herdworks/hyperfeed-go v0.0.32-0.20251210063508-320d396d458b h1:zGYzLLTqJkWn2kzDbDvCyFvrDyyt8pogrYxlZP/dkD8=
 github.com/herdworks/hyperfeed-go v0.0.32-0.20251210063508-320d396d458b/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20251210064119-efbe95972af3 h1:c0hqDkAbv4y55rF7kog87iOtEQ9+eh0Uy9QE3P/SHB8=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20251210064119-efbe95972af3/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
 github.com/herdworks/hypergraph-go v0.17.4-0.20251209031233-c4da69d9e19b h1:fWjIcebACgXJ/XTe1h1gIaM/VRxX+2+KfcAlmddV9tM=
 github.com/herdworks/hypergraph-go v0.17.4-0.20251209031233-c4da69d9e19b/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
 github.com/herdworks/hyperproviders-go v0.17.3 h1:q/2+zdBB0ssAufuru7Fo4i+7rITD0RPL/otsctihn+k=
