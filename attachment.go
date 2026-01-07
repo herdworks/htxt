@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
@@ -25,26 +26,26 @@ type Attachment struct {
 }
 type Attachments []*Attachment
 
-func (attachments Attachments) Process(verbose bool) (err error) {
+func (attachments Attachments) Process(verbose bool, w io.Writer) (err error) {
 	if len(attachments) == 0 { return nil } // guard
 	for _, attachment := range attachments {
-		if err := attachment.Process(verbose); err != nil { return err }
+		if err := attachment.Process(verbose, w); err != nil { return err }
 	}
 	return nil
 }
-func (attachment *Attachment) Process(verbose bool) (err error) {
+func (attachment *Attachment) Process(verbose bool, w io.Writer) (err error) {
 	switch attachment.Kind {
-		case AttachmentKindLink: return attachment.ProcessLink(verbose)
+		case AttachmentKindLink: return attachment.ProcessLink(verbose, w)
 		default:
-			fmt.Printf("attachment kind \"%s\" is not supported\n", attachment.Kind)
+			fmt.Fprintf(w, "attachment kind \"%s\" is not supported\n", attachment.Kind)
 			return nil // noop
 	}
 }
-func (attachment *Attachment) ProcessLink(verbose bool) (err error) {
+func (attachment *Attachment) ProcessLink(verbose bool, w io.Writer) (err error) {
 	var ctx context.Context = context.Background()
 	attachment.document = &hypergraph.Document{ Href: attachment.Href }
-	if err = attachment.document.Download(ctx, verbose, nil, 10); err != nil { return err }
-	if err = attachment.document.Scrape(ctx, verbose, nil, 10); err != nil { return err }
+	if err = attachment.document.Download(ctx, verbose, nil, 10, w); err != nil { return err }
+	if err = attachment.document.Scrape(ctx, verbose, nil, 10, w); err != nil { return err }
 	// TODO: replace this with attachment.Data = attachment.document.Metadata.TemplateData() ??
 	attachment.Data["hypergraph"] = attachment.document.Metadata.HyperGraph.TemplateData()
 	attachment.Data["opengraph"] = attachment.document.Metadata.OpenGraph.TemplateData()

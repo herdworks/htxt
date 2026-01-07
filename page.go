@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 
-	"github.com/herdworks/hyperfeed-go/types/atom"
+	atom "github.com/herdworks/hyperfeed-go/types/atom"
 	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 )

@@ -63,8 +63,16 @@ github.com/herdworks/hyperfeed-go v0.0.32-0.20251210063508-320d396d458b h1:zGYzL
 github.com/herdworks/hyperfeed-go v0.0.32-0.20251210063508-320d396d458b/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
 github.com/herdworks/hyperfeed-go v0.0.32-0.20251210064119-efbe95972af3 h1:c0hqDkAbv4y55rF7kog87iOtEQ9+eh0Uy9QE3P/SHB8=
 github.com/herdworks/hyperfeed-go v0.0.32-0.20251210064119-efbe95972af3/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20251210222643-9ed7c4a8a5a2 h1:q4lCwQ1eXvWvk0VCG87+tE7GnMpLENqkzy4c7V+nq8k=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20251210222643-9ed7c4a8a5a2/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20251210224654-2414723cdce8 h1:DlHZONhieqqRB6Mz1YqzHjkRLSxMWrZA/GLEL86oIv4=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20251210224654-2414723cdce8/go.mod h1:rMBEWabNd9TvgSB6G+au/PsupADvaIYI0fU3qCs3CsM=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20260107225915-721db2620ff9 h1:Z6Lj33Md/gEWv7iLTiGh7eDJ49tLSg1k1lnGwN+LPPQ=
+github.com/herdworks/hyperfeed-go v0.0.32-0.20260107225915-721db2620ff9/go.mod h1:mMtjovWGT8UV8GeNabwVpFh28Sr5sS4IaMVjV+PmcE8=
 github.com/herdworks/hypergraph-go v0.17.4-0.20251209031233-c4da69d9e19b h1:fWjIcebACgXJ/XTe1h1gIaM/VRxX+2+KfcAlmddV9tM=
 github.com/herdworks/hypergraph-go v0.17.4-0.20251209031233-c4da69d9e19b/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
+github.com/herdworks/hypergraph-go v0.17.4-0.20260107220612-e5d0c2809bfa h1:WSwFE2e6ak+SgDg/vc+3G6HMry0LYNZJ7Z+xXlAipTE=
+github.com/herdworks/hypergraph-go v0.17.4-0.20260107220612-e5d0c2809bfa/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
 github.com/herdworks/hyperproviders-go v0.17.3 h1:q/2+zdBB0ssAufuru7Fo4i+7rITD0RPL/otsctihn+k=
 github.com/herdworks/hyperproviders-go v0.17.3/go.mod h1:Tz6Xii/pE613GeMK9g2FBZvgOxLMxvsp1PwYmDCmNe8=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab h1:aMdYXUI/CoM2kiLIf3lbrK4HTQ2kbR02SBAY+2Xw4FY=
