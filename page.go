@@ -332,22 +332,22 @@ func (page *Page) AtomEntryTitle() (title string) {
 	return ""
 }
 
-func (page *Page) AtomSummary() (summary *atom.Text) {
-	if len(page.Summary) > 0 { return &atom.Text{ Type: "html", Body: page.Summary } }
-	if len(page.Content) > 0 { return &atom.Text{ Type: "html", Body: page.Content } }
+func (page *Page) AtomSummary() (summary atom.Text) {
+	if len(page.Summary) > 0 { return atom.Text{ Type: "html", Body: page.Summary } }
+	if len(page.Content) > 0 { return atom.Text{ Type: "html", Body: page.Content } }
 	if len(page.Attachments.FilteredBy(AttachmentKindLink)) > 0 {
 		attachment := page.Attachments.FilteredBy(AttachmentKindLink)[0]
 		attachment.Data.Get("hypergraph.description")
-		return &atom.Text{ Type: "html", Body: fmt.Sprintf("Link to %s", attachment.Href) }
+		return atom.Text{ Type: "html", Body: fmt.Sprintf("Link to %s", attachment.Href) }
 	}
-	if len(page.More) > 0 { return &atom.Text{ Type: "html", Body: page.More } }
+	if len(page.More) > 0 { return atom.Text{ Type: "html", Body: page.More } }
 	ts, err := time.Parse(time.RFC3339, page.CreatedAt)
-	if err != nil { return &atom.Text{ Type: "html", Body: page.CreatedAt } }
-	return &atom.Text{ Type: "html", Body: ts.Format("Monday, January 2, 2006") }
+	if err != nil { return atom.Text{ Type: "html", Body: page.CreatedAt } }
+	return atom.Text{ Type: "html", Body: ts.Format("Monday, January 2, 2006") }
 }
-func (page *Page) AtomContent() (content *atom.Text) {
-	if len(page.Content) > 0 { return &atom.Text{ Type: "html", Body: page.Content } }
-	return nil
+func (page *Page) AtomContent() (content atom.Text) {
+	if len(page.Content) > 0 { return atom.Text{ Type: "html", Body: page.Content } }
+	return atom.Text{ Type: "html", Body: "" }
 }
 
 func (page *Page) MarshalYAML() (any, error) {
