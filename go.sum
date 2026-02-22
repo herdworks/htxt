@@ -79,6 +79,8 @@ github.com/herdworks/hypergraph-go v0.17.4-0.20260122050658-088376717021 h1:e1Ub
 github.com/herdworks/hypergraph-go v0.17.4-0.20260122050658-088376717021/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
 github.com/herdworks/hyperproviders-go v0.17.3 h1:q/2+zdBB0ssAufuru7Fo4i+7rITD0RPL/otsctihn+k=
 github.com/herdworks/hyperproviders-go v0.17.3/go.mod h1:Tz6Xii/pE613GeMK9g2FBZvgOxLMxvsp1PwYmDCmNe8=
+github.com/herdworks/hypertemplates-go v0.17.4-0.20260222031324-b6ab742b08b2 h1:bFMowbvooiGQv7bcxMV8RQTkHDur8/YYQtuvUYZVJmI=
+github.com/herdworks/hypertemplates-go v0.17.4-0.20260222031324-b6ab742b08b2/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab h1:aMdYXUI/CoM2kiLIf3lbrK4HTQ2kbR02SBAY+2Xw4FY=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121173120-05d3835d8d1c h1:Dc+Hv7JcIA8SO15IS1ONAncDLLxIqTQbE+XI95NgKM0=

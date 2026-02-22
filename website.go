@@ -39,7 +39,7 @@ type Website struct {
 	Config      WebsiteConfig                      `json:"config" yaml:"config"`
 	Provider    hyperproviders.HyperProviderConfig `json:"provider,omitempty" yaml:"provider,omitempty"`
 
-	Theme        hypertemplates.HyperTheme    `json:"-" yaml:"-"`
+	Theme        hypertemplates.Theme         `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
 	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
 	Pages        Pages                        `json:"-" yaml:"-"`
@@ -443,12 +443,12 @@ func (website *Website) ListPages(filter string) (pages Pages, err error) {
 }
 
 // Recursively walk website.Config.ThemesDirectory looking for theme.json config files;
-// for each config, marshal the file into a HyperTheme and return []HyperTheme.
-func (website *Website) ListThemes() (themes []hypertemplates.HyperTheme, err error) {
-	var discovered []hypertemplates.HyperTheme
+// for each config, marshal the file into a Theme and return []Theme.
+func (website *Website) ListThemes() (themes []hypertemplates.Theme, err error) {
+	var discovered []hypertemplates.Theme
 	// include the current theme, which could be a "local" theme (installed outside of the themes directory)
 	if website.ThemeURI() != nil {
-		discovered = append(discovered, hypertemplates.HyperTheme{
+		discovered = append(discovered, hypertemplates.Theme{
 			URI:    &url.URL{Path: website.ThemeURI().Path},
 			Config: website.Theme.Config,
 		})
@@ -466,7 +466,7 @@ func (website *Website) ListThemes() (themes []hypertemplates.HyperTheme, err er
 		if website.ThemeURI() != nil && filepath.Clean(website.ThemeURI().Path) == filepath.Clean(themePath) {
 			return nil // already included above
 		}
-		theme := hypertemplates.HyperTheme{URI: &url.URL{Path: themePath}}
+		theme := hypertemplates.Theme{URI: &url.URL{Path: themePath}}
 		discovered = append(discovered, theme)
 		return nil
 	})
