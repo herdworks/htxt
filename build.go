@@ -47,6 +47,9 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	if build.Website.GlobalData, err = NamespacedTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
 		return err
 	}
+	if build.Website.GlobalData["theme"], err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
+		return err
+	}
 	if build.ID != "" {
 		build.Website.GlobalData.Set(
 			"build", hypertemplates.TemplateData{
@@ -278,6 +281,22 @@ func byteSize(bytes int) string {
 func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
 	data = hypertemplates.TemplateData{}
 	paths := hypertemplates.GetPathsByPattern(website.DataDir(), false, ".*\\.(yaml|json|opml)$", "")
+	for _, p := range paths {
+		if verbose {
+			fmt.Printf("data \"%s\" loading\n", website.RelativePath(p))
+		}
+		var namespace hypertemplates.TemplateData
+		if namespace, err = hypertemplates.ParseTemplateDataFile(p, config); err != nil {
+			return data, err
+		}
+		data[namespace.Namespace()] = namespace.NamespaceData()
+	}
+	return data, nil
+}
+
+func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
+	data = hypertemplates.TemplateData{}
+	paths := hypertemplates.GetPathsByPattern(website.Theme.DataDir(), false, ".*\\.(yaml|json|opml)$", "")
 	for _, p := range paths {
 		if verbose {
 			fmt.Printf("data \"%s\" loading\n", website.RelativePath(p))
