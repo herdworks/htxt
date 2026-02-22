@@ -83,6 +83,8 @@ github.com/herdworks/hypertemplates-go v0.17.4-0.20260222031324-b6ab742b08b2 h1:
 github.com/herdworks/hypertemplates-go v0.17.4-0.20260222031324-b6ab742b08b2/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
 github.com/herdworks/hypertemplates-go v0.17.4-0.20260222055117-38eb74cc838a h1:ENVHq/PZrAfUQHXvBYkxnhLiP3zb/Cw74XbIQqPu4mk=
 github.com/herdworks/hypertemplates-go v0.17.4-0.20260222055117-38eb74cc838a/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
+github.com/herdworks/hypertemplates-go v0.17.4-0.20260222170618-394ab76c2e53 h1:2qUDLFjV/Dh16uEPPNRvoAkX/4SZxfK/arWj7GrMiE4=
+github.com/herdworks/hypertemplates-go v0.17.4-0.20260222170618-394ab76c2e53/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab h1:aMdYXUI/CoM2kiLIf3lbrK4HTQ2kbR02SBAY+2Xw4FY=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121163244-af46338a31ab/go.mod h1:XTeoXRaLi+Ja1HqLTyGPScxKm4y4h8ENqAsuOFLhl44=
 github.com/herdworks/hypertemplates-go v0.18.0-1.0.20251121173120-05d3835d8d1c h1:Dc+Hv7JcIA8SO15IS1ONAncDLLxIqTQbE+XI95NgKM0=

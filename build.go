@@ -47,7 +47,7 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	if build.Website.GlobalData, err = NamespacedTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
 		return err
 	}
-	if build.Website.GlobalData["theme"], err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
+	if build.Website.Theme.TemplateData, err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
 		return err
 	}
 	if build.ID != "" {
@@ -63,9 +63,6 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 				"version":      Version(),
 				"release_date": ReleaseDate(),
 			})
-	}
-	if build.Environment.TemplateData != nil {
-		build.Website.GlobalData.Set("env", build.Environment.TemplateData)
 	}
 	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDir()); err != nil {
 		return err
@@ -210,7 +207,7 @@ func (build *HyperBuild) WritePages(ctx context.Context) (err error) {
 func (build *HyperBuild) WritePage(page *Page) (err error) {
 	var filePath string = build.BuildPath(page)
 	var fileBytes []byte
-	if fileBytes, err = RenderPage(build.Website, page); err != nil {
+	if fileBytes, err = RenderPage(build, build.Website, page); err != nil {
 		return err
 	}
 	if err = os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
@@ -323,15 +320,21 @@ func NewTemplate(website *Website, page *Page) (template *hypertemplates.Templat
 	}, nil
 }
 
-func TemplateData(website *Website, page *Page) (data *hypertemplates.TemplateData) {
+func TemplateData(build *HyperBuild, website *Website, page *Page) (data *hypertemplates.TemplateData) {
 	data = &hypertemplates.TemplateData{}
+	data.Set("ht", hypertemplates.TemplateData{
+		"version":      Version(),
+		"release_date": ReleaseDate(),
+	})
+	data.Set("env", build.Environment.TemplateData)
 	data.Set("site", *website.TemplateData)
 	data.Set("data", website.GlobalData)
+	data.Set("theme", website.Theme.TemplateData)
 	data.Set("page", page.TemplateData)
 	return data
 }
 
-func RenderPage(website *Website, page *Page) (pageBytes []byte, err error) {
+func RenderPage(build *HyperBuild, website *Website, page *Page) (pageBytes []byte, err error) {
 	var template *hypertemplates.Template
 	if err = page.Validate(); err != nil {
 		return nil, err
@@ -339,7 +342,7 @@ func RenderPage(website *Website, page *Page) (pageBytes []byte, err error) {
 	if template, err = NewTemplate(website, page); err != nil {
 		return nil, err
 	}
-	if pageBytes, err = template.Process(TemplateData(website, page)); err != nil {
+	if pageBytes, err = template.Process(TemplateData(build, website, page)); err != nil {
 		return nil, err
 	}
 	// page.Output = gohtml.Format(page.Output) // TODO: restore HTML formatting 🤌🏽
