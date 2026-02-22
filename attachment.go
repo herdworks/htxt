@@ -18,34 +18,43 @@ const (
 )
 
 type Attachment struct {
-	Kind        AttachmentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Href        string `json:"href,omitempty" yaml:"href,omitempty"`
-	Data        hypertemplates.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
+	Kind AttachmentKind              `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Href string                      `json:"href,omitempty" yaml:"href,omitempty"`
+	Data hypertemplates.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
 
-	document    *hypergraph.Document
+	document *hypergraph.Document
 }
 type Attachments []*Attachment
 
 func (attachments Attachments) Process(verbose bool, w io.Writer) (err error) {
-	if len(attachments) == 0 { return nil } // guard
+	if len(attachments) == 0 {
+		return nil
+	} // guard
 	for _, attachment := range attachments {
-		if err := attachment.Process(verbose, w); err != nil { return err }
+		if err := attachment.Process(verbose, w); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 func (attachment *Attachment) Process(verbose bool, w io.Writer) (err error) {
 	switch attachment.Kind {
-		case AttachmentKindLink: return attachment.ProcessLink(verbose, w)
-		default:
-			fmt.Fprintf(w, "attachment kind \"%s\" is not supported\n", attachment.Kind)
-			return nil // noop
+	case AttachmentKindLink:
+		return attachment.ProcessLink(verbose, w)
+	default:
+		fmt.Fprintf(w, "attachment kind \"%s\" is not supported\n", attachment.Kind)
+		return nil // noop
 	}
 }
 func (attachment *Attachment) ProcessLink(verbose bool, w io.Writer) (err error) {
 	var ctx context.Context = context.Background()
-	attachment.document = &hypergraph.Document{ Href: attachment.Href }
-	if err = attachment.document.Download(ctx, verbose, nil, 10, w); err != nil { return err }
-	if err = attachment.document.Scrape(ctx, verbose, nil, 10, w); err != nil { return err }
+	attachment.document = &hypergraph.Document{Href: attachment.Href}
+	if err = attachment.document.Download(ctx, verbose, nil, 10, w); err != nil {
+		return err
+	}
+	if err = attachment.document.Scrape(ctx, verbose, nil, 10, w); err != nil {
+		return err
+	}
 	// TODO: replace this with attachment.Data = attachment.document.Metadata.TemplateData() ??
 	attachment.Data["hypergraph"] = attachment.document.Metadata.HyperGraph.TemplateData()
 	attachment.Data["opengraph"] = attachment.document.Metadata.OpenGraph.TemplateData()
@@ -54,9 +63,9 @@ func (attachment *Attachment) ProcessLink(verbose bool, w io.Writer) (err error)
 	return nil
 }
 
-func (attachments Attachments) TemplateData() (hypertemplates.TemplateDataSet) {
+func (attachments Attachments) TemplateData() hypertemplates.TemplateDataSet {
 	data := []hypertemplates.TemplateData{}
-	for _,attachment := range attachments {
+	for _, attachment := range attachments {
 		data = append(data, attachment.TemplateData())
 	}
 	return data
@@ -70,26 +79,40 @@ func (attachment *Attachment) TemplateData() (data hypertemplates.TemplateData) 
 }
 
 func (attachment *Attachment) Validate() (err error) {
-	if attachment.Kind == "" { return errors.New(AttachmentErrorMissingKind) }
-	if attachment.Href == "" { return errors.New(AttachmentErrorMissingHref) }
+	if attachment.Kind == "" {
+		return errors.New(AttachmentErrorMissingKind)
+	}
+	if attachment.Href == "" {
+		return errors.New(AttachmentErrorMissingHref)
+	}
 	return nil
 }
 
-func (attachments Attachments) FilteredBy(kind AttachmentKind) (Attachments) {
+func (attachments Attachments) FilteredBy(kind AttachmentKind) Attachments {
 	filtered := Attachments{}
-	for _,attachment := range attachments {
-		if attachment.Kind == kind { filtered = append(filtered, attachment)}
+	for _, attachment := range attachments {
+		if attachment.Kind == kind {
+			filtered = append(filtered, attachment)
+		}
 	}
 	return filtered
 }
 
 func (attachment *Attachment) UnmarshalJSON(data []byte) (err error) {
 	var rawData map[string]any
-	if err = json.Unmarshal(data, &rawData); err != nil { return err }
-	if kind, ok := rawData["kind"].(string); ok { attachment.Kind = AttachmentKind(kind) }
-	if href, ok := rawData["href"].(string); ok { attachment.Href = href }
+	if err = json.Unmarshal(data, &rawData); err != nil {
+		return err
+	}
+	if kind, ok := rawData["kind"].(string); ok {
+		attachment.Kind = AttachmentKind(kind)
+	}
+	if href, ok := rawData["href"].(string); ok {
+		attachment.Href = href
+	}
 	if d, ok := rawData["data"].(string); ok {
-		if err = json.Unmarshal([]byte(d), &attachment.Data); err != nil { return err }
+		if err = json.Unmarshal([]byte(d), &attachment.Data); err != nil {
+			return err
+		}
 	} else {
 		attachment.Data = hypertemplates.TemplateData{}
 	}
@@ -100,9 +123,10 @@ func (attachment *Attachment) UnmarshalJSON(data []byte) (err error) {
 // Helper types, methods, and functions
 // ============================================================================
 type AttachmentKind string
+
 const (
-	AttachmentKindLink AttachmentKind = "link"
-	AttachmentKindFile AttachmentKind = "file"
+	AttachmentKindLink  AttachmentKind = "link"
+	AttachmentKindFile  AttachmentKind = "file"
 	AttachmentKindImage AttachmentKind = "image"
 	AttachmentKindVideo AttachmentKind = "video"
 	AttachmentKindAudio AttachmentKind = "audio"

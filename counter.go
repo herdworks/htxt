@@ -7,12 +7,14 @@ import (
 
 type Counter struct {
 	Counters map[string]int
-	Lock sync.RWMutex
+	Lock     sync.RWMutex
 }
 
 func (c *Counter) Increment(value int, keys ...string) {
-	if c.Counters == nil { c.Counters = map[string]int{} }
-	for _,key := range keys {
+	if c.Counters == nil {
+		c.Counters = map[string]int{}
+	}
+	for _, key := range keys {
 		key = strings.ToLower(key)
 		c.Lock.Lock()
 		c.Counters[key] += value
