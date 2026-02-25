@@ -339,6 +339,9 @@ func RenderPage(build *HyperBuild, website *Website, page *Page) (pageBytes []by
 	if err = page.Validate(); err != nil {
 		return nil, err
 	}
+	if page.Static {
+		return os.ReadFile(page.URI.Path) // return static HTML file bytes without processing template
+	}
 	if template, err = NewTemplate(website, page); err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -54,6 +55,7 @@ type Page struct {
 	TemplateData hypertemplates.TemplateData `json:"-" yaml:"-"`
 	Path         string                      `json:"-" yaml:"-"`
 	Assets       hypertemplates.HyperFiles   `json:"-" yaml:"-"`
+	Static       bool                        `json:"-" yaml:"-"`
 }
 type Pages []*Page
 
@@ -350,7 +352,9 @@ func (pages Pages) DiscoverAssets(website *Website, verbose bool) {
 	}
 }
 func (page *Page) DiscoverAssets(website *Website, verbose bool) {
-	exclude := fmt.Sprintf("%sindex\\.(md|yaml|json)$", string(filepath.Separator))
+	exclude := "(index|page)\\.(md|yaml|json|html)$"
+	exclude += "|(site)\\.(yaml|json)$"
+	exclude += "|theme\\.json$"
 	page.Assets = hypertemplates.GetFilesByPattern(filepath.Dir(page.URI.Path), false, "", exclude)
 	page.Assets.SetRoot(website.ContentDir())
 	if !verbose {
@@ -683,13 +687,16 @@ func LoadTagPages(build *HyperBuild) (err error) {
 
 func GetPages(website *Website, directory string) (pages Pages, err error) {
 	pages = Pages{} // "discovered pages"
-	paths := hypertemplates.GetPathsByPattern(directory, true, "/index\\.(md|yaml|json)$", "")
+	paths := hypertemplates.GetPathsByPattern(directory, true, "(index|page)\\.(md|yaml|json|html)$", fmt.Sprintf("^%s/*", website.Config.BuildsDirectory))
 	for _, p := range paths {
 		var uri *url.URL
 		if uri, err = url.Parse(p); err != nil {
 			return nil, err
 		}
 		page := &Page{URI: uri, Path: PagePath(website, uri), TemplateData: nil}
+		if path.Ext(page.URI.Path) == ".html" {
+			page.Static = true // mark page as static if source file is HTML (i.e. skip template processing and write directly to output)
+		}
 		pages = append(pages, page)
 	}
 	return pages, nil

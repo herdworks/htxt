@@ -5,5 +5,5 @@ func Version() (version string) {
 }
 
 func ReleaseDate() (date string) {
-	return "2025-11-05T16:00:00-07:00"
+	return "2026-02-25T10:00:00-07:00"
 }
