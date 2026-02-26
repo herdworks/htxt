@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta ht-include='partials/head' />
+
+        <!-- Layout Metadata -->
+        <meta name='layout:name' content='default' />
+
+        <!-- Layout Components -->
+        <script src='/js/components/example-component.js' defer></script>
+
+        <!-- Layout Styles -->
+        <style id='components'></style>
+        <style id='layout'>
+            :is(h2,h3,h4,h5,h6):not(:last-child) {
+                margin-bottom: var(--gutter-1x, 15px);
+            }
+        </style>
+    </head>
+    <body>
+        <header ht-include='partials/header'></header>
+        <main>
+            <section>
+                <content-container>
+                    <h2 ht-if='page.title'>
+                        <param ht-param='page.title' default='Welcome to HyperTemplates!' />
+                    </h2>
+                    <param ht-param='markdown:page.content' />
+                    <example-component>
+                        <!-- this is an example web component -->
+                    </example-component>
+                </content-container>
+            </section>
+        </main>
+        <content-whitespace></content-whitespace>
+        <footer ht-include='partials/footer'></footer>
+    </body>
+</html>

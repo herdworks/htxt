@@ -1,0 +1,55 @@
+/* CSS Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+* {
+    margin: 0;
+    padding: 0;
+    -moz-text-size-adjust: none;
+    -webkit-text-size-adjust: none;
+    text-size-adjust: none;
+}
+html {
+    height: 100%;
+    overflow-x: clip;
+    color-scheme: light dark;
+}
+body {
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Typography */
+p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
+ul, ol, li { padding: revert; }
+ul, ol, li { margin: revert; }
+a { display: inline-block; } /* because HTML whitespace */
+
+/* Forms and related elements */
+form :where(input,input:focus) {
+    border-style: solid;
+    outline: none;
+    box-shadow: none;
+    --webkit-box-shadow: none;
+}
+form :where(input, button, textarea, select) {
+    font: inherit;
+}
+form :where(button, input[type="submit"], input[type="reset"]) {
+    align-items: unset;
+	background: none;
+	color: inherit;
+	border: none;
+	padding: 0;
+	font: inherit;
+	cursor: pointer;
+	outline: inherit;
+}
+
+/* Images */
+img, picture, video, canvas, svg {
+    display: block;
+}
+svg {
+    fill: currentColor;
+}

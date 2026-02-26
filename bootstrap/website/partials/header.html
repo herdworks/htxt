@@ -1,0 +1,21 @@
+<header>
+    <style ht-pipe='css:style#components'>
+        header { background-color: rgba(246,237,228); }
+        header content-row { align-items: center; }
+        header nav a { margin-left: var(--gutter-1x); }
+    </style>
+    <content-container>
+        <content-row flex spread>
+            <h1>
+                <param ht-param='site.title' default='Welcome to HyperTemplates!' />
+            </h1>
+            <nav>
+                <menu>
+                    <a ht-template='link:data.nav.main' ht-attrs='href:link.href' href='#'>
+                        <param ht-param='link.title,link.label,link.name,link.text' />
+                    </a>
+                </menu>
+            </nav>
+        </content-row>
+    </content-container>
+</header>
