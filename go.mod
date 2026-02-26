@@ -7,10 +7,10 @@ go 1.23.5
 
 // first-party dependencies
 require (
-	github.com/herdworks/hyperfeed-go v0.0.32-0.20260122052240-3df5fe303e5a
-	github.com/herdworks/hypergraph-go v0.17.4-0.20260122050658-088376717021
+	github.com/herdworks/hyperfeed-go v0.18.0
+	github.com/herdworks/hypergraph-go v0.18.0
 	github.com/herdworks/hyperproviders-go v0.17.3
-	github.com/herdworks/hypertemplates-go v0.17.4-0.20260222170618-394ab76c2e53
+	github.com/herdworks/hypertemplates-go v0.18.0
 )
 
 // direct dependencies
@@ -58,9 +58,4 @@ require (
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc // indirect
 	github.com/yuin/goldmark-meta v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.3.0 // indirect
-)
-
-require (
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
-	golang.org/x/text v0.28.0 // indirect
 )

@@ -316,8 +316,8 @@ func (pages Pages) ColumnValues(field string) []string {
 
 func (pages Pages) ContainsPath(href string) bool {
 	if len(pages) == 0 {
-		return false
-	} // guard
+		return false // guard
+	}
 	for i := range pages {
 		if strings.EqualFold(href, pages[i].Path) {
 			return true
@@ -488,8 +488,8 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	// timestamp
 	timestamp := time.Now().Format(time.RFC3339)
 	if len(page.CreatedAt) == 0 {
-		page.CreatedAt = timestamp
-	} // only set created_at if it is empty
+		page.CreatedAt = timestamp // only set created_at if it is empty
+	}
 	page.UpdatedAt = timestamp
 
 	// content-type
@@ -579,8 +579,8 @@ func LoadPage(website *Website, page *Page, verbose bool) (err error) {
 	var fileBytes []byte
 	var fileData hypertemplates.TemplateData
 	if page.Loaded {
-		return
-	} // guard
+		return // guard
+	}
 	if verbose {
 		fmt.Printf("page \"%s\" loading\n", website.RelativePath(page.URI.Path))
 	}
@@ -594,8 +594,8 @@ func LoadPage(website *Website, page *Page, verbose bool) (err error) {
 	page.TemplateData = fileData
 	page.Parse(fileData)
 	if page.LayoutRef == "" {
-		page.LayoutRef = "default"
-	} // TODO: should layout be required?
+		page.LayoutRef = "default" // TODO: should layout be required?
+	}
 	page.DiscoverAssets(website, verbose)
 	page.Loaded = true
 	return nil
@@ -609,11 +609,11 @@ func AddFeedPages(context context.Context, build *HyperBuild) (err error) {
 	for i := range build.Website.Pages {
 		taskgroup.Go(func() error {
 			if build.Website.Pages[i].Feed == nil {
-				return nil
-			} // skip page if no page feed is configured
+				return nil // skip page if no page feed is configured
+			}
 			if !build.Website.Pages[i].Feed.MatchesAny(*build.Pages) {
-				return nil
-			} // check if a build page is in a site page feed
+				return nil // check if a build page is in a site page feed
+			}
 			*build.Pages = append(*build.Pages, build.Website.Pages[i]) // add page to build pages
 			return nil
 		})
@@ -628,8 +628,8 @@ func LoadPageFeeds(context context.Context, website *Website, pages Pages) (err 
 	for i := range pages {
 		taskgroup.Go(func() error {
 			if pages[i].Feed == nil {
-				return nil
-			} // skip page if no page feed is configured
+				return nil // skip page if no page feed is configured
+			}
 			if len(pages[i].Feed.Title) == 0 {
 				pages[i].Feed.Title = website.Title
 			}
@@ -652,8 +652,8 @@ func LoadPageFeeds(context context.Context, website *Website, pages Pages) (err 
 // LoadTagPages(website *Website, pages Pages) (err error)
 func LoadTagPages(build *HyperBuild) (err error) {
 	for i := range *build.Pages {
-		build.Tags.Increment(1, (*build.Pages)[i].Tags...)
-	} // count tags
+		build.Tags.Increment(1, (*build.Pages)[i].Tags...) // count tags
+	}
 	for tag := range build.Tags.Counters {
 		fmt.Printf("tag \"%s\" loading\n", tag)
 		tagPath := filepath.Join(build.Website.Config.TagPath, tag)

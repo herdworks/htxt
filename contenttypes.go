@@ -291,8 +291,8 @@ const (
 
 func (format ContentTypeSlugFormat) Format(page *Page) string {
 	if len(page.Slug) > 0 {
-		return page.Slug
-	} // skip if page already has a slug
+		return page.Slug // skip if page already has a slug
+	}
 	switch format {
 	case NoSlug:
 		return "" // no-op

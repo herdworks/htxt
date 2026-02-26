@@ -28,8 +28,8 @@ type Attachments []*Attachment
 
 func (attachments Attachments) Process(verbose bool, w io.Writer) (err error) {
 	if len(attachments) == 0 {
-		return nil
-	} // guard
+		return nil // guard
+	}
 	for _, attachment := range attachments {
 		if err := attachment.Process(verbose, w); err != nil {
 			return err

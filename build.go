@@ -71,32 +71,37 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 		return err
 	}
 
-	// load pages
+	// load build pages first (in case of incremental build)
 	if err = LoadPages(ctx, build.Website, *build.Pages, build.Website.Pages, true); err != nil {
 		return err
-	} // load build pages first (in case of incremental build)
+	}
+	// load website pages second (sitemap)
 	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, true); err != nil {
 		return err
-	} // load website pages second (sitemap)
+	}
+	// check if build pages are in any feeds
 	if build.Incremental {
 		if err = AddFeedPages(ctx, build); err != nil {
 			return err
 		}
-	} // check if build pages are in any feeds
+	}
 
-	// load feeds
+	// load page feeds
 	if err = LoadPageFeeds(ctx, build.Website, *build.Pages); err != nil {
 		return err
-	} // populate page feeds
+	}
+	// load tag pages
 	if err = LoadTagPages(build); err != nil {
 		return err
-	} // load tag pages
+	}
 	build.Pages.ResolveTemplateData(build.Website)
 
-	// perform build
+	// validate build
 	if err = build.Validate(); err != nil {
 		return err
-	} // validate build
+	}
+
+	// perform build
 	writegroup, _ := errgroup.WithContext(ctx)
 	writegroup.Go(func() error { return build.WriteAssets(ctx) })
 	writegroup.Go(func() error { return build.WriteFeeds(ctx) })
@@ -182,9 +187,10 @@ func (build *HyperBuild) WriteFeeds(ctx context.Context) (err error) {
 	taskgroup, _ := errgroup.WithContext(ctx)
 	for _, page := range *build.Pages {
 		taskgroup.Go(func() error {
+			// skip non-feed pages
 			if page.Feed == nil {
 				return nil
-			} // skip non-feed pages
+			}
 			return page.Feed.WriteAtom(build, page.Path)
 		})
 	}

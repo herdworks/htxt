@@ -87,20 +87,20 @@ func (feed *HyperFeed) MatchesAny(pages Pages) bool {
 }
 func (feed *HyperFeed) Matches(page *Page) bool {
 	if page.Unlisted {
-		return false
-	} // never include unlisted pages
+		return false // never include unlisted pages
+	}
 	if page.Feed == feed {
-		return false
-	} // feed pages cannot match themselves
+		return false // feed pages cannot match themselves
+	}
 	if len(feed.Tags) == 0 && len(feed.Paths) == 0 {
-		return true
-	} // no tag or path filters
+		return true // no tag or path filters
+	}
 	if matches(feed.Tags, page.Tags...) {
-		return true
-	} // feed tags match page tags
+		return true // feed tags match page tags
+	}
 	if matchesPatterns(feed.Paths, page.Path) {
-		return true
-	} // feed paths matches prefix of page path
+		return true // feed paths matches prefix of page path
+	}
 	return false
 }
 func matches(a []string, b ...string) bool {

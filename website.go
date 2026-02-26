@@ -52,8 +52,8 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 	var fileBytes []byte
 	var fileTemplateData hypertemplates.TemplateData
 	if website.Loaded {
-		return nil
-	} // already loaded
+		return nil // already loaded
+	}
 	if verbose {
 		fmt.Printf("website \"%s\" load\n", website.URI.String())
 	}
@@ -217,15 +217,15 @@ func (website *Website) ResolveURI() (err error) {
 		return fmt.Errorf("website.uri must contain a path")
 	}
 	if websiteSettingsFilePattern.MatchString(filepath.Base(website.URI.Path)) {
-		return nil
-	} // early return
+		return nil // early return
+	}
 	if files, err = os.ReadDir(website.URI.Path); err != nil {
 		return err
 	}
 	for _, file := range files {
 		if !websiteSettingsFilePattern.MatchString(file.Name()) {
-			continue
-		} // skip
+			continue // skip
+		}
 		website.URI.Path = filepath.Join(website.URI.Path, file.Name()) // update the URI
 		return nil
 	}
@@ -274,11 +274,11 @@ func (website *Website) CreatePackage() (err error) {
 		var dstPath string = filepath.Join(website.RootDir(), strings.TrimPrefix(srcPath, "website/"))
 		var dstFile *os.File
 		if entry.IsDir() {
-			return nil
-		} // skip directories
+			return nil // skip directories
+		}
 		if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
-			return err
-		} // ensure destination directory exists
+			return err // ensure destination directory exists
+		}
 		if srcFile, err = embedded.Open(srcPath); err != nil {
 			return err
 		}
@@ -288,8 +288,8 @@ func (website *Website) CreatePackage() (err error) {
 		}
 		defer dstFile.Close()
 		if _, err = io.Copy(dstFile, srcFile); err != nil {
-			return err
-		} // copy file contents
+			return err // copy file contents
+		}
 		fmt.Printf("file %s created\n", dstPath)
 		return nil
 	}); err != nil {
@@ -315,8 +315,8 @@ func (website *Website) WriteFile() (err error) {
 		filebytes = append([]byte("---\n"), filebytes...)
 	}
 	if err != nil {
-		return err
-	} // serialization error
+		return err // serialization error
+	}
 	file, err = os.OpenFile(website.URI.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err == nil {
 		defer file.Close()
@@ -382,8 +382,8 @@ func (website *Website) GetAssetURI(assetPath string) *url.URL {
 	for _, u := range uris {
 		if _, err = os.Stat(u.Path); err == nil {
 			uri = u
-			break
-		} // use the first file that exists
+			break // use the first file that exists
+		}
 	}
 	if uri != nil {
 		uri.Path = website.RelativePath(uri.Path)
