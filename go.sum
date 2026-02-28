@@ -50,7 +50,7 @@ github.com/dlclark/regexp2 v1.7.0 h1:7lJfhqlPssTb1WQx4yvTHN0uElPEv52sbaECrAQxjAo
 github.com/dlclark/regexp2 v1.7.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/herdworks/hyperfeed-go v0.18.0 h1:41Q7A2w12F3v9LDwVgNOG+w6gj9XZ4TSiZqs1eDH0os=
+github.com/herdworks/hyperfeed-go v0.18.0 h1:6XW8yTHV6P1kAPAZYF60sNd51nB+8bHktHWvwi280zA=
 github.com/herdworks/hyperfeed-go v0.18.0/go.mod h1:rWJ3XxiYi2x+FkIePD57woLZkqS13rwANqa6684MxGA=
 github.com/herdworks/hypergraph-go v0.18.0 h1:Mb5FYHja34NfMtvb83dkt5BtbzsZXoWUj4hOgR1NUJ8=
 github.com/herdworks/hypergraph-go v0.18.0/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
