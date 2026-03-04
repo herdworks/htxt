@@ -17,6 +17,7 @@ import (
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"
+	href "github.com/herdworks/hypertexting-go/href"
 )
 
 var (
@@ -24,12 +25,11 @@ var (
 )
 
 type Website struct {
-	URI    *url.URL `json:"-" yaml:"-"` // path to website config file
-	Loaded bool     `json:"-" yaml:"-"` // indicates if the website has been loaded from disk
+	URI *href.Href `json:"uri,omitempty" yaml:"-"` // path to website config file
 
 	CreatedAt   string                             `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
 	UpdatedAt   string                             `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
-	BaseURL     string                             `json:"base_url" yaml:"base_url"`                         // TODO: rename to baseHref or change type to *url.URL
+	BaseURL     string                             `json:"base_url" yaml:"base_url"`
 	Title       string                             `json:"title" yaml:"title"`
 	Description string                             `json:"description" yaml:"description"`
 	Byline      Byline                             `json:"byline,omitempty" yaml:"byline,omitempty"`
@@ -45,6 +45,7 @@ type Website struct {
 	Pages        Pages                        `json:"-" yaml:"-"`
 	Drafts       Pages                        `json:"-" yaml:"-"`
 	Assets       hypertemplates.HyperFiles    `json:"-" yaml:"-"`
+	Loaded       bool                         `json:"-" yaml:"-"` // indicates if the website has been loaded from disk
 }
 
 func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err error) {
@@ -118,8 +119,8 @@ func (website *Website) Validate() error {
 }
 
 func (website *Website) URL() *url.URL {
-	u, _ := url.Parse(website.BaseURL) // ignore errors since we've pre-validated the URL in Validate()
-	return u
+	u, _ := href.Parse(website.BaseURL) // ignore errors since we've pre-validated the URL in Validate()
+	return &u.URL
 }
 
 func (website *Website) RootDir() string {
@@ -396,7 +397,7 @@ func (website *Website) ContentTypes() (types ContentTypes, err error) {
 	types = ContentTypes{}
 	contentTypePaths := hypertemplates.GetPaths(website.Theme.ContentTypesDir(), false)
 	for _, path := range contentTypePaths {
-		var contenttype *ContentType = &ContentType{URI: &url.URL{Path: path}}
+		var contenttype *ContentType = &ContentType{URI: &href.Href{ URL: url.URL{Path: path}} }
 		if err = contenttype.Load(); err != nil {
 			return nil, err
 		}

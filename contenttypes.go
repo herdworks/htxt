@@ -13,20 +13,21 @@ import (
 	"gopkg.in/yaml.v3"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
+	href "github.com/herdworks/hypertexting-go/href"
 )
 
 var (
 	DefaultContentTypeMetadata      = ContentTypeMetadata{Name: "default", Description: "Default content type."}
 	DefaultContentTypeSpecification = ContentTypeSpecification{Layout: "default", Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
-	DefaultContentType              = ContentType{URI: &url.URL{Path: "/dev/null"}, Metadata: DefaultContentTypeMetadata, Spec: DefaultContentTypeSpecification}
+	DefaultContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: DefaultContentTypeMetadata, Spec: DefaultContentTypeSpecification}
 
 	CustomContentTypeMetadata      = ContentTypeMetadata{Name: "custom", Description: "Custom content type."}
 	CustomContentTypeSpecification = ContentTypeSpecification{Layout: "default", Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
-	CustomContentType              = ContentType{URI: &url.URL{Path: "/dev/null"}, Metadata: CustomContentTypeMetadata, Spec: CustomContentTypeSpecification}
+	CustomContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: CustomContentTypeMetadata, Spec: CustomContentTypeSpecification}
 )
 
 type ContentType struct {
-	URI      *url.URL                 `json:"-" yaml:"-"`
+	URI      *href.Href               `json:"uri" yaml:"-"`
 	Metadata ContentTypeMetadata      `json:"metadata" yaml:"metadata"`
 	Spec     ContentTypeSpecification `json:"spec" yaml:"spec"`
 	Prompts  ContentTypePrompts       `json:"prompts" yaml:"prompts"`
@@ -125,7 +126,7 @@ func (contenttype *ContentType) Create(website *Website, format string) (err err
 	}
 	fileName = strings.ToLower(contenttype.Metadata.Name)
 	fileName = strings.ReplaceAll(fileName, " ", "-")
-	contenttype.URI = &url.URL{Path: filepath.Join(fileDirectory, fileName+fileExtension)}
+	contenttype.URI = &href.Href{URL: url.URL{Path: filepath.Join(fileDirectory, fileName+fileExtension)}}
 	return contenttype.Save(website)
 }
 
@@ -283,7 +284,7 @@ type ContentTypeSlugFormat string
 const (
 	TimestampSlug  ContentTypeSlugFormat = "timestamp" // default
 	TitleKabobSlug ContentTypeSlugFormat = "title-kabob"
-	TitleSnakeSlug ContentTypeSlugFormat = "title_camel"
+	TitleSnakeSlug ContentTypeSlugFormat = "title_snake"
 	ManualSlug     ContentTypeSlugFormat = "manual"
 	UUIDSlug       ContentTypeSlugFormat = "uuid"
 	NoSlug         ContentTypeSlugFormat = "none"
