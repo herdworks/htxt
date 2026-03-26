@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## v0.18.1 (2026-03-25)
+
+* Added `Byline.Username` field for backwards compatibility with early-stage builds of `hyperctl`
+* Fixed a bug in `Page.LastModified()` helper that caused a race condition in `hyperctl dev server`
+* Updated `hypergraph-go` and `hyperfeed-go` dependencies
+
 ## v0.18.0 (2026-02-26)
 
 * Added an embedded bootstrap website scaffold (content, layouts, partials, static assets, and `theme.json`) for `Website.CreatePackage()`.
