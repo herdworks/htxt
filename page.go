@@ -234,12 +234,13 @@ func (pages Pages) LastModified() (timestamp time.Time) {
 		return pages[0].LastModified()
 	}
 }
-func (page *Page) LastModified() time.Time {
-	if page.UpdatedAt == "" {
-		page.UpdatedAt = page.CreatedAt
-	}
-	ts, err := time.Parse(time.RFC3339, page.UpdatedAt)
-	if err != nil {
+func (page *Page) LastModified() (ts time.Time) {
+	var value string
+	var err error
+    if value = page.UpdatedAt; value == "" {
+        value = page.CreatedAt
+    }
+    if ts, err = time.Parse(time.RFC3339, value); err != nil {
 		ts, _ = time.Parse(time.RFC3339, "1970-01-01T00:00:00Z")
 	}
 	return ts

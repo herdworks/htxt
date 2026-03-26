@@ -11,10 +11,11 @@ import (
 // Page objects do the heavy lifting to parse content data files
 // and convert them into rendered pages.
 type Byline struct {
-	Name    string `json:"name" yaml:"name"`
-	Favicon string `json:"favicon,omitempty" yaml:"favicon,omitempty"`
-	Href    string `json:"href,omitempty" yaml:"href,omitempty"`
-	Email   string `json:"email,omitempty" yaml:"email,omitempty"`
+	Name     string `json:"name" yaml:"name"`
+	Username string `json:"username,omitempty" yaml:"username,omitempty"`
+	Favicon  string `json:"favicon,omitempty" yaml:"favicon,omitempty"`
+	Href     string `json:"href,omitempty" yaml:"href,omitempty"`
+	Email    string `json:"email,omitempty" yaml:"email,omitempty"`
 }
 type Bylines []*Byline
 
@@ -25,6 +26,7 @@ func (byline *Byline) Ready() bool {
 func (byline *Byline) TemplateData() (data hypertemplates.TemplateData) {
 	data = hypertemplates.TemplateData{}
 	data["name"] = byline.Name
+	data["username"] = byline.Username
 	data["favicon"] = byline.Favicon
 	data["href"] = byline.Href
 	data["email"] = byline.Email

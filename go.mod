@@ -7,8 +7,8 @@ go 1.23.5
 
 // first-party dependencies
 require (
-	github.com/herdworks/hyperfeed-go v0.18.1-0.20260311165907-b49847b0e80c
-	github.com/herdworks/hypergraph-go v0.18.1-0.20260311013945-d05336d1398e
+	github.com/herdworks/hyperfeed-go v0.18.1-0.20260323160631-f23eb4b517da
+	github.com/herdworks/hypergraph-go v0.18.1-0.20260323160426-0e79c16ded74
 	github.com/herdworks/hyperproviders-go v0.17.3
 	github.com/herdworks/hypertemplates-go v0.18.2-0.20260311014409-88152c1209d9
 )

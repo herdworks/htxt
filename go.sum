@@ -50,10 +50,10 @@ github.com/dlclark/regexp2 v1.7.0 h1:7lJfhqlPssTb1WQx4yvTHN0uElPEv52sbaECrAQxjAo
 github.com/dlclark/regexp2 v1.7.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/herdworks/hyperfeed-go v0.18.1-0.20260311165907-b49847b0e80c h1:7Pbvtolsd4Omjip5V80ym+dChDZROSpl6r/wVaH9E0M=
-github.com/herdworks/hyperfeed-go v0.18.1-0.20260311165907-b49847b0e80c/go.mod h1:he/RnK3g70hj7nYYtVfFz/Ne1P+3ebGcgQy416KEaSc=
-github.com/herdworks/hypergraph-go v0.18.1-0.20260311013945-d05336d1398e h1:g7wDE0APBKaP/4lpbCDLIVqWMLRbWTWZkKEqoPp8SD0=
-github.com/herdworks/hypergraph-go v0.18.1-0.20260311013945-d05336d1398e/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
+github.com/herdworks/hyperfeed-go v0.18.1-0.20260323160631-f23eb4b517da h1:TPTvQof4Nkpp2iFgJkqGSDuMZtbhm3HOiLLTChK6ONY=
+github.com/herdworks/hyperfeed-go v0.18.1-0.20260323160631-f23eb4b517da/go.mod h1:9G8/v1bgFOK0YJUnfFDEJIvs5wD0U1v/b5Y70RDxNdU=
+github.com/herdworks/hypergraph-go v0.18.1-0.20260323160426-0e79c16ded74 h1:gIZAqOyyTS+64zzgQAXWuzyyqko8i+p9W//XaxHITtk=
+github.com/herdworks/hypergraph-go v0.18.1-0.20260323160426-0e79c16ded74/go.mod h1:yIgqNsfnxxoON3XqAAg+u3SG7SKBOu+7iNerZby5KhI=
 github.com/herdworks/hyperproviders-go v0.17.3 h1:q/2+zdBB0ssAufuru7Fo4i+7rITD0RPL/otsctihn+k=
 github.com/herdworks/hyperproviders-go v0.17.3/go.mod h1:Tz6Xii/pE613GeMK9g2FBZvgOxLMxvsp1PwYmDCmNe8=
 github.com/herdworks/hypertemplates-go v0.18.2-0.20260311014409-88152c1209d9 h1:4b8MHmmTAL5WwVc+c/iqU88kARn0q+BPBMI0deWyYPo=
