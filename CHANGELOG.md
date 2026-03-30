@@ -4,10 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## v0.18.2 (2026-03-30)
+
+* Changed `Version()` to `LibVersion` package variable
+* Changed `ReleaseDate() string` to `LibReleaseDate: time.Time` package variable 
+* Fixed a bug in `Page.LastModified()` helper that caused a race condition in `hyperctl dev server`
+* Updated `github.com/herdworks/hypergraph-go` to version 0.19.0
+* Updated `github.com/herdworks/hyperfeed-go` to version 0.19.1
+* Updated `github.com/herdworks/hypertemplates-go` to version 0.18.2
+
+> **NOTE:** until now the `github.com/herdworks/hypertexting-go` package has attempted to stay in sync with the full suite of HyperTexting packages: 
+> 
+> * `hypergraph-go`
+> * `hyperfeed-go`
+> * `hypertemplates-go`
+> * `hyperproviders-go`
+> * `hypertexting-go`
+> * `hyperctl`
+> * `libhypertexting`
+> * `HyperTextingKit`
+> * `hypertexting-app`
+> 
+> Starting with this release we will decouple the library package versions from the user-facing app versions. 
+
 ## v0.18.1 (2026-03-25)
 
 * Added `Byline.Username` field for backwards compatibility with early-stage builds of `hyperctl`
-* Fixed a bug in `Page.LastModified()` helper that caused a race condition in `hyperctl dev server`
 * Updated `hypergraph-go` and `hyperfeed-go` dependencies
 
 ## v0.18.0 (2026-02-26)

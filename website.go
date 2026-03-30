@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -84,10 +85,10 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 	}
 	website.DiscoverAssets(verbose)
 	if len(website.CreatedAt) == 0 {
-		website.CreatedAt = ReleaseDate()
+		website.CreatedAt = LibReleaseDate.Format(time.RFC3339)
 	}
 	if len(website.UpdatedAt) == 0 {
-		website.UpdatedAt = ReleaseDate()
+		website.UpdatedAt = LibReleaseDate.Format(time.RFC3339)
 	}
 	website.Loaded = true // mark website as loaded
 	return website.Validate()
@@ -397,7 +398,7 @@ func (website *Website) ContentTypes() (types ContentTypes, err error) {
 	types = ContentTypes{}
 	contentTypePaths := hypertemplates.GetPaths(website.Theme.ContentTypesDir(), false)
 	for _, path := range contentTypePaths {
-		var contenttype *ContentType = &ContentType{URI: &href.Href{ URL: url.URL{Path: path}} }
+		var contenttype *ContentType = &ContentType{URI: &href.Href{URL: url.URL{Path: path}}}
 		if err = contenttype.Load(); err != nil {
 			return nil, err
 		}
