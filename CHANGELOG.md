@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## v0.18.3 (2026-04-12)
+
+* Fixed generated Atom feed `<link rel='self'>` hrefs which were concatenating "atom.xml" instead of joining "atom.xml" to the URL path.
+
 ## v0.18.2 (2026-03-30)
 
 * Changed `Version()` to `LibVersion` package variable

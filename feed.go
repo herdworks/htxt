@@ -38,19 +38,19 @@ func (feed HyperFeed) TemplateData() (data hypertemplates.TemplateData) {
 }
 
 func (feed *HyperFeed) Atom(website *Website, path string) (atomFeed *atom.Atom, err error) {
-	var identifier *url.URL
+	var htmlURL *url.URL
 	// var author *atom.Author
-	if identifier, err = feed.ResolvedLink(website, path); err != nil {
+	if htmlURL, err = feed.ResolvedLink(website, path); err != nil {
 		return nil, err
 	}
 	// if author,err = feed.AtomPerson(website, feed.Byline); err != nil { return nil,err }
 	atomFeed = &atom.Atom{
-		ID:    identifier.String(),
+		ID:    htmlURL.String(),
 		Title: feed.Title,
 		// Author: author.Name, // TODO: omit feed author? Should this be configurable?
 		Links: []atom.Link{
-			{Href: identifier.String(), Rel: "alternate", Type: "text/html"},
-			{Href: identifier.String() + "atom.xml", Rel: "self", Type: "application/atom+xml"},
+			{Href: htmlURL.String(), Rel: "alternate", Type: "text/html"},
+			{Href: htmlURL.JoinPath("atom.xml").String(), Rel: "self", Type: "application/atom+xml"},
 		},
 		Updated: atom.TimeStamp(feed.Pages.LastModified().Format(time.RFC3339)),
 	}
