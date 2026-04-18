@@ -84,6 +84,7 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 		return err
 	}
 	website.DiscoverAssets(verbose)
+	website.TemplateData.Set("assets", website.Assets.Paths())
 	if len(website.CreatedAt) == 0 {
 		website.CreatedAt = LibReleaseDate.Format(time.RFC3339)
 	}

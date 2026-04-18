@@ -74,10 +74,14 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	// load build pages first (in case of incremental build)
 	if err = LoadPages(ctx, build.Website, *build.Pages, build.Website.Pages, true); err != nil {
 		return err
+	} else {
+		build.Website.TemplateData.Set("pages", build.Website.Pages.TemplateData())
 	}
 	// load website pages second (sitemap)
 	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, true); err != nil {
 		return err
+	} else {
+		build.Website.TemplateData.Set("drafts", build.Website.Drafts.TemplateData())
 	}
 	// check if build pages are in any feeds
 	if build.Incremental {

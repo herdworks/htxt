@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## v0.19.0 (2026-04-18)
+
+Added `site.pages`, `site.drafts`, and `site.assets` template data.
+
+* Added the internal `site.pages` slice to template data
+* Added the internal `site.drafts` slice to template data
+* Added the internal `site.assets` slice to template data (a `[]string` of asset paths)
+* Updated `github.com/herdworks/hypertemplates-go` to v0.19.0 for the new `HyperFiles.Paths()` method
+
 ## v0.18.3 (2026-04-12)
 
 * Fixed generated Atom feed `<link rel='self'>` hrefs which were concatenating "atom.xml" instead of joining "atom.xml" to the URL path.
