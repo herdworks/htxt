@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
-## Unreleased
+## v0.20.0 (2026-04-21)
 
 * Changed `Build.RenderPage()` to use `page.TemplateData` as `ht-block` user data 🤌🏽
   making `page.*` template data attributes accessible from `ht-block` elements
