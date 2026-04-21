@@ -80,6 +80,10 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	// load website pages second (sitemap)
 	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, true); err != nil {
 		return err
+	}
+	// load draft pages
+	if err = LoadPages(ctx, build.Website, build.Website.Drafts, nil, true); err != nil {
+		return err
 	} else {
 		build.Website.TemplateData.Set("drafts", build.Website.Drafts.TemplateData())
 	}
@@ -355,7 +359,7 @@ func RenderPage(build *HyperBuild, website *Website, page *Page) (pageBytes []by
 	if template, err = NewTemplate(website, page); err != nil {
 		return nil, err
 	}
-	if pageBytes, err = template.Process(TemplateData(build, website, page)); err != nil {
+	if pageBytes, err = template.Process(TemplateData(build, website, page), &hypertemplates.TemplateData{"page": page.TemplateData}); err != nil {
 		return nil, err
 	}
 	// page.Output = gohtml.Format(page.Output) // TODO: restore HTML formatting 🤌🏽

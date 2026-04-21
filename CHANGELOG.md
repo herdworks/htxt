@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## Unreleased
+
+* Changed `Build.RenderPage()` to use `page.TemplateData` as `ht-block` user data 🤌🏽
+  making `page.*` template data attributes accessible from `ht-block` elements
+* Fixed `site.drafts` to load drafts from the configure drafts directory
+* Updated `github.com/herdworks/hypertemplates-go` to v0.20.0
+
 ## v0.19.0 (2026-04-18)
 
 Added `site.pages`, `site.drafts`, and `site.assets` template data.
