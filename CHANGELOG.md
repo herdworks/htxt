@@ -6,8 +6,18 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
-* Changed website deployment config from `provider` to `environments`.
+## v0.21.0 (2026-04-27)
+
+* Added website plugin discovery from theme plugins and a new `config.plugins_dir` website directory, defaulting to `plugins`.
+* Added build-time JavaScript plugin loading with `github.com/herdworks/hypertemplates-go/scripting`.
+* Added plugin registration on rendered templates through `Template.Plugins`, enabling plugins in `ht-apply` value pipelines.
+* Added plugin validation for duplicate plugin names and reserved plugin names (`httd`, `default`).
+* Added `Website.Environments`, `Website.ResolveEnvironments()`, and `Website.DeploymentEnvironment()` for named deployment environments.
+* Changed website deployment config from `provider` to `environments`, with empty environment names backfilled from their map keys.
+* Updated `github.com/herdworks/hypertemplates-go` to v0.21.1.
 * Updated `github.com/herdworks/hyperproviders-go` to v0.18.1.
+* Updated `golang.org/x/net` to v0.47.0 and `golang.org/x/sync` to v0.20.0.
+* Removed transitive AWS SDK dependencies no longer pulled in by `github.com/herdworks/hyperproviders-go`.
 * Changed minimum Go toolchain to `1.25.0`.
 
 ## v0.20.0 (2026-04-21)
