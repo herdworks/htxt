@@ -25,6 +25,8 @@ var (
 	websiteSettingsFilePattern *regexp.Regexp = regexp.MustCompile(`^site\.(yaml|yml|json)$`)
 )
 
+// TYPES =======================================================================
+
 type Website struct {
 	URI *href.Href `json:"uri,omitempty" yaml:"-"` // path to website config file
 
@@ -45,9 +47,38 @@ type Website struct {
 	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
 	Pages        Pages                        `json:"-" yaml:"-"`
 	Drafts       Pages                        `json:"-" yaml:"-"`
+	Plugins      hypertemplates.HyperFiles    `json:"-" yaml:"-"`
 	Assets       hypertemplates.HyperFiles    `json:"-" yaml:"-"`
 	Loaded       bool                         `json:"-" yaml:"-"` // indicates if the website has been loaded from disk
 }
+
+type WebsiteFavicon struct {
+	Href string `json:"href" yaml:"href"`
+	Rel  string `json:"rel,omitempty" yaml:"rel,omitempty"`
+	Size string `json:"size,omitempty" yaml:"size,omitempty"`
+}
+type WebsiteFavicons []WebsiteFavicon
+
+type WebsiteConfig struct {
+	BuildsDirectory      string `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty"`
+	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty"`
+	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty"`
+	DeploymentsDirectory string `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty"`
+	DraftsDirectory      string `json:"drafts_dir,omitempty" yaml:"drafts_dir,omitempty"`
+	PluginsDirectory     string `json:"plugins_dir,omitempty" yaml:"plugins_dir,omitempty"`
+	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty"`
+	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty"`
+	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty"`
+
+	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty"`
+	TagPath         string `json:"tag_path,omitempty" yaml:"tag_path,omitempty"` // path prefix for tag pages, e.g. "/tags/"
+	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty"`
+
+	TidyMode bool                            `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
+	Markdown *hypertemplates.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
+}
+
+// METHODS =====================================================================
 
 func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err error) {
 	var fileExt string = filepath.Ext(website.URI.Path)
@@ -84,6 +115,7 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 		return err
 	}
 	website.DiscoverAssets(verbose)
+	website.DiscoverPlugins(verbose)
 	website.TemplateData.Set("assets", website.Assets.Paths())
 	if len(website.CreatedAt) == 0 {
 		website.CreatedAt = LibReleaseDate.Format(time.RFC3339)
@@ -162,6 +194,13 @@ func (website *Website) DraftsDir() string {
 		website.Config.DraftsDirectory = "drafts"
 	}
 	return filepath.Join(website.RootDir(), website.Config.DraftsDirectory)
+}
+
+func (website *Website) PluginsDir() string {
+	if website.Config.PluginsDirectory == "" {
+		website.Config.PluginsDirectory = "plugins"
+	}
+	return filepath.Join(website.RootDir(), website.Config.PluginsDirectory)
 }
 
 func (website *Website) StaticDir() string {
@@ -348,6 +387,19 @@ func (website *Website) DiscoverAssets(verbose bool) {
 	}
 }
 
+func (website *Website) DiscoverPlugins(verbose bool) {
+	website.Plugins = website.Theme.Plugins()
+	if website.PluginsDir() != website.Theme.PluginsDir() {
+		website.Plugins = append(website.Plugins, hypertemplates.GetFiles(website.PluginsDir(), true)...)
+	}
+	if !verbose {
+		return
+	}
+	for _, plugin := range website.Plugins {
+		fmt.Printf("plugin \"%s\" discovered\n", website.RelativePath(plugin.URI.Path))
+	}
+}
+
 func (website *Website) CopyAsset(srcPath string, dstPath string) (err error) {
 	var srcFile *os.File
 	var dstFile *os.File
@@ -490,31 +542,6 @@ func (website *Website) ListThemes() (themes []hypertemplates.Theme, err error) 
 // ============================================================================
 // Helper types, methods, and functions
 // ============================================================================
-
-type WebsiteFavicon struct {
-	Href string `json:"href" yaml:"href"`
-	Rel  string `json:"rel,omitempty" yaml:"rel,omitempty"`
-	Size string `json:"size,omitempty" yaml:"size,omitempty"`
-}
-type WebsiteFavicons []WebsiteFavicon
-
-type WebsiteConfig struct {
-	BuildsDirectory      string `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty"`
-	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty"`
-	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty"`
-	DeploymentsDirectory string `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty"`
-	DraftsDirectory      string `json:"drafts_dir,omitempty" yaml:"drafts_dir,omitempty"`
-	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty"`
-	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty"`
-	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty"`
-
-	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty"`
-	TagPath         string `json:"tag_path,omitempty" yaml:"tag_path,omitempty"` // path prefix for tag pages, e.g. "/tags/"
-	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty"`
-
-	TidyMode bool                            `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
-	Markdown *hypertemplates.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
-}
 
 func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 	if overrides != nil {

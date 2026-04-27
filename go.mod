@@ -10,7 +10,7 @@ require (
 	github.com/herdworks/hyperfeed-go v0.19.1
 	github.com/herdworks/hypergraph-go v0.19.0
 	github.com/herdworks/hyperproviders-go v0.17.3
-	github.com/herdworks/hypertemplates-go v0.20.0
+	github.com/herdworks/hypertemplates-go v0.21.1
 )
 
 // direct dependencies
@@ -58,4 +58,8 @@ require (
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc // indirect
 	github.com/yuin/goldmark-meta v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
+	golang.org/x/text v0.28.0 // indirect
 )

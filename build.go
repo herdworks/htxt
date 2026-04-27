@@ -14,6 +14,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/hypertemplates-go/scripting"
+	htvalue "github.com/herdworks/hypertemplates-go/value"
 )
 
 type HyperBuild struct {
@@ -22,6 +24,7 @@ type HyperBuild struct {
 	Website     *Website
 	Environment Environment
 	Incremental bool
+	Plugins     htvalue.Plugins
 
 	Pages  *Pages
 	Assets Counter
@@ -103,6 +106,11 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 		return err
 	}
 	build.Pages.ResolveTemplateData(build.Website)
+
+	// load plugins
+	if build.Plugins, err = LoadPlugins(build.Website.Plugins.RelPaths()); err != nil {
+		return err
+	}
 
 	// validate build
 	if err = build.Validate(); err != nil {
@@ -289,6 +297,40 @@ func byteSize(bytes int) string {
 // Helper types, methods, and functions
 // =============================================================================
 
+func LoadPlugins(paths []string) (plugins htvalue.Plugins, err error) {
+	plugins = make(htvalue.Plugins, len(paths))
+
+	for _, path := range paths {
+		var name, source string
+		var ok bool
+		var fn func(any) (any, error)
+		if src, err := os.ReadFile(path); err == nil {
+			source = string(src)
+		} else {
+			return nil, fmt.Errorf("read script %q: %w", path, err)
+		}
+
+		if name, ok, err = scripting.PluginName(source); err != nil {
+			return nil, fmt.Errorf("parse plugin name %q: %w", path, err)
+		} else if !ok {
+			basename := filepath.Base(path)
+			name = strings.TrimSuffix(basename, filepath.Ext(basename))
+		}
+		if name == "httd" || name == "default" {
+			return nil, fmt.Errorf("reserved plugin name %q from %q", name, path)
+		}
+		if _, exists := plugins[name]; exists {
+			return nil, fmt.Errorf("duplicate plugin name %q from %q", name, path)
+		}
+		if fn, err = scripting.Function(source, nil); err != nil {
+			return nil, fmt.Errorf("compile script %q: %w", path, err)
+		}
+		plugins[name] = fn
+	}
+
+	return plugins, nil
+}
+
 func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
 	data = hypertemplates.TemplateData{}
 	paths := hypertemplates.GetPathsByPattern(website.DataDir(), false, ".*\\.(yaml|json|opml)$", "")
@@ -359,6 +401,7 @@ func RenderPage(build *HyperBuild, website *Website, page *Page) (pageBytes []by
 	if template, err = NewTemplate(website, page); err != nil {
 		return nil, err
 	}
+	template.Plugins = build.Plugins
 	if pageBytes, err = template.Process(TemplateData(build, website, page), &hypertemplates.TemplateData{"page": page.TemplateData}); err != nil {
 		return nil, err
 	}
