@@ -3,21 +3,21 @@
 // reference: https://go.dev/doc/modules/gomod-ref#replace
 module github.com/herdworks/hypertexting-go
 
-go 1.23.5
+go 1.25.0
 
 // first-party dependencies
 require (
 	github.com/herdworks/hyperfeed-go v0.19.1
 	github.com/herdworks/hypergraph-go v0.19.0
-	github.com/herdworks/hyperproviders-go v0.17.3
+	github.com/herdworks/hyperproviders-go v0.18.1
 	github.com/herdworks/hypertemplates-go v0.21.1
 )
 
 // direct dependencies
 require (
 	github.com/google/uuid v1.6.0
-	golang.org/x/net v0.43.0
-	golang.org/x/sync v0.16.0
+	golang.org/x/net v0.47.0
+	golang.org/x/sync v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -33,33 +33,14 @@ require (
 require (
 	github.com/alecthomas/chroma/v2 v2.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.33.0 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.7 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.29.1 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.54 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.24 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.53 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.28 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.28 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.1 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.28 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.5.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.74.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.24.11 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.10 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.33.9 // indirect
-	github.com/aws/smithy-go v1.22.1 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
+	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	github.com/yuin/goldmark-emoji v1.0.4 // indirect
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc // indirect
 	github.com/yuin/goldmark-meta v1.1.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c // indirect
-	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
-	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
-	golang.org/x/text v0.28.0 // indirect
 )

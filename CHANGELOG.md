@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog], and this project adheres to [Semantic Versioning].
 
+## Unreleased
+
+* Changed website deployment config from `provider` to `environments`.
+* Updated `github.com/herdworks/hyperproviders-go` to v0.18.1.
+* Changed minimum Go toolchain to `1.25.0`.
+
 ## v0.20.0 (2026-04-21)
 
 * Changed `Build.RenderPage()` to use `page.TemplateData` as `ht-block` user data 🤌🏽

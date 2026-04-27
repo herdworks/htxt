@@ -30,17 +30,17 @@ var (
 type Website struct {
 	URI *href.Href `json:"uri,omitempty" yaml:"-"` // path to website config file
 
-	CreatedAt   string                             `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
-	UpdatedAt   string                             `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
-	BaseURL     string                             `json:"base_url" yaml:"base_url"`
-	Title       string                             `json:"title" yaml:"title"`
-	Description string                             `json:"description" yaml:"description"`
-	Byline      Byline                             `json:"byline,omitempty" yaml:"byline,omitempty"`
-	Favicon     WebsiteFavicon                     `json:"favicon,omitempty" yaml:"favicon,omitempty"`
-	Links       []HTMLLink                         `json:"links,omitempty" yaml:"links,omitempty"`
-	Metadata    []HTMLMeta                         `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Config      WebsiteConfig                      `json:"config" yaml:"config"`
-	Provider    hyperproviders.HyperProviderConfig `json:"provider,omitempty" yaml:"provider,omitempty"`
+	CreatedAt    string                                 `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
+	UpdatedAt    string                                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
+	BaseURL      string                                 `json:"base_url" yaml:"base_url"`
+	Title        string                                 `json:"title" yaml:"title"`
+	Description  string                                 `json:"description" yaml:"description"`
+	Byline       Byline                                 `json:"byline,omitempty" yaml:"byline,omitempty"`
+	Favicon      WebsiteFavicon                         `json:"favicon,omitempty" yaml:"favicon,omitempty"`
+	Links        []HTMLLink                             `json:"links,omitempty" yaml:"links,omitempty"`
+	Metadata     []HTMLMeta                             `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Config       WebsiteConfig                          `json:"config" yaml:"config"`
+	Environments map[string]*hyperproviders.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
 
 	Theme        hypertemplates.Theme         `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
@@ -110,6 +110,7 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 	}
 	website.TemplateData = &fileTemplateData
 	website.ResolveConfig(configOverrides)
+	website.ResolveEnvironments()
 	website.Theme.URI = website.ThemeURI()
 	if err = website.Theme.Parse(); err != nil {
 		return err
@@ -155,6 +156,34 @@ func (website *Website) Validate() error {
 func (website *Website) URL() *url.URL {
 	u, _ := href.Parse(website.BaseURL) // ignore errors since we've pre-validated the URL in Validate()
 	return &u.URL
+}
+
+func (website *Website) ResolveEnvironments() {
+	for name, env := range website.Environments {
+		if env == nil {
+			continue
+		}
+		if env.Name == "" {
+			env.Name = name
+		}
+	}
+}
+
+func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Environment, error) {
+	if name == "" {
+		return nil, fmt.Errorf("deployment environment name is required")
+	}
+	env, ok := website.Environments[name]
+	if !ok {
+		return nil, fmt.Errorf("deployment environment %q not found", name)
+	}
+	if env == nil {
+		return nil, fmt.Errorf("deployment environment %q is empty", name)
+	}
+	if env.Name == "" {
+		env.Name = name
+	}
+	return env, nil
 }
 
 func (website *Website) RootDir() string {
