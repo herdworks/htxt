@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.22.0 (2026-04-28)
+
 Major redesign of HyperTexting resource management internals, including guards to prevent malicious themes from escaping the website root. This release also removes support for config.drafts_dir – drafts are now just pages with page.draft=true. 
 
 * Added `Asset`, `Assets`, and asset-entry helpers for combining theme, website, and page assets while preserving override precedence by public path.
