@@ -33,6 +33,7 @@ func (env *Environment) Load() (err error) {
 	return nil
 }
 
+// ParseKeyPath parses HT_* environment variable names into template data key paths.
 func (env *Environment) ParseKeyPath(key string) (path []string) {
 	if !strings.HasPrefix(key, "HT_") {
 		return nil

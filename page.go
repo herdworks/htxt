@@ -54,7 +54,7 @@ type Page struct {
 	// Computed properties
 	TemplateData hypertemplates.TemplateData `json:"-" yaml:"-"`
 	Path         string                      `json:"-" yaml:"-"`
-	Assets       hypertemplates.HyperFiles   `json:"-" yaml:"-"`
+	Assets       []string                    `json:"-" yaml:"-"` // paths relative to website.ContentDirName()
 	Static       bool                        `json:"-" yaml:"-"`
 }
 type Pages []*Page
@@ -144,13 +144,13 @@ func (page *Page) ApplyComputedProperties(website *Website) {
 		page.TemplateData.Set("refresh", fmt.Sprintf("%d; url=%s", website.Config.RefreshInterval, page.Redirect))
 	}
 	if len(page.Assets) > 0 {
-		page.TemplateData.Set("assets", page.Assets.FileNames())
+		page.TemplateData.Set("assets", page.AssetNames())
 	}
 	if page.Feed != nil {
 		page.TemplateData.Set("feed", page.Feed.TemplateData())
 	}
 	if page.Feed != nil {
-		page.TemplateData.Set("assets", append(page.Assets.FileNames(), "atom.xml"))
+		page.TemplateData.Set("assets", append(page.AssetNames(), "atom.xml"))
 	}
 }
 
@@ -201,7 +201,7 @@ func (page *Page) ResolveTemplateData(website *Website) {
 		page.TemplateData.Set("redirect", page.Redirect)
 	}
 	if len(page.Assets) > 0 {
-		page.TemplateData.Set("assets", page.Assets.FileNames())
+		page.TemplateData.Set("assets", page.AssetNames())
 	}
 	if len(page.Attachments) > 0 {
 		page.TemplateData.Set("attachments", page.Attachments.TemplateData())
@@ -213,13 +213,6 @@ func (page *Page) ResolveTemplateData(website *Website) {
 		page.TemplateData.Set("more", page.More)
 	}
 	page.ApplyComputedProperties(website)
-}
-
-// Page.IndexPath()
-//
-// Returns the final page index path (i.e. URL path).
-func (page *Page) IndexPath() string {
-	return filepath.Join(page.Path, "index.html")
 }
 
 // Pages.LastModified()
@@ -247,10 +240,11 @@ func (page *Page) LastModified() (ts time.Time) {
 }
 
 func (pages Pages) Contains(page *Page) bool {
-	return pages.GetURI(page.URI) != nil
+	return pages.PageByURI(page.URI) != nil
 }
 
-func (pages Pages) GetURI(uri *url.URL) *Page {
+// PageByURI returns the page whose source URI path matches uri.Path.
+func (pages Pages) PageByURI(uri *url.URL) *Page {
 	index := slices.IndexFunc(pages, func(page *Page) bool {
 		return strings.EqualFold(page.URI.Path, uri.Path)
 	})
@@ -260,7 +254,8 @@ func (pages Pages) GetURI(uri *url.URL) *Page {
 	return nil
 }
 
-func (pages Pages) GetPath(path string) *Page {
+// PageByPath returns the page whose public website path matches path.
+func (pages Pages) PageByPath(path string) *Page {
 	index := slices.IndexFunc(pages, func(page *Page) bool {
 		return strings.EqualFold(page.Path, path)
 	})
@@ -284,7 +279,7 @@ func (pages Pages) SortBy(field string, ascending bool) {
 	})
 }
 
-// NOTE: only called by hyperctl page list → page.SortBy() → page.ComparedBy()
+// NOTE: only called by hyperctl cms page ls -> page.SortBy() -> page.ComparedBy()
 func (page *Page) ComparedBy(field string) string {
 	switch field {
 	case "CreatedAt", "created_at":
@@ -316,15 +311,17 @@ func (pages Pages) ColumnValues(field string) []string {
 }
 
 func (pages Pages) ContainsPath(href string) bool {
-	if len(pages) == 0 {
-		return false // guard
-	}
-	for i := range pages {
-		if strings.EqualFold(href, pages[i].Path) {
-			return true
+	return pages.PageByPath(href) != nil
+}
+
+func (pages Pages) FilterDraft(draft bool) Pages {
+	filtered := Pages{}
+	for _, page := range pages {
+		if page != nil && page.Draft == draft {
+			filtered = append(filtered, page)
 		}
 	}
-	return false
+	return filtered
 }
 
 func (page *Page) HasChildPages() bool {
@@ -347,23 +344,60 @@ func (pages Pages) TemplateData() (data []hypertemplates.TemplateData) {
 	return data
 }
 
-func (pages Pages) DiscoverAssets(website *Website, verbose bool) {
+func (pages Pages) DiscoverAssets(website *Website, verbose bool) error {
 	for i := range pages {
-		pages[i].DiscoverAssets(website, verbose)
+		if err := pages[i].DiscoverAssets(website, verbose); err != nil {
+			return err
+		}
 	}
+	return nil
 }
-func (page *Page) DiscoverAssets(website *Website, verbose bool) {
+func (page *Page) DiscoverAssets(website *Website, verbose bool) error {
 	exclude := "(index|page)\\.(md|yaml|json|html)$"
 	exclude += "|(site)\\.(yaml|json)$"
 	exclude += "|theme\\.json$"
-	page.Assets = hypertemplates.GetFilesByPattern(filepath.Dir(page.URI.Path), false, "", exclude)
-	page.Assets.SetRoot(website.ContentDir())
+	pageDir := filepath.Dir(page.URI.Path)
+	files, err := hypertemplates.ListFilesByPattern(pageDir, false, "", exclude)
+	if err != nil {
+		return err
+	}
+	pageDirRel := ""
+	if pageDirAbs, err := filepath.Abs(pageDir); err != nil {
+		return err
+	} else if contentDirAbs, err := filepath.Abs(website.ContentDirPath()); err != nil {
+		return err
+	} else if pageDirAbs != contentDirAbs {
+		pageDirRel, err = hypertemplates.RelativeFilePath(website.ContentDirPath(), pageDir)
+		if err != nil {
+			return err
+		}
+		pageDirRel = filepath.ToSlash(pageDirRel)
+	}
+	assets := []string{}
+	for _, file := range files {
+		relPath := filepath.ToSlash(filepath.Join(pageDirRel, file))
+		if _, err = hypertemplates.CleanRelativeFilePath(relPath); err != nil {
+			return err
+		}
+		assets = append(assets, relPath)
+	}
+	page.Assets = assets
 	if !verbose {
-		return
+		return nil
 	}
 	for _, asset := range page.Assets {
-		fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(asset.URI.Path))
+		if srcPath, err := website.ResourcePath(website.ContentDirPath(), asset); err == nil {
+			fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(srcPath))
+		}
 	}
+	return nil
+}
+
+func (page *Page) AssetNames() (names []string) {
+	for _, asset := range page.Assets {
+		names = append(names, filepath.Base(asset))
+	}
+	return names
 }
 
 func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
@@ -564,7 +598,7 @@ func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, 
 	for i := range pages {
 		taskgroup.Go(func() error {
 			if cache.Contains(pages[i]) {
-				pages[i] = cache.GetURI(pages[i].URI)
+				pages[i] = cache.PageByURI(pages[i].URI)
 			}
 			return LoadPage(website, pages[i], verbose)
 		})
@@ -597,7 +631,9 @@ func LoadPage(website *Website, page *Page, verbose bool) (err error) {
 	if page.LayoutRef == "" {
 		page.LayoutRef = "default" // TODO: should layout be required?
 	}
-	page.DiscoverAssets(website, verbose)
+	if err = page.DiscoverAssets(website, verbose); err != nil {
+		return err
+	}
 	page.Loaded = true
 	return nil
 }
@@ -658,7 +694,7 @@ func LoadTagPages(build *HyperBuild) (err error) {
 	for tag := range build.Tags.Counters {
 		fmt.Printf("tag \"%s\" loading\n", tag)
 		tagPath := filepath.Join(build.Website.Config.TagPath, tag)
-		tagPage := build.Pages.GetPath(tagPath)
+		tagPage := build.Pages.PageByPath(tagPath)
 		if tagPage == nil {
 			tagPage = &Page{
 				URI:         &url.URL{Path: filepath.Join(tagPath, "index.md")},
@@ -688,10 +724,17 @@ func LoadTagPages(build *HyperBuild) (err error) {
 
 func GetPages(website *Website, directory string) (pages Pages, err error) {
 	pages = Pages{} // "discovered pages"
-	paths := hypertemplates.GetPathsByPattern(directory, true, "(index|page)\\.(md|yaml|json|html)$", fmt.Sprintf("^%s/*", website.Config.BuildsDirectory))
+	paths, err := hypertemplates.ListFilesByPattern(directory, true, "(index|page)\\.(md|yaml|json|html)$", fmt.Sprintf("^%s/*", website.BuildsDirName()))
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range paths {
 		var uri *url.URL
-		if uri, err = url.Parse(p); err != nil {
+		absPath, err := hypertemplates.LocalFilePath(directory, p)
+		if err != nil {
+			return nil, err
+		}
+		if uri, err = url.Parse(absPath); err != nil {
 			return nil, err
 		}
 		page := &Page{URI: uri, Path: PagePath(website, uri), TemplateData: nil}
@@ -704,22 +747,13 @@ func GetPages(website *Website, directory string) (pages Pages, err error) {
 }
 
 func PagePath(website *Website, uri *url.URL) string {
-	subPath := uri.Path
-	subPath = strings.TrimPrefix(subPath, website.RootDir()+string(filepath.Separator))
-	subPath = strings.TrimPrefix(subPath, website.Config.DraftsDirectory)
-	subPath = strings.TrimPrefix(subPath, website.Config.ContentDirectory)
-	subPath = filepath.Dir(subPath) + string(filepath.Separator)
-	return strings.Replace(
-		subPath,
-		fmt.Sprintf("%s%s", string(filepath.Separator), string(filepath.Separator)),
-		string(filepath.Separator),
-		1,
-	)
-}
-
-func PageIsDraft(website *Website, page *Page) bool {
-	if page.Draft {
-		return true
+	subPath, err := hypertemplates.RelativeFilePath(website.ContentDirPath(), uri.Path)
+	if err != nil {
+		return ""
 	}
-	return strings.HasPrefix(page.URI.Path, website.DraftsDir())
+	subPath = filepath.Dir(subPath)
+	if subPath == "." {
+		return "/"
+	}
+	return "/" + filepath.ToSlash(subPath) + "/"
 }

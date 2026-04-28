@@ -1,6 +1,9 @@
 package hypertexting
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	hyperproviders "github.com/herdworks/hyperproviders-go"
@@ -49,5 +52,127 @@ func TestWebsite_DeploymentEnvironment(t *testing.T) {
 	website.Environments["empty"] = nil
 	if _, err := website.DeploymentEnvironment("empty"); err == nil {
 		t.Fatal("DeploymentEnvironment empty error = nil, want error")
+	}
+}
+
+func TestWebsiteDirectoryGettersDoNotMutateConfig(t *testing.T) {
+	website, _ := testWebsite(t)
+	root := website.RootDir()
+
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"BuildsDirPath", website.BuildsDirPath(), filepath.Join(root, "builds")},
+		{"ContentDirPath", website.ContentDirPath(), filepath.Join(root, "content")},
+		{"DataDirPath", website.DataDirPath(), filepath.Join(root, "data")},
+		{"DeploymentsDirPath", website.DeploymentsDirPath(), filepath.Join(root, "deployments")},
+		{"PluginsDirPath", website.PluginsDirPath(), filepath.Join(root, "plugins")},
+		{"StaticDirPath", website.StaticDirPath(), filepath.Join(root, "static")},
+		{"ThemesDirPath", website.ThemesDirPath(), filepath.Join(root, "themes")},
+		{"ThemeURI", website.ThemeURI().Path, filepath.Join(root, "theme.json")},
+	}
+	for _, test := range tests {
+		if test.got != test.want {
+			t.Fatalf("%s = %q, want %q", test.name, test.got, test.want)
+		}
+	}
+	if website.Config != (WebsiteConfig{}) {
+		t.Fatalf("Website path getters mutated config: %#v", website.Config)
+	}
+}
+
+func TestWebsiteDirectoryGettersUseConfiguredDirs(t *testing.T) {
+	website, _ := testWebsite(t)
+	website.Config = WebsiteConfig{
+		BuildsDirectory:      "dist",
+		ContentDirectory:     "pages",
+		DataDirectory:        "records",
+		DeploymentsDirectory: "releases",
+		PluginsDirectory:     "extensions",
+		StaticDirectory:      "public",
+		ThemesDirectory:      "designs",
+		ThemePath:            "themes/main/theme.json",
+	}
+	wantConfig := website.Config
+	root := website.RootDir()
+
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"BuildsDirPath", website.BuildsDirPath(), filepath.Join(root, "dist")},
+		{"ContentDirPath", website.ContentDirPath(), filepath.Join(root, "pages")},
+		{"DataDirPath", website.DataDirPath(), filepath.Join(root, "records")},
+		{"DeploymentsDirPath", website.DeploymentsDirPath(), filepath.Join(root, "releases")},
+		{"PluginsDirPath", website.PluginsDirPath(), filepath.Join(root, "extensions")},
+		{"StaticDirPath", website.StaticDirPath(), filepath.Join(root, "public")},
+		{"ThemesDirPath", website.ThemesDirPath(), filepath.Join(root, "designs")},
+		{"ThemeURI", website.ThemeURI().Path, filepath.Join(root, "themes", "main", "theme.json")},
+	}
+	for _, test := range tests {
+		if test.got != test.want {
+			t.Fatalf("%s = %q, want %q", test.name, test.got, test.want)
+		}
+	}
+	if website.Config != wantConfig {
+		t.Fatalf("Website path getters mutated config: %#v, want %#v", website.Config, wantConfig)
+	}
+}
+
+func TestWebsiteConfigValidateRejectsUnsafePaths(t *testing.T) {
+	tests := []struct {
+		name   string
+		config WebsiteConfig
+	}{
+		{name: "builds", config: WebsiteConfig{BuildsDirectory: "../builds"}},
+		{name: "content", config: WebsiteConfig{ContentDirectory: "/content"}},
+		{name: "data", config: WebsiteConfig{DataDirectory: `data\records`}},
+		{name: "deployments", config: WebsiteConfig{DeploymentsDirectory: "."}},
+		{name: "plugins", config: WebsiteConfig{PluginsDirectory: "/plugins"}},
+		{name: "static", config: WebsiteConfig{StaticDirectory: `static\assets`}},
+		{name: "themes", config: WebsiteConfig{ThemesDirectory: "../themes"}},
+		{name: "theme", config: WebsiteConfig{ThemePath: "../theme.json"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.config.Validate(); err == nil {
+				t.Fatal("WebsiteConfig.Validate() error = nil")
+			}
+		})
+	}
+}
+
+func TestWebsiteConfigValidateAllowsEmptyDefaults(t *testing.T) {
+	var config WebsiteConfig
+	if err := config.Validate(); err != nil {
+		t.Fatalf("WebsiteConfig.Validate() error = %v", err)
+	}
+}
+
+func TestWebsiteLoadRejectsUnsafeThemePath(t *testing.T) {
+	website, _ := testWebsite(t)
+	source := []byte(`
+base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: ../theme.json
+`)
+	if err := os.WriteFile(website.URI.Path, source, 0644); err != nil {
+		t.Fatalf("write site config: %v", err)
+	}
+
+	err := website.Load(false, nil)
+	if err == nil {
+		t.Fatal("Load() error = nil")
+	}
+	if !strings.Contains(err.Error(), "site.config.theme") {
+		t.Fatalf("Load() error = %v, want site.config.theme", err)
 	}
 }

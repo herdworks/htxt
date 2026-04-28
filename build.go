@@ -14,17 +14,17 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertemplates-go/scripting"
-	htvalue "github.com/herdworks/hypertemplates-go/value"
+	htplugins "github.com/herdworks/hypertemplates-go/plugins"
 )
 
 type HyperBuild struct {
-	URI         *url.URL
-	ID          string
-	Website     *Website
-	Environment Environment
-	Incremental bool
-	Plugins     htvalue.Plugins
+	URI           *url.URL
+	ID            string
+	Website       *Website
+	Environment   Environment
+	Incremental   bool
+	IncludeDrafts bool
+	Plugins       htplugins.Plugins
 
 	Pages  *Pages
 	Assets Counter
@@ -67,29 +67,23 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 				"release_date": LibReleaseDate.Format(time.RFC3339),
 			})
 	}
-	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDir()); err != nil {
-		return err
-	}
-	if build.Website.Drafts, err = GetPages(build.Website, build.Website.DraftsDir()); err != nil {
+	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDirPath()); err != nil {
 		return err
 	}
 
 	// load build pages first (in case of incremental build)
 	if err = LoadPages(ctx, build.Website, *build.Pages, build.Website.Pages, true); err != nil {
 		return err
-	} else {
-		build.Website.TemplateData.Set("pages", build.Website.Pages.TemplateData())
 	}
 	// load website pages second (sitemap)
 	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, true); err != nil {
 		return err
 	}
-	// load draft pages
-	if err = LoadPages(ctx, build.Website, build.Website.Drafts, nil, true); err != nil {
-		return err
-	} else {
-		build.Website.TemplateData.Set("drafts", build.Website.Drafts.TemplateData())
+	if !build.IncludeDrafts {
+		build.Website.Pages = build.Website.Pages.FilterDraft(false)
+		*build.Pages = build.Pages.FilterDraft(false)
 	}
+	build.Website.TemplateData.Set("pages", build.Website.Pages.TemplateData())
 	// check if build pages are in any feeds
 	if build.Incremental {
 		if err = AddFeedPages(ctx, build); err != nil {
@@ -108,9 +102,7 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	build.Pages.ResolveTemplateData(build.Website)
 
 	// load plugins
-	if build.Plugins, err = LoadPlugins(build.Website.Plugins.RelPaths()); err != nil {
-		return err
-	}
+	build.Plugins = htplugins.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
 
 	// validate build
 	if err = build.Validate(); err != nil {
@@ -151,33 +143,62 @@ func (build *HyperBuild) Validate() (err error) {
 }
 
 func (build *HyperBuild) WriteAssets(ctx context.Context) (err error) {
-	// copy website assets in order (website assets may override theme assets)
-	if !build.Incremental {
-		for _, asset := range build.Website.Assets {
-			build.CopyAsset(asset)
-			build.Assets.Increment(1, asset.SubPath()) // count website assets
-		}
+	assets, err := AssetEntries(&build.Website.Theme, build.Website, *build.Pages)
+	if err != nil {
+		return err
 	}
-	// copy page assets concurrently
-	assets := hypertemplates.HyperFiles{}
-	for _, page := range *build.Pages {
-		assets = append(assets, page.Assets...)
+	if build.Incremental {
+		assets = assets.FilterSource(AssetSourcePage)
 	}
-	build.Assets.Increment(1, assets.FilePaths()...) // count assets
+	for _, asset := range assets {
+		build.Assets.Increment(1, build.AssetCounterKey(asset.RelPath))
+	}
 	taskgroup, _ := errgroup.WithContext(ctx)
 	for _, asset := range assets {
+		asset := asset
 		taskgroup.Go(func() error {
 			return build.CopyAsset(asset)
 		})
 	}
 	return taskgroup.Wait()
 }
-func (build *HyperBuild) CopyAsset(asset hypertemplates.HyperFile) (err error) {
-	var srcPath = asset.AbsPath()
+
+func (build *HyperBuild) CopyAsset(asset Asset) error {
+	return build.copyAsset(asset.SourcePath, asset.RelPath)
+}
+
+func (build *HyperBuild) CopyThemeAsset(relPath string) error {
+	srcPath, err := build.Website.ResourcePath(build.Website.Theme.StaticDirPath(), relPath)
+	if err != nil {
+		return err
+	}
+	return build.copyAsset(srcPath, relPath)
+}
+
+func (build *HyperBuild) CopyWebsiteAsset(relPath string) error {
+	srcPath, err := build.Website.ResourcePath(build.Website.StaticDirPath(), relPath)
+	if err != nil {
+		return err
+	}
+	return build.copyAsset(srcPath, relPath)
+}
+
+func (build *HyperBuild) CopyPageAsset(relPath string) error {
+	srcPath, err := build.Website.ResourcePath(build.Website.ContentDirPath(), relPath)
+	if err != nil {
+		return err
+	}
+	return build.copyAsset(srcPath, relPath)
+}
+
+func (build *HyperBuild) copyAsset(srcPath string, relPath string) (err error) {
 	var srcFile *os.File
-	var dstPath = asset.DestinationAbsPath(build.URI.Path)
+	var dstPath string
 	var dstFile *os.File
 	var dstFileBytesWritten int64
+	if dstPath, err = build.Website.AssetBuildPath(build, relPath); err != nil {
+		return err
+	}
 	fmt.Printf("copying \"%s\" to \"%s\"\n", build.Website.RelativePath(srcPath), build.Website.RelativePath(dstPath))
 	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
@@ -199,6 +220,18 @@ func (build *HyperBuild) CopyAsset(asset hypertemplates.HyperFile) (err error) {
 	return nil
 }
 
+// AssetCounterKey returns the normalized asset counter map key for relPath.
+//
+// Asset public paths are rooted with "/", but Counter keys are stored without a
+// leading slash so the same relative asset path is used for display and lookup.
+func (build *HyperBuild) AssetCounterKey(relPath string) string {
+	publicPath, err := build.Website.AssetPublicPath(relPath)
+	if err != nil {
+		return relPath
+	}
+	return strings.TrimPrefix(publicPath, "/")
+}
+
 func (build *HyperBuild) WriteFeeds(ctx context.Context) (err error) {
 	taskgroup, _ := errgroup.WithContext(ctx)
 	for _, page := range *build.Pages {
@@ -217,7 +250,7 @@ func (build *HyperBuild) WritePages(ctx context.Context) (err error) {
 	taskgroup, _ := errgroup.WithContext(ctx)
 	for i := range *build.Pages {
 		taskgroup.Go(func() error {
-			if (*build.Pages)[i].Draft {
+			if (*build.Pages)[i].Draft && !build.IncludeDrafts {
 				fmt.Printf("draft \"%s\" skipped\n", build.Website.RelativePath((*build.Pages)[i].URI.Path))
 				return nil
 			}
@@ -256,11 +289,13 @@ func (build *HyperBuild) WriteFile(fileName string, fileBytes []byte) (err error
 }
 
 func (build *HyperBuild) BuildPath(page *Page) string {
-	subPath := page.URI.Path                                          // the build path is embedded in page.URI
-	subPath = strings.TrimPrefix(subPath, build.Website.DraftsDir())  // removes drafts dir (if draft)
-	subPath = strings.TrimPrefix(subPath, build.Website.ContentDir()) // removes content dir (if regular page)
-	subPath = strings.ToLower(subPath)                                // normalize case (e.g. for tag paths)
-	subPath = filepath.Dir(subPath)                                   // removes index file name
+	subPath, err := hypertemplates.RelativeFilePath(build.Website.ContentDirPath(), page.URI.Path)
+	if err == nil {
+		subPath = filepath.Dir(subPath)
+	} else {
+		subPath = strings.TrimPrefix(page.Path, "/")
+	}
+	subPath = strings.ToLower(subPath) // normalize case (e.g. for tag paths)
 	return filepath.Join(build.URI.Path, subPath, "index.html")
 }
 
@@ -293,53 +328,23 @@ func byteSize(bytes int) string {
 	return fmt.Sprintf("%.3f GB", float64(bytes)/1_073_741_824)
 }
 
-// =============================================================================
-// Helper types, methods, and functions
-// =============================================================================
-
-func LoadPlugins(paths []string) (plugins htvalue.Plugins, err error) {
-	plugins = make(htvalue.Plugins, len(paths))
-
-	for _, path := range paths {
-		var name, source string
-		var ok bool
-		var fn func(any) (any, error)
-		if src, err := os.ReadFile(path); err == nil {
-			source = string(src)
-		} else {
-			return nil, fmt.Errorf("read script %q: %w", path, err)
-		}
-
-		if name, ok, err = scripting.PluginName(source); err != nil {
-			return nil, fmt.Errorf("parse plugin name %q: %w", path, err)
-		} else if !ok {
-			basename := filepath.Base(path)
-			name = strings.TrimSuffix(basename, filepath.Ext(basename))
-		}
-		if name == "httd" || name == "default" {
-			return nil, fmt.Errorf("reserved plugin name %q from %q", name, path)
-		}
-		if _, exists := plugins[name]; exists {
-			return nil, fmt.Errorf("duplicate plugin name %q from %q", name, path)
-		}
-		if fn, err = scripting.Function(source, nil); err != nil {
-			return nil, fmt.Errorf("compile script %q: %w", path, err)
-		}
-		plugins[name] = fn
-	}
-
-	return plugins, nil
-}
-
 func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
 	data = hypertemplates.TemplateData{}
-	paths := hypertemplates.GetPathsByPattern(website.DataDir(), false, ".*\\.(yaml|json|opml)$", "")
+	dataDir := website.DataDirPath()
+	paths, err := hypertemplates.ListFilesByPattern(dataDir, false, ".*\\.(yaml|json|opml)$", "")
+	if err != nil {
+		return data, err
+	}
 	for _, p := range paths {
+		absPath, err := hypertemplates.LocalFilePath(dataDir, p)
+		if err != nil {
+			return data, err
+		}
 		if verbose {
-			fmt.Printf("data \"%s\" loading\n", website.RelativePath(p))
+			fmt.Printf("data \"%s\" loading\n", website.RelativePath(absPath))
 		}
 		var namespace hypertemplates.TemplateData
-		if namespace, err = hypertemplates.ParseTemplateDataFile(p, config); err != nil {
+		if namespace, err = hypertemplates.ParseTemplateDataFile(absPath, config); err != nil {
 			return data, err
 		}
 		data[namespace.Namespace()] = namespace.NamespaceData()
@@ -349,13 +354,21 @@ func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkCo
 
 func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
 	data = hypertemplates.TemplateData{}
-	paths := hypertemplates.GetPathsByPattern(website.Theme.DataDir(), false, ".*\\.(yaml|json|opml)$", "")
+	dataDir := website.Theme.DataDirPath()
+	paths, err := hypertemplates.ListFilesByPattern(dataDir, false, ".*\\.(yaml|json|opml)$", "")
+	if err != nil {
+		return data, err
+	}
 	for _, p := range paths {
+		absPath, err := hypertemplates.LocalFilePath(dataDir, p)
+		if err != nil {
+			return data, err
+		}
 		if verbose {
-			fmt.Printf("data \"%s\" loading\n", website.RelativePath(p))
+			fmt.Printf("data \"%s\" loading\n", website.RelativePath(absPath))
 		}
 		var namespace hypertemplates.TemplateData
-		if namespace, err = hypertemplates.ParseTemplateDataFile(p, config); err != nil {
+		if namespace, err = hypertemplates.ParseTemplateDataFile(absPath, config); err != nil {
 			return data, err
 		}
 		data[namespace.Namespace()] = namespace.NamespaceData()

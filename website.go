@@ -17,6 +17,7 @@ import (
 
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
+	htplugins "github.com/herdworks/hypertemplates-go/plugins"
 	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"
 	href "github.com/herdworks/hypertexting-go/href"
 )
@@ -46,10 +47,8 @@ type Website struct {
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
 	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
 	Pages        Pages                        `json:"-" yaml:"-"`
-	Drafts       Pages                        `json:"-" yaml:"-"`
-	Plugins      hypertemplates.HyperFiles    `json:"-" yaml:"-"`
-	Assets       hypertemplates.HyperFiles    `json:"-" yaml:"-"`
-	Loaded       bool                         `json:"-" yaml:"-"` // indicates if the website has been loaded from disk
+	Plugins      htplugins.Plugins            `json:"-" yaml:"-"`
+	Assets       []string                     `json:"-" yaml:"-"` // paths relative to StaticDirName()
 }
 
 type WebsiteFavicon struct {
@@ -64,7 +63,6 @@ type WebsiteConfig struct {
 	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty"`
 	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty"`
 	DeploymentsDirectory string `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty"`
-	DraftsDirectory      string `json:"drafts_dir,omitempty" yaml:"drafts_dir,omitempty"`
 	PluginsDirectory     string `json:"plugins_dir,omitempty" yaml:"plugins_dir,omitempty"`
 	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty"`
 	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty"`
@@ -84,9 +82,6 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 	var fileExt string = filepath.Ext(website.URI.Path)
 	var fileBytes []byte
 	var fileTemplateData hypertemplates.TemplateData
-	if website.Loaded {
-		return nil // already loaded
-	}
 	if verbose {
 		fmt.Printf("website \"%s\" load\n", website.URI.String())
 	}
@@ -110,21 +105,31 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 	}
 	website.TemplateData = &fileTemplateData
 	website.ResolveConfig(configOverrides)
+	if err = website.ValidateConfig(); err != nil {
+		return err
+	}
 	website.ResolveEnvironments()
 	website.Theme.URI = website.ThemeURI()
 	if err = website.Theme.Parse(); err != nil {
 		return err
 	}
-	website.DiscoverAssets(verbose)
-	website.DiscoverPlugins(verbose)
-	website.TemplateData.Set("assets", website.Assets.Paths())
+	if err = website.DiscoverAssets(verbose); err != nil {
+		return err
+	}
+	if err = website.DiscoverPlugins(verbose); err != nil {
+		return err
+	}
+	var assetPublicPaths []string
+	if assetPublicPaths, err = AssetPublicPaths(&website.Theme, website, nil); err != nil {
+		return err
+	}
+	website.TemplateData.Set("assets", assetPublicPaths)
 	if len(website.CreatedAt) == 0 {
 		website.CreatedAt = LibReleaseDate.Format(time.RFC3339)
 	}
 	if len(website.UpdatedAt) == 0 {
 		website.UpdatedAt = LibReleaseDate.Format(time.RFC3339)
 	}
-	website.Loaded = true // mark website as loaded
 	return website.Validate()
 }
 
@@ -147,7 +152,20 @@ func (website *Website) Validate() error {
 	if !website.Byline.Ready() {
 		return fmt.Errorf("site.byline is not valid")
 	}
+	if err := website.ValidateConfig(); err != nil {
+		return err
+	}
 	if err := website.Theme.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (website *Website) ValidateConfig() error {
+	if err := website.Config.Validate(); err != nil {
+		return err
+	}
+	if err := website.Theme.Config.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -190,77 +208,78 @@ func (website *Website) RootDir() string {
 	return filepath.Dir(website.URI.Path)
 }
 
-func (website *Website) BuildsDir() string {
-	if website.Config.BuildsDirectory == "" {
-		website.Config.BuildsDirectory = "builds"
-	}
-	return filepath.Join(website.RootDir(), website.Config.BuildsDirectory)
+func (website *Website) StaticDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.StaticDirectory, "static")
 }
 
-func (website *Website) ContentDir() string {
-	if website.Config.ContentDirectory == "" {
-		website.Config.ContentDirectory = "content"
-	}
-	return filepath.Join(website.RootDir(), website.Config.ContentDirectory)
+func (website *Website) StaticDirPath() string {
+	return filepath.Join(website.RootDir(), website.StaticDirName())
 }
 
-func (website *Website) DeploymentsDir() string {
-	if website.Config.DeploymentsDirectory == "" {
-		website.Config.DeploymentsDirectory = "deployments"
-	}
-	return filepath.Join(website.RootDir(), website.Config.DeploymentsDirectory)
+func (website *Website) DataDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.DataDirectory, "data")
 }
 
-func (website *Website) DataDir() string {
-	if website.Config.DataDirectory == "" {
-		website.Config.DataDirectory = "data"
-	}
-	return filepath.Join(website.RootDir(), website.Config.DataDirectory)
+func (website *Website) DataDirPath() string {
+	return filepath.Join(website.RootDir(), website.DataDirName())
 }
 
-func (website *Website) DraftsDir() string {
-	if website.Config.DraftsDirectory == "" {
-		website.Config.DraftsDirectory = "drafts"
-	}
-	return filepath.Join(website.RootDir(), website.Config.DraftsDirectory)
+func (website *Website) ContentDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.ContentDirectory, "content")
 }
 
-func (website *Website) PluginsDir() string {
-	if website.Config.PluginsDirectory == "" {
-		website.Config.PluginsDirectory = "plugins"
-	}
-	return filepath.Join(website.RootDir(), website.Config.PluginsDirectory)
+func (website *Website) ContentDirPath() string {
+	return filepath.Join(website.RootDir(), website.ContentDirName())
 }
 
-func (website *Website) StaticDir() string {
-	if website.Config.StaticDirectory == "" {
-		website.Config.StaticDirectory = "static"
-	}
-	return filepath.Join(website.RootDir(), website.Config.StaticDirectory)
+func (website *Website) ThemesDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.ThemesDirectory, "themes")
 }
 
-func (website *Website) ThemesDir() string {
-	if website.Config.ThemesDirectory == "" {
-		website.Config.ThemesDirectory = "themes"
-	}
-	return filepath.Join(website.RootDir(), website.Config.ThemesDirectory)
+func (website *Website) ThemesDirPath() string {
+	return filepath.Join(website.RootDir(), website.ThemesDirName())
 }
 
 func (website *Website) ThemeURI() (uri *url.URL) {
 	var err error
-	if website.Config.ThemePath == "" {
-		website.Config.ThemePath = "theme.json"
+	themePath := website.Config.ThemePath
+	if themePath == "" {
+		themePath = "theme.json"
+	} else if themePath, err = hypertemplates.CleanRelativeFilePath(themePath); err != nil {
+		return nil
 	}
-	path := filepath.Join(website.RootDir(), website.Config.ThemePath)
+	path := filepath.Join(website.RootDir(), themePath)
 	if uri, err = url.Parse(path); err != nil {
 		return nil
 	}
 	return uri
 }
 
-// Website.RelativePath(path string)
-//
-// Website.RelativePath returns a relative path from the website root directory to the source file path.
+func (website *Website) BuildsDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.BuildsDirectory, "builds")
+}
+
+func (website *Website) BuildsDirPath() string {
+	return filepath.Join(website.RootDir(), website.BuildsDirName())
+}
+
+func (website *Website) DeploymentsDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.DeploymentsDirectory, "deployments")
+}
+
+func (website *Website) DeploymentsDirPath() string {
+	return filepath.Join(website.RootDir(), website.DeploymentsDirName())
+}
+
+func (website *Website) PluginsDirName() string {
+	return hypertemplates.ResourceDirectoryName(website.Config.PluginsDirectory, "plugins")
+}
+
+func (website *Website) PluginsDirPath() string {
+	return filepath.Join(website.RootDir(), website.PluginsDirName())
+}
+
+// RelativePath returns a path relative to the website root directory.
 // If the relative path cannot be determined, it returns the original path.
 func (website *Website) RelativePath(path string) (relPath string) {
 	var basePath string
@@ -272,6 +291,26 @@ func (website *Website) RelativePath(path string) (relPath string) {
 		return path
 	}
 	return relPath
+}
+
+func (website *Website) ResourcePath(root string, relPath string) (string, error) {
+	return hypertemplates.LocalFilePath(root, relPath)
+}
+
+func (website *Website) AssetPublicPath(relPath string) (string, error) {
+	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
+	if err != nil {
+		return "", err
+	}
+	return "/" + relPath, nil
+}
+
+func (website *Website) AssetBuildPath(build *HyperBuild, relPath string) (string, error) {
+	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(build.URI.Path, relPath), nil
 }
 
 func (website *Website) ResolveConfig(overrides *WebsiteConfig) {
@@ -403,36 +442,71 @@ func (website *Website) WriteFile() (err error) {
 	return nil
 }
 
-func (website *Website) DiscoverAssets(verbose bool) {
-	website.Assets = website.Theme.Assets()
-	if website.StaticDir() != website.Theme.StaticDir() {
-		website.Assets = append(website.Assets, hypertemplates.GetFiles(website.StaticDir(), true)...)
+func (website *Website) DiscoverAssets(verbose bool) error {
+	if err := website.Theme.DiscoverAssets(); err != nil {
+		return err
+	}
+	if website.StaticDirPath() != website.Theme.StaticDirPath() {
+		assets, err := hypertemplates.ListFiles(website.StaticDirPath(), true)
+		if err != nil {
+			return err
+		}
+		website.Assets = assets
+	} else {
+		website.Assets = []string{}
 	}
 	if !verbose {
-		return
+		return nil
+	}
+	for _, asset := range website.Theme.Assets {
+		if srcPath, err := website.ResourcePath(website.Theme.StaticDirPath(), asset); err == nil {
+			fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(srcPath))
+		}
 	}
 	for _, asset := range website.Assets {
-		fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(asset.URI.Path))
+		if srcPath, err := website.ResourcePath(website.StaticDirPath(), asset); err == nil {
+			fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(srcPath))
+		}
 	}
+	return nil
 }
 
-func (website *Website) DiscoverPlugins(verbose bool) {
-	website.Plugins = website.Theme.Plugins()
-	if website.PluginsDir() != website.Theme.PluginsDir() {
-		website.Plugins = append(website.Plugins, hypertemplates.GetFiles(website.PluginsDir(), true)...)
+func (website *Website) DiscoverPlugins(verbose bool) error {
+	if err := website.Theme.DiscoverPlugins(); err != nil {
+		return err
+	}
+	if website.PluginsDirPath() != website.Theme.PluginsDirPath() {
+		pluginPaths, err := hypertemplates.ListFiles(website.PluginsDirPath(), true)
+		if err != nil {
+			return err
+		}
+		paths, err := hypertemplates.LocalFilePaths(website.PluginsDirPath(), pluginPaths)
+		if err != nil {
+			return err
+		}
+		website.Plugins, err = htplugins.LoadPlugins(paths)
+		if err != nil {
+			return err
+		}
+	} else {
+		website.Plugins = htplugins.Plugins{}
 	}
 	if !verbose {
-		return
+		return nil
+	}
+	for _, plugin := range website.Theme.Plugins {
+		fmt.Printf("plugin \"%s\" discovered\n", website.RelativePath(plugin.Path))
 	}
 	for _, plugin := range website.Plugins {
-		fmt.Printf("plugin \"%s\" discovered\n", website.RelativePath(plugin.URI.Path))
+		fmt.Printf("plugin \"%s\" discovered\n", website.RelativePath(plugin.Path))
 	}
+	return nil
 }
 
 func (website *Website) CopyAsset(srcPath string, dstPath string) (err error) {
 	var srcFile *os.File
 	var dstFile *os.File
-	dstPath = filepath.Join(website.StaticDir(), dstPath)
+	dstPath = filepath.Join(website.StaticDirPath(), dstPath)
 	fmt.Printf("copying %s to %s\n", srcPath, dstPath)
 	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
@@ -456,7 +530,7 @@ func (website *Website) GetAssetURI(assetPath string) *url.URL {
 	var uris []*url.URL = []*url.URL{}
 	var err error
 	fmt.Printf("asset \"%s\" lookup\n", assetPath)
-	for _, assetDir := range []string{website.ContentDir(), website.StaticDir(), website.Theme.StaticDir()} {
+	for _, assetDir := range []string{website.ContentDirPath(), website.StaticDirPath(), website.Theme.StaticDirPath()} {
 		var u *url.URL
 		if u, err = url.Parse(filepath.Join(assetDir, assetPath)); err != nil {
 			continue
@@ -478,9 +552,16 @@ func (website *Website) GetAssetURI(assetPath string) *url.URL {
 
 func (website *Website) ContentTypes() (types ContentTypes, err error) {
 	types = ContentTypes{}
-	contentTypePaths := hypertemplates.GetPaths(website.Theme.ContentTypesDir(), false)
+	contentTypePaths, err := hypertemplates.ListFiles(website.Theme.ContentTypesDirPath(), false)
+	if err != nil {
+		return nil, err
+	}
 	for _, path := range contentTypePaths {
-		var contenttype *ContentType = &ContentType{URI: &href.Href{URL: url.URL{Path: path}}}
+		absPath, err := hypertemplates.LocalFilePath(website.Theme.ContentTypesDirPath(), path)
+		if err != nil {
+			return nil, err
+		}
+		var contenttype *ContentType = &ContentType{URI: &href.Href{URL: url.URL{Path: absPath}}}
 		if err = contenttype.Load(); err != nil {
 			return nil, err
 		}
@@ -505,28 +586,15 @@ func (website *Website) GetContentTypeByName(name string, verbose bool) (content
 	return nil
 }
 
-func (website *Website) ListPages(filter string) (pages Pages, err error) {
-	if website.Pages, err = GetPages(website, website.ContentDir()); err != nil {
+func (website *Website) ListPages() (Pages, error) {
+	var err error
+	if website.Pages, err = GetPages(website, website.ContentDirPath()); err != nil {
 		return nil, err
 	}
-	if website.Drafts, err = GetPages(website, website.DraftsDir()); err != nil {
-		return nil, err
-	}
-	switch filter {
-	case "pages":
-		pages = append(pages, website.Pages...)
-	case "drafts":
-		pages = append(pages, website.Drafts...)
-	case "all":
-		fallthrough
-	default:
-		pages = append(pages, website.Pages...)
-		pages = append(pages, website.Drafts...)
-	}
-	return pages, nil
+	return website.Pages, nil
 }
 
-// Recursively walk website.Config.ThemesDirectory looking for theme.json config files;
+// Recursively walk website.ThemesDirPath() looking for theme.json config files;
 // for each config, marshal the file into a Theme and return []Theme.
 func (website *Website) ListThemes() (themes []hypertemplates.Theme, err error) {
 	var discovered []hypertemplates.Theme
@@ -537,7 +605,7 @@ func (website *Website) ListThemes() (themes []hypertemplates.Theme, err error) 
 			Config: website.Theme.Config,
 		})
 	}
-	err = filepath.WalkDir(website.ThemesDir(), func(themePath string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(website.ThemesDirPath(), func(themePath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -583,11 +651,11 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 		if len(overrides.DataDirectory) > 0 {
 			config.DataDirectory = overrides.DataDirectory
 		}
-		if len(overrides.DraftsDirectory) > 0 {
-			config.DraftsDirectory = overrides.DraftsDirectory
-		}
 		if len(overrides.DeploymentsDirectory) > 0 {
 			config.DeploymentsDirectory = overrides.DeploymentsDirectory
+		}
+		if len(overrides.PluginsDirectory) > 0 {
+			config.PluginsDirectory = overrides.PluginsDirectory
 		}
 		if len(overrides.StaticDirectory) > 0 {
 			config.StaticDirectory = overrides.StaticDirectory
@@ -614,11 +682,11 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 	if len(config.DataDirectory) == 0 {
 		config.DataDirectory = "data"
 	}
-	if len(config.DraftsDirectory) == 0 {
-		config.DraftsDirectory = "drafts"
-	}
 	if len(config.DeploymentsDirectory) == 0 {
 		config.DeploymentsDirectory = "deployments"
+	}
+	if len(config.PluginsDirectory) == 0 {
+		config.PluginsDirectory = "plugins"
 	}
 	if len(config.StaticDirectory) == 0 {
 		config.StaticDirectory = "static"
@@ -636,4 +704,26 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 		config.TagPath = "/tags"
 	}
 	config.Markdown.Resolve()
+}
+
+func (config *WebsiteConfig) Validate() error {
+	fields := []struct {
+		name string
+		path string
+	}{
+		{name: "site.config.builds_dir", path: config.BuildsDirectory},
+		{name: "site.config.content_dir", path: config.ContentDirectory},
+		{name: "site.config.data_dir", path: config.DataDirectory},
+		{name: "site.config.deployments_dir", path: config.DeploymentsDirectory},
+		{name: "site.config.plugins_dir", path: config.PluginsDirectory},
+		{name: "site.config.static_dir", path: config.StaticDirectory},
+		{name: "site.config.themes_dir", path: config.ThemesDirectory},
+		{name: "site.config.theme", path: config.ThemePath},
+	}
+	for _, field := range fields {
+		if err := hypertemplates.ValidateRelativeFilePath(field.name, field.path); err != nil {
+			return err
+		}
+	}
+	return nil
 }

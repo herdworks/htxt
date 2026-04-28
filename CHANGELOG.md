@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+Major redesign of HyperTexting resource management internals, including guards to prevent malicious themes from escaping the website root. This release also removes support for config.drafts_dir – drafts are now just pages with page.draft=true. 
+
+* Added `Asset`, `Assets`, and asset-entry helpers for combining theme, website, and page assets while preserving override precedence by public path.
+* Added a build option for draft preview modes while excluding draft pages from normal builds by default.
+* Added validation for unsafe configured website directory and theme paths.
+* Changed website, page, data, content type, and theme file discovery to use the root-scoped path helpers from `hypertemplates-go`.
+* Changed website directory accessors to use side-effect-free `XDirName()` and `XDirPath()` getters instead of mutating config defaults while resolving paths.
+* Changed plugin discovery to store compiled theme and website plugins separately, with website plugins taking precedence during builds.
+* Removed `config.drafts_dir` and `site.drafts`; draft handling now uses only the page-level `draft` property.
+* Replaced `HyperFile` asset tracking with slash-separated source paths and website-owned helpers for resolving asset source, public, and build output paths.
+
 ## v0.21.0 (2026-04-27)
 
 * Added website plugin discovery from theme plugins and a new `config.plugins_dir` website directory, defaulting to `plugins`.

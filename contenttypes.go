@@ -113,7 +113,7 @@ func (contenttype ContentType) Valid(page *Page) bool {
 }
 
 func (contenttype *ContentType) Create(website *Website, format string) (err error) {
-	var fileDirectory string = website.Theme.ContentTypesDir()
+	var fileDirectory string = website.Theme.ContentTypesDirPath()
 	var fileName string
 	var fileExtension string
 	switch format {
@@ -238,11 +238,7 @@ func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) 
 	return nil
 }
 func (contenttype *ContentType) PageURI(website *Website, page *Page) *url.URL {
-	pageRoot := website.ContentDir()
-	if page.Draft {
-		pageRoot = website.DraftsDir()
-	}
-	return &url.URL{Path: filepath.Join(pageRoot, contenttype.Path(), page.Slug, contenttype.IndexFilename())}
+	return &url.URL{Path: filepath.Join(website.ContentDirPath(), contenttype.Path(), page.Slug, contenttype.IndexFilename())}
 }
 func (contenttype *ContentType) Path() string {
 	return contenttype.Spec.Path
