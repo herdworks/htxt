@@ -275,14 +275,21 @@ func (build *HyperBuild) WriteFile(fileName string, fileBytes []byte) (err error
 }
 
 func (build *HyperBuild) BuildPath(page *Page) string {
-	subPath, err := hypertemplates.RelativeFilePath(build.Website.ContentDirPath(), page.URI.Path)
-	if err == nil {
-		subPath = filepath.Dir(subPath)
-	} else {
-		subPath = strings.TrimPrefix(page.Path, "/")
+	publicPath := page.Path
+	if publicPath == "" && build.Website != nil && page.URI != nil {
+		publicPath = PagePath(build.Website, page.URI)
 	}
-	subPath = strings.ToLower(subPath) // normalize case (e.g. for tag paths)
-	return filepath.Join(build.URI.Path, subPath, "index.html")
+	publicPath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(publicPath)), "/")
+	if publicPath == "" {
+		return filepath.Join(build.URI.Path, "index.html")
+	}
+	if strings.HasSuffix(publicPath, "/") {
+		return filepath.Join(build.URI.Path, publicPath, "index.html")
+	}
+	if filepath.Ext(publicPath) == ".html" {
+		return filepath.Join(build.URI.Path, publicPath)
+	}
+	return filepath.Join(build.URI.Path, publicPath, "index.html")
 }
 
 func (build *HyperBuild) BuildStats(duration time.Duration) {

@@ -216,7 +216,7 @@ func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) 
 		page.URI = contenttype.PageURI(website, page)
 		page.Path = PagePath(website, page.URI)
 	} else {
-		fmt.Println("page.URI is already set, skipping AutoSlug, URI, and Path generation")
+		fmt.Println("page.URI is already set, skipping AutoSlug and URI generation")
 	}
 	if err = page.Parse(contenttype.Spec.TemplateData); err != nil {
 		return err
@@ -235,6 +235,7 @@ func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) 
 	if len(op.Content) > 0 {
 		page.Content = op.Content
 	}
+	page.ResolvePath(website)
 	return nil
 }
 func (contenttype *ContentType) PageURI(website *Website, page *Page) *url.URL {

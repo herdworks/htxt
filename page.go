@@ -48,6 +48,7 @@ type Page struct {
 	Tags         []string    `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Draft        bool        `json:"draft,omitempty" yaml:"draft,omitempty"`
 	Unlisted     bool        `json:"unlisted,omitempty" yaml:"unlisted,omitempty"`
+	UglyURL      bool        `json:"ugly_url,omitempty" yaml:"ugly_url,omitempty"`
 	Redirect     string      `json:"redirect,omitempty" yaml:"redirect,omitempty"`
 	Feed         *HyperFeed  `json:"feed,omitempty" yaml:"feed,omitempty"`
 
@@ -196,6 +197,9 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	}
 	if page.Unlisted {
 		page.TemplateData.Set("unlisted", page.Unlisted)
+	}
+	if page.UglyURL {
+		page.TemplateData.Set("ugly_url", page.UglyURL)
 	}
 	if len(page.Redirect) > 0 {
 		page.TemplateData.Set("redirect", page.Redirect)
@@ -504,7 +508,7 @@ func (page *Page) MarshalYAML() (any, error) {
 		Other hypertemplates.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
-		Other: page.TemplateData.Clean([]string{"created_at", "updated_at", "layout", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "redirect", "attachments"}),
+		Other: page.TemplateData.Clean([]string{"created_at", "updated_at", "layout", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "ugly_url", "redirect", "attachments"}),
 	}, nil
 }
 
@@ -628,6 +632,7 @@ func LoadPage(website *Website, page *Page, verbose bool) (err error) {
 	page.CreatedAt = website.CreatedAt // default created_at to website created_at
 	page.TemplateData = fileData
 	page.Parse(fileData)
+	page.ResolvePath(website)
 	if page.LayoutRef == "" {
 		page.LayoutRef = "default" // TODO: should layout be required?
 	}
@@ -756,4 +761,15 @@ func PagePath(website *Website, uri *url.URL) string {
 		return "/"
 	}
 	return "/" + filepath.ToSlash(subPath) + "/"
+}
+
+func (page *Page) ResolvePath(website *Website) {
+	if website == nil || page.URI == nil {
+		return
+	}
+	page.Path = PagePath(website, page.URI)
+	if !page.UglyURL || page.Path == "/" {
+		return
+	}
+	page.Path = strings.TrimSuffix(page.Path, "/") + ".html"
 }
