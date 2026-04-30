@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.24.0 (2026-04-30)
+
 * Added `page.ugly_url` / `Page.UglyURL` for generating explicit `.html` page URLs such as `/404.html` instead of directory-index URLs such as `/404/index.html`.
 * Changed page build output paths to derive from `Page.Path`, keeping public page paths, canonical URLs, feeds, and generated HTML destinations aligned.
 
