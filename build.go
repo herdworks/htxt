@@ -53,20 +53,6 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	if build.Website.Theme.TemplateData, err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
 		return err
 	}
-	if build.ID != "" {
-		build.Website.GlobalData.Set(
-			"build", hypertemplates.TemplateData{
-				"id":   build.ID,
-				"date": time.Now().Format(time.RFC3339),
-			})
-	}
-	if LibVersion != "" {
-		build.Website.GlobalData.Set(
-			"ht", hypertemplates.TemplateData{
-				"version":      LibVersion,
-				"release_date": LibReleaseDate.Format(time.RFC3339),
-			})
-	}
 	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDirPath()); err != nil {
 		return err
 	}
@@ -394,6 +380,10 @@ func TemplateData(build *HyperBuild, website *Website, page *Page) (data *hypert
 	data.Set("ht", hypertemplates.TemplateData{
 		"version":      LibVersion,
 		"release_date": LibReleaseDate.Format(time.RFC3339),
+	})
+	data.Set("build", hypertemplates.TemplateData{
+		"id":   build.ID,
+		"date": time.Now().Format(time.RFC3339),
 	})
 	data.Set("env", build.Environment.TemplateData)
 	data.Set("site", *website.TemplateData)

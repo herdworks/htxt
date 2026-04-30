@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed page render template data so `ht.version`, `ht.release_date`, `build.id`, and `build.date` are assembled for each page instead of mutating website global data during build setup.
+* Updated `github.com/herdworks/hyperproviders-go` to v0.18.2.
+* Updated `github.com/herdworks/hypertemplates-go` to v0.23.0.
+
 ## v0.22.0 (2026-04-28)
 
 Major redesign of HyperTexting resource management internals, including guards to prevent malicious themes from escaping the website root. This release also removes support for config.drafts_dir – drafts are now just pages with page.draft=true. 
