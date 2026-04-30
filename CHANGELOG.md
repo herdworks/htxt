@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.23.0 (2026-04-30)
+
 * Added `Website.Providers` and changed `Website.Environments` entries to provider-name selections, defaulting missing environments to `default: [default]`.
 * Changed deployment provider config to use provider map keys for names and root-level `include` / `exclude` filters.
 * Updated `github.com/herdworks/hyperproviders-go` to version 0.19.0.
