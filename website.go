@@ -31,17 +31,18 @@ var (
 type Website struct {
 	URI *href.Href `json:"uri,omitempty" yaml:"-"` // path to website config file
 
-	CreatedAt    string                                 `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
-	UpdatedAt    string                                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
-	BaseURL      string                                 `json:"base_url" yaml:"base_url"`
-	Title        string                                 `json:"title" yaml:"title"`
-	Description  string                                 `json:"description" yaml:"description"`
-	Byline       Byline                                 `json:"byline,omitempty" yaml:"byline,omitempty"`
-	Favicon      WebsiteFavicon                         `json:"favicon,omitempty" yaml:"favicon,omitempty"`
-	Links        []HTMLLink                             `json:"links,omitempty" yaml:"links,omitempty"`
-	Metadata     []HTMLMeta                             `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Config       WebsiteConfig                          `json:"config" yaml:"config"`
-	Environments map[string]*hyperproviders.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
+	CreatedAt    string                                        `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
+	UpdatedAt    string                                        `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
+	BaseURL      string                                        `json:"base_url" yaml:"base_url"`
+	Title        string                                        `json:"title" yaml:"title"`
+	Description  string                                        `json:"description" yaml:"description"`
+	Byline       Byline                                        `json:"byline,omitempty" yaml:"byline,omitempty"`
+	Favicon      WebsiteFavicon                                `json:"favicon,omitempty" yaml:"favicon,omitempty"`
+	Links        []HTMLLink                                    `json:"links,omitempty" yaml:"links,omitempty"`
+	Metadata     []HTMLMeta                                    `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Config       WebsiteConfig                                 `json:"config" yaml:"config"`
+	Providers    hyperproviders.HostingProviders               `json:"providers,omitempty" yaml:"providers,omitempty"`
+	Environments map[string]*hyperproviders.HostingEnvironment `json:"environments,omitempty" yaml:"environments,omitempty"`
 
 	Theme        hypertemplates.Theme         `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
@@ -177,17 +178,15 @@ func (website *Website) URL() *url.URL {
 }
 
 func (website *Website) ResolveEnvironments() {
-	for name, env := range website.Environments {
-		if env == nil {
-			continue
-		}
-		if env.Name == "" {
-			env.Name = name
+	if len(website.Environments) == 0 {
+		defaultEnvironment := hyperproviders.HostingEnvironment{"default"}
+		website.Environments = map[string]*hyperproviders.HostingEnvironment{
+			"default": &defaultEnvironment,
 		}
 	}
 }
 
-func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Environment, error) {
+func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.HostingEnvironment, error) {
 	if name == "" {
 		return nil, fmt.Errorf("deployment environment name is required")
 	}
@@ -198,10 +197,37 @@ func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Envi
 	if env == nil {
 		return nil, fmt.Errorf("deployment environment %q is empty", name)
 	}
-	if env.Name == "" {
-		env.Name = name
+	if err := website.validateProviderNames([]string(*env)); err != nil {
+		return nil, fmt.Errorf("deployment environment %q: %w", name, err)
 	}
 	return env, nil
+}
+
+func (website *Website) DeploymentProviders(names []string) (hyperproviders.HostingEnvironment, error) {
+	env := hyperproviders.HostingEnvironment(names)
+	if err := website.validateProviderNames(names); err != nil {
+		return nil, err
+	}
+	return env, nil
+}
+
+func (website *Website) validateProviderNames(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("no providers selected")
+	}
+	for _, name := range names {
+		if name == "" {
+			return fmt.Errorf("provider name is empty")
+		}
+		provider, ok := website.Providers[name]
+		if !ok {
+			return fmt.Errorf("provider %q not found", name)
+		}
+		if provider == nil {
+			return fmt.Errorf("provider %q is empty", name)
+		}
+	}
+	return nil
 }
 
 func (website *Website) RootDir() string {

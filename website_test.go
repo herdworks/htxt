@@ -9,28 +9,28 @@ import (
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 )
 
-func TestWebsite_ResolveEnvironmentsBackfillsName(t *testing.T) {
-	website := &Website{
-		Environments: map[string]*hyperproviders.Environment{
-			"production": {},
-			"staging":    {Name: "preview"},
-		},
-	}
+func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
+	website := &Website{}
 
 	website.ResolveEnvironments()
 
-	if got := website.Environments["production"].Name; got != "production" {
-		t.Fatalf("production name = %q, want production", got)
+	env := website.Environments["default"]
+	if env == nil {
+		t.Fatal("default environment missing")
 	}
-	if got := website.Environments["staging"].Name; got != "preview" {
-		t.Fatalf("staging name = %q, want preview", got)
+	if len(*env) != 1 || (*env)[0] != "default" {
+		t.Fatalf("default environment = %#v, want [default]", *env)
 	}
 }
 
 func TestWebsite_DeploymentEnvironment(t *testing.T) {
+	production := hyperproviders.HostingEnvironment{"pages"}
 	website := &Website{
-		Environments: map[string]*hyperproviders.Environment{
-			"production": {},
+		Providers: hyperproviders.HostingProviders{
+			"pages": {Kind: "git", Endpoint: "https://example.com"},
+		},
+		Environments: map[string]*hyperproviders.HostingEnvironment{
+			"production": &production,
 		},
 	}
 
@@ -38,8 +38,8 @@ func TestWebsite_DeploymentEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeploymentEnvironment: %v", err)
 	}
-	if env.Name != "production" {
-		t.Fatalf("Name = %q, want production", env.Name)
+	if len(*env) != 1 || (*env)[0] != "pages" {
+		t.Fatalf("environment = %#v, want [pages]", *env)
 	}
 
 	if _, err := website.DeploymentEnvironment(""); err == nil {
@@ -52,6 +52,29 @@ func TestWebsite_DeploymentEnvironment(t *testing.T) {
 	website.Environments["empty"] = nil
 	if _, err := website.DeploymentEnvironment("empty"); err == nil {
 		t.Fatal("DeploymentEnvironment empty error = nil, want error")
+	}
+
+	missing := hyperproviders.HostingEnvironment{"missing"}
+	website.Environments["broken"] = &missing
+	if _, err := website.DeploymentEnvironment("broken"); err == nil {
+		t.Fatal("DeploymentEnvironment missing provider error = nil, want error")
+	}
+}
+
+func TestWebsite_DeploymentProviders(t *testing.T) {
+	website := &Website{
+		Providers: hyperproviders.HostingProviders{
+			"pages":  {Kind: "git", Endpoint: "https://example.com"},
+			"assets": {Kind: "s3", Endpoint: "https://example.com"},
+		},
+	}
+
+	env, err := website.DeploymentProviders([]string{"pages", "assets"})
+	if err != nil {
+		t.Fatalf("DeploymentProviders: %v", err)
+	}
+	if len(env) != 2 || env[0] != "pages" || env[1] != "assets" {
+		t.Fatalf("environment = %#v, want pages/assets", env)
 	}
 }
 
