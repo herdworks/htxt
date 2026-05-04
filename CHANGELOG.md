@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.25.0 (2026-05-04)
+
 * Migrated to the `hypertemplates-go` v0.24.0+ data API: `TemplateData.Namespace()` / `.NamespaceData()` calls switched to package-level `hypertexting.Namespace(d)` / `hypertexting.NamespaceData(d)` (`build.go`); `.Merge(other, true, false)` switched to `.MergeAppend(other)` (`contenttypes.go`); `.SetPathValue(path, v)` switched to `.Set(strings.Join(path, "."), v)` (`env.go`); `.Clean([]string{...})` switched to variadic `.Without(...)` and `hypertemplates.OrderedTemplateData` switched to a local wrapper (`page.go`).
 * Compatible with `hypertemplates-go` v0.24.0 (no consumer code in this package was affected by the `value.Render` → `value.RenderString` rename or the rewriter hardening).
 
