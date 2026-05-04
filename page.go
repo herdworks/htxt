@@ -508,7 +508,7 @@ func (page *Page) MarshalYAML() (any, error) {
 		Other hypertemplates.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
-		Other: page.TemplateData.Clean([]string{"created_at", "updated_at", "layout", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "ugly_url", "redirect", "attachments"}),
+		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "ugly_url", "redirect", "attachments"),
 	}, nil
 }
 
@@ -569,7 +569,7 @@ func WritePage(website *Website, page *Page, format string) (err error) {
 	case "markdown", "md":
 		fallthrough
 	default:
-		if frontmatter, err = yaml.Marshal(hypertemplates.OrderedTemplateData(page.TemplateData)); err != nil {
+		if frontmatter, err = yaml.Marshal(OrderedTemplateData(page.TemplateData)); err != nil {
 			return err
 		}
 		fileBytes = fmt.Appendf([]byte{}, "---\n%s---\n\n%s", frontmatter, page.Content)

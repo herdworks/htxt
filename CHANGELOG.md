@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Migrated to the `hypertemplates-go` v0.24.0+ data API: `TemplateData.Namespace()` / `.NamespaceData()` calls switched to package-level `hypertexting.Namespace(d)` / `hypertexting.NamespaceData(d)` (`build.go`); `.Merge(other, true, false)` switched to `.MergeAppend(other)` (`contenttypes.go`); `.SetPathValue(path, v)` switched to `.Set(strings.Join(path, "."), v)` (`env.go`); `.Clean([]string{...})` switched to variadic `.Without(...)` and `hypertemplates.OrderedTemplateData` switched to a local wrapper (`page.go`).
+* Compatible with `hypertemplates-go` v0.24.0 (no consumer code in this package was affected by the `value.Render` → `value.RenderString` rename or the rewriter hardening).
+
 ## v0.24.0 (2026-04-30)
 
 * Added `page.ugly_url` / `Page.UglyURL` for generating explicit `.html` page URLs such as `/404.html` instead of directory-index URLs such as `/404/index.html`.

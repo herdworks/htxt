@@ -340,7 +340,7 @@ func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkCo
 		if namespace, err = hypertemplates.ParseTemplateDataFile(absPath, config); err != nil {
 			return data, err
 		}
-		data[namespace.Namespace()] = namespace.NamespaceData()
+		data[Namespace(namespace)] = NamespaceData(namespace)
 	}
 	return data, nil
 }
@@ -364,7 +364,7 @@ func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig,
 		if namespace, err = hypertemplates.ParseTemplateDataFile(absPath, config); err != nil {
 			return data, err
 		}
-		data[namespace.Namespace()] = namespace.NamespaceData()
+		data[Namespace(namespace)] = NamespaceData(namespace)
 	}
 	return data, nil
 }

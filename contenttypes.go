@@ -221,7 +221,7 @@ func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) 
 	if err = page.Parse(contenttype.Spec.TemplateData); err != nil {
 		return err
 	}
-	page.TemplateData = page.TemplateData.Merge(contenttype.Spec.TemplateData, true, false)
+	page.TemplateData = page.TemplateData.MergeAppend(contenttype.Spec.TemplateData)
 	page.LayoutRef = contenttype.Spec.Layout
 	if len(op.LayoutRef) > 0 {
 		page.LayoutRef = op.LayoutRef

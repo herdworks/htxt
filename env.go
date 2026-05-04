@@ -28,7 +28,7 @@ func (env *Environment) Load() (err error) {
 		if path = env.ParseKeyPath(k); path == nil {
 			continue
 		}
-		env.TemplateData.SetPathValue(path, v)
+		env.TemplateData.Set(strings.Join(path, "."), v)
 	}
 	return nil
 }
