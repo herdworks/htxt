@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.26.0 (2026-05-05)
+
 This release reforms how static template data is named and discovered, adds a `computed template data` capability, and exposes the build's data-loading and template-context APIs for reuse by inspection tools (e.g. `hyperctl cms data ls` and `hyperctl cms data inspect`).
 
 BREAKING: removes `hypertexting.Namespace()` / `NamespaceData()` and the matching `NamespacedData` methods; data namespaces are now derived from file paths under the data directory rather than from data contents.
