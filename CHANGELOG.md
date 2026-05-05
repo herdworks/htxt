@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+This release reforms how static template data is named and discovered, adds a `computed template data` capability, and exposes the build's data-loading and template-context APIs for reuse by inspection tools (e.g. `hyperctl cms data ls` and `hyperctl cms data inspect`).
+
+BREAKING: removes `hypertexting.Namespace()` / `NamespaceData()` and the matching `NamespacedData` methods; data namespaces are now derived from file paths under the data directory rather than from data contents.
+
+* Added `generateComputedData` build pass: `*.js` files alongside static data define `function namespace()` and install their return value at the keypath derived from the file's path. Scripts see `ht`, `build`, `env`, `site`, `data`, `theme` as ambient bindings (`data` is a read-only snapshot, `site.pages` is populated). The pass runs after `Pages.ResolveTemplateData` and before `WritePages`, in lexicographic filename order. Scripts cannot depend on each other's output — only on static data. The entry function is named `namespace` (not `data`) to avoid an unavoidable JS scoping conflict with the `data` binding.
+* Added `(*HyperBuild).LoadContext(ctx, baseurl, configOverrides, verbose)` — populates the build's data context in place (website + environment, static + theme data, pages with feeds and tag pages, computed data) without writing assets, feeds, or pages. Inspection tools call this and then read `Context()`.
+* Added `(*HyperBuild).Context()` — returns the unified `{ht, build, env, site, data, theme}` template context that page templates and computed scripts read.
+* Changed `NamespacedTemplateData` and `ThemeTemplateData` to derive each namespace from the file's path under the data directory: `data/site.yaml` → `data.site.*`, `data/social/twitter.yaml` → `data.social.twitter.*` (subdirectories nest). Recursion is on by default; flat and nested layouts are both supported.
+* Changed filename rules: each path segment must match `^[A-Za-z_][A-Za-z0-9_-]*$`. Spaces, intermediate dots (`foo.bar.yaml`), leading digits (`2024.yaml`), and leading hyphens (`-foo.yaml`) are errors.
+* Changed collision handling: cross-format collisions (`foo.yaml` + `foo.json`) and directory-vs-file collisions (`foo.yaml` + `foo/`) are errors that cite both contributing paths. There are no "extend / merge" semantics — the user resolves the collision.
+* Removed `hypertexting.Namespace(d)` and `hypertexting.NamespaceData(d)` package functions.
+* Removed `NamespacedData.Namespace()` and `NamespacedData.NamespaceData()` methods. `NamespacedData.ColumnValues(field)` is retained, so `cli.ColumnListable` integrations are unaffected.
+
 ## v0.25.1 (2026-05-04)
 
 * Add missing templatedata.go module

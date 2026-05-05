@@ -35,57 +35,10 @@ type HyperBuild struct {
 func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOverrides *WebsiteConfig) (err error) {
 	fmt.Printf("build \"%s\" starting\n", filepath.Base(build.URI.Path))
 	start := time.Now()
-	build.Reset() // reset build
 
-	// load website
-	if err = build.Website.Load(true, configOverrides); err != nil {
+	if err = build.LoadContext(ctx, baseurl, configOverrides, true); err != nil {
 		return err
 	}
-	if err = build.Environment.Load(); err != nil {
-		return err
-	}
-	if baseurl != nil {
-		build.Website.BaseURL = baseurl.String()
-	}
-	if build.Website.GlobalData, err = NamespacedTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
-		return err
-	}
-	if build.Website.Theme.TemplateData, err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, true); err != nil {
-		return err
-	}
-	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDirPath()); err != nil {
-		return err
-	}
-
-	// load build pages first (in case of incremental build)
-	if err = LoadPages(ctx, build.Website, *build.Pages, build.Website.Pages, true); err != nil {
-		return err
-	}
-	// load website pages second (sitemap)
-	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, true); err != nil {
-		return err
-	}
-	if !build.IncludeDrafts {
-		build.Website.Pages = build.Website.Pages.FilterDraft(false)
-		*build.Pages = build.Pages.FilterDraft(false)
-	}
-	build.Website.TemplateData.Set("pages", build.Website.Pages.TemplateData())
-	// check if build pages are in any feeds
-	if build.Incremental {
-		if err = AddFeedPages(ctx, build); err != nil {
-			return err
-		}
-	}
-
-	// load page feeds
-	if err = LoadPageFeeds(ctx, build.Website, *build.Pages); err != nil {
-		return err
-	}
-	// load tag pages
-	if err = LoadTagPages(build); err != nil {
-		return err
-	}
-	build.Pages.ResolveTemplateData(build.Website)
 
 	// load plugins
 	build.Plugins = htplugins.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
@@ -107,6 +60,118 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	// finalize build
 	build.BuildStats(time.Since(start))
 	return nil
+}
+
+// LoadContext populates the build's data context in place: it loads
+// the site config and environment, parses static and theme template
+// data, discovers and resolves pages (including feeds and tag pages),
+// and runs the computed-data scripts. When it returns,
+// build.Website.GlobalData, build.Website.Theme.TemplateData,
+// build.Website.Pages, and each page's resolved template data are
+// ready to read. No assets, feeds, or pages are written.
+//
+// Inspection callers (e.g. `hyperctl cms data ls/inspect`) call
+// LoadContext and then read build.Context() to view the unified
+// template context without producing a build artifact.
+//
+// `verbose` toggles the per-file "loading" log lines emitted while
+// loading the website, data files, pages, and computed-data scripts.
+func (build *HyperBuild) LoadContext(ctx context.Context, baseurl *url.URL, configOverrides *WebsiteConfig, verbose bool) (err error) {
+	build.Reset()
+	if build.Pages == nil {
+		build.Pages = &Pages{}
+	}
+
+	// load website
+	if err = build.Website.Load(verbose, configOverrides); err != nil {
+		return err
+	}
+	if err = build.Environment.Load(); err != nil {
+		return err
+	}
+	if baseurl != nil {
+		build.Website.BaseURL = baseurl.String()
+	}
+	if build.Website.GlobalData, err = NamespacedTemplateData(build.Website, build.Website.Config.Markdown, verbose); err != nil {
+		return err
+	}
+	if build.Website.Theme.TemplateData, err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, verbose); err != nil {
+		return err
+	}
+	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDirPath()); err != nil {
+		return err
+	}
+
+	// load build pages first (in case of incremental build)
+	if err = LoadPages(ctx, build.Website, *build.Pages, build.Website.Pages, verbose); err != nil {
+		return err
+	}
+	// load website pages second (sitemap)
+	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, verbose); err != nil {
+		return err
+	}
+	if !build.IncludeDrafts {
+		build.Website.Pages = build.Website.Pages.FilterDraft(false)
+		*build.Pages = build.Pages.FilterDraft(false)
+	}
+	build.Website.TemplateData.Set("pages", build.Website.Pages.TemplateData())
+
+	// check if build pages are in any feeds
+	if build.Incremental {
+		if err = AddFeedPages(ctx, build); err != nil {
+			return err
+		}
+	}
+
+	// load page feeds
+	if err = LoadPageFeeds(ctx, build.Website, *build.Pages); err != nil {
+		return err
+	}
+	// load tag pages
+	if err = LoadTagPages(build); err != nil {
+		return err
+	}
+	build.Pages.ResolveTemplateData(build.Website)
+
+	// Run computed-data scripts. Each script observes the full
+	// static-data context (including site.pages) and installs its
+	// result into Website.GlobalData; per-page renders read these
+	// values back through TemplateData.
+	return generateComputedData(build, verbose)
+}
+
+// Context returns the unified template context that page templates
+// and computed-data scripts read during a build: ht, build, env, site,
+// data, theme. Call LoadContext first to populate it; otherwise the
+// entries are empty.
+//
+// build.date and ht.release_date resolve at call time, so each
+// invocation captures a fresh timestamp.
+func (build *HyperBuild) Context() hypertemplates.TemplateData {
+	siteData := hypertemplates.TemplateData{}
+	var globalData hypertemplates.TemplateData
+	var themeData hypertemplates.TemplateData
+	if build.Website != nil {
+		if build.Website.TemplateData != nil {
+			siteData = *build.Website.TemplateData
+		}
+		globalData = build.Website.GlobalData
+		themeData = build.Website.Theme.TemplateData
+	}
+	return hypertemplates.TemplateData{
+		"ht": hypertemplates.TemplateData{
+			"version":      LibVersion,
+			"release_date": LibReleaseDate.Format(time.RFC3339),
+		},
+		"build": hypertemplates.TemplateData{
+			"id":   build.ID,
+			"date": time.Now().Format(time.RFC3339),
+		},
+		"env":   build.Environment.TemplateData,
+		"site":  siteData,
+		"data":  globalData,
+		"theme": themeData,
+	}
 }
 
 func (build *HyperBuild) Reset() {
@@ -321,52 +386,18 @@ func byteSize(bytes int) string {
 	return fmt.Sprintf("%.3f GB", float64(bytes)/1_073_741_824)
 }
 
-func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
-	data = hypertemplates.TemplateData{}
-	dataDir := website.DataDirPath()
-	paths, err := hypertemplates.ListFilesByPattern(dataDir, false, ".*\\.(yaml|json|opml)$", "")
-	if err != nil {
-		return data, err
-	}
-	for _, p := range paths {
-		absPath, err := hypertemplates.LocalFilePath(dataDir, p)
-		if err != nil {
-			return data, err
-		}
-		if verbose {
-			fmt.Printf("data \"%s\" loading\n", website.RelativePath(absPath))
-		}
-		var namespace hypertemplates.TemplateData
-		if namespace, err = hypertemplates.ParseTemplateDataFile(absPath, config); err != nil {
-			return data, err
-		}
-		data[Namespace(namespace)] = NamespaceData(namespace)
-	}
-	return data, nil
+// NamespacedTemplateData loads the website's static data files, deriving
+// each namespace from the file's path under the data directory. Files in
+// subdirectories nest into the resulting TemplateData by their path
+// segments (data/social/twitter.yaml -> data.social.twitter.*).
+func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (hypertemplates.TemplateData, error) {
+	return loadStaticData(website, website.DataDirPath(), config, verbose)
 }
 
-func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (data hypertemplates.TemplateData, err error) {
-	data = hypertemplates.TemplateData{}
-	dataDir := website.Theme.DataDirPath()
-	paths, err := hypertemplates.ListFilesByPattern(dataDir, false, ".*\\.(yaml|json|opml)$", "")
-	if err != nil {
-		return data, err
-	}
-	for _, p := range paths {
-		absPath, err := hypertemplates.LocalFilePath(dataDir, p)
-		if err != nil {
-			return data, err
-		}
-		if verbose {
-			fmt.Printf("data \"%s\" loading\n", website.RelativePath(absPath))
-		}
-		var namespace hypertemplates.TemplateData
-		if namespace, err = hypertemplates.ParseTemplateDataFile(absPath, config); err != nil {
-			return data, err
-		}
-		data[Namespace(namespace)] = NamespaceData(namespace)
-	}
-	return data, nil
+// ThemeTemplateData loads the theme's static data files using the same
+// filename-derived namespace rules as NamespacedTemplateData.
+func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool) (hypertemplates.TemplateData, error) {
+	return loadStaticData(website, website.Theme.DataDirPath(), config, verbose)
 }
 
 func NewTemplate(website *Website, page *Page) (template *hypertemplates.Template, err error) {
