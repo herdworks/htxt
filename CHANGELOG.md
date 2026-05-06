@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.26.1 (2026-05-05)
+
+Updated `github.com/herdworks/hypertemplates-go` to v0.26.1 w/ implicit ht-apply for ht-template elements.
+
 ## v0.26.0 (2026-05-05)
 
 This release reforms how static template data is named and discovered, adds a `computed template data` capability, and exposes the build's data-loading and template-context APIs for reuse by inspection tools (e.g. `hyperctl cms data ls` and `hyperctl cms data inspect`).
