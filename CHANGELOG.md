@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Updated `github.com/herdworks/hypertemplates-go` to v0.27.0. The `plugins` package is gone; variable-substitution plugins now live in `value` and computed-namespace plugins in `data`.
+* Changed `HyperBuild.Plugins` and `Website.Plugins` from `plugins.Plugins` to `htvalue.Plugins`. `Website.DiscoverPlugins` calls `htvalue.LoadPlugins` instead of `htplugins.LoadPlugins`.
+* Changed `generateComputedData` to load and run computed-namespace files through `data.LoadPlugin(path, bindings).Run(ctx)` rather than `scripting.SeededFunction`. The hypertexting layer keeps the directory walk, segment routing, and namespace-collision checks; per-file JS loading and validation now live in the `data` package.
+* Added an embedded `head_start.html` (redirect / generator / canonical / icon / links) shipped via a top-level `//go:embed embedded` directive. Auto-overrides `hypertemplates.BuiltinsFS` at package `init()` so any caller importing `hypertexting` gets the override transparently.
+
 ## v0.26.1 (2026-05-05)
 
 Updated `github.com/herdworks/hypertemplates-go` to v0.26.1 w/ implicit ht-apply for ht-template elements.

@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,7 @@ func TestLoadStaticDataRejectsInvalidFilenames(t *testing.T) {
 		"foo.bar.yaml", // intermediate dot
 		"has space.yaml",
 		"-leading.yaml",
+		"mid-hyphen.yaml",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -110,16 +112,17 @@ func TestLoadStaticDataDirVsFileCollisionErrors(t *testing.T) {
 	}
 }
 
-func TestLoadStaticDataLeafBranchCollision(t *testing.T) {
-	// data/foo.yaml exists AND data/foo/bar.yaml exists. The directory
-	// scanner should detect the dir-claim before the file walk happens.
+func TestLoadStaticDataDirVsFileCollisionDetectedFirst(t *testing.T) {
+	// data/foo.yaml alongside data/foo/bar.yaml: the directory `foo/` and
+	// the file `foo.yaml` both claim the namespace `foo`, which the scanner
+	// catches as a dir-vs-file collision before any nested write happens.
 	root := t.TempDir()
 	writeDataFile(t, root, "foo.yaml", "x: 1\n")
 	writeDataFile(t, root, "foo/bar.yaml", "y: 2\n")
 
 	_, err := loadStaticData(nil, root, nil, false)
 	if err == nil {
-		t.Fatal("loadStaticData: want leaf-vs-branch collision error, got nil")
+		t.Fatal("loadStaticData: want dir-vs-file collision error, got nil")
 	}
 }
 
@@ -132,10 +135,11 @@ func TestNamespaceSegmentsFromRelPath(t *testing.T) {
 		{"site.yaml", []string{"site"}, false},
 		{"social/twitter.yaml", []string{"social", "twitter"}, false},
 		{"a/b/c/d.json", []string{"a", "b", "c", "d"}, false},
+		{"2digits.yaml", []string{"2digits"}, false},
 		{"foo.bar.yaml", nil, true},
 		{"has space.yaml", nil, true},
 		{"-leading.yaml", nil, true},
-		{"2digits.yaml", nil, true},
+		{"mid-hyphen.yaml", nil, true},
 		{"", nil, true},
 	}
 	for _, tc := range cases {
@@ -187,9 +191,10 @@ function namespace() {
 		},
 	}
 
-	result, err := scripting.SeededFunction(src, "namespace", bindings)
+	plugin := scripting.Plugin{Source: src, Entrypoint: "namespace", Bindings: bindings}
+	result, err := plugin.Run(context.Background())
 	if err != nil {
-		t.Fatalf("SeededFunction: %v", err)
+		t.Fatalf("Plugin.Run: %v", err)
 	}
 	m, ok := result.(map[string]any)
 	if !ok {
@@ -214,9 +219,10 @@ func TestSeededFunctionRejectsCollidingEntry(t *testing.T) {
 	src := `function data() { return 1 }`
 	bindings := map[string]any{"data": map[string]any{}}
 
-	_, err := scripting.SeededFunction(src, "data", bindings)
+	plugin := scripting.Plugin{Source: src, Entrypoint: "data", Bindings: bindings}
+	_, err := plugin.Run(context.Background())
 	if err == nil {
-		t.Fatal("SeededFunction: want collision error, got nil")
+		t.Fatal("Plugin.Run: want collision error, got nil")
 	}
 }
 

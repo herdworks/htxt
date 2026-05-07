@@ -17,7 +17,7 @@ import (
 
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	htplugins "github.com/herdworks/hypertemplates-go/plugins"
+	htvalue "github.com/herdworks/hypertemplates-go/value"
 	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"
 	href "github.com/herdworks/hypertexting-go/href"
 )
@@ -48,7 +48,7 @@ type Website struct {
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
 	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
 	Pages        Pages                        `json:"-" yaml:"-"`
-	Plugins      htplugins.Plugins            `json:"-" yaml:"-"`
+	Plugins      htvalue.Plugins              `json:"-" yaml:"-"`
 	Assets       []string                     `json:"-" yaml:"-"` // paths relative to StaticDirName()
 }
 
@@ -510,12 +510,12 @@ func (website *Website) DiscoverPlugins(verbose bool) error {
 		if err != nil {
 			return err
 		}
-		website.Plugins, err = htplugins.LoadPlugins(paths)
+		website.Plugins, err = htvalue.LoadPlugins(paths)
 		if err != nil {
 			return err
 		}
 	} else {
-		website.Plugins = htplugins.Plugins{}
+		website.Plugins = htvalue.Plugins{}
 	}
 	if !verbose {
 		return nil

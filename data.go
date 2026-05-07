@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -12,7 +13,6 @@ import (
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"github.com/herdworks/hypertemplates-go/data"
-	"github.com/herdworks/hypertemplates-go/scripting"
 	"gopkg.in/yaml.v3"
 )
 
@@ -77,11 +77,12 @@ func (d OrderedTemplateData) MarshalYAML() (any, error) {
 	return output, nil
 }
 
-// namespaceSegmentRegexp constrains a single namespace path segment. Segments
-// are looked up as TemplateData map keys (not Go identifiers), so we accept
-// underscores and hyphens but reject whitespace, dots, leading digits/hyphens,
-// and any character that would interact awkwardly with the keypath syntax.
-var namespaceSegmentRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+// namespaceSegmentRegexp constrains a single namespace path segment to
+// letters, digits, and underscores. Segments are looked up as TemplateData
+// map keys (not Go identifiers); the regex rejects whitespace, dots,
+// hyphens, and any other character that would interact awkwardly with the
+// keypath syntax.
+var namespaceSegmentRegexp = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
 // dataFileExts lists the extensions ParseTemplateDataFile understands. The
 // loader walks the data directory recursively and rejects any *.<ext> file
@@ -128,15 +129,16 @@ func namespaceSegmentsFromRelPath(rel string) ([]string, error) {
 }
 
 // setNested walks segments into root, creating intermediate maps as needed,
-// and sets the final segment to value. It returns an error when an
-// intermediate segment already holds a non-map (leaf-vs-branch collision) or
-// when the final segment is already set (cross-format / duplicate collision).
+// and sets the final segment to value. Callers are expected to have run
+// scanNamespaceTree first; intermediates are always created by setNested
+// itself, so a non-map value at an intermediate keypath would mean the
+// scanner missed a file-vs-directory collision.
 func setNested(root hypertemplates.TemplateData, segments []string, value any) error {
 	if len(segments) == 0 {
 		return fmt.Errorf("setNested: empty segments")
 	}
 	cur := root
-	for i, seg := range segments[:len(segments)-1] {
+	for _, seg := range segments[:len(segments)-1] {
 		next, exists := cur[seg]
 		if !exists {
 			child := hypertemplates.TemplateData{}
@@ -144,18 +146,7 @@ func setNested(root hypertemplates.TemplateData, segments []string, value any) e
 			cur = child
 			continue
 		}
-		child, ok := next.(hypertemplates.TemplateData)
-		if !ok {
-			// Try map[string]any as a fallback (parse loaders may produce it).
-			if m, ok2 := next.(map[string]any); ok2 {
-				child = hypertemplates.TemplateData(m)
-				cur[seg] = child
-				cur = child
-				continue
-			}
-			return fmt.Errorf("namespace %q is a leaf but %q wants it to be a branch", strings.Join(segments[:i+1], "."), strings.Join(segments, "."))
-		}
-		cur = child
+		cur = next.(hypertemplates.TemplateData)
 	}
 	leaf := segments[len(segments)-1]
 	if _, exists := cur[leaf]; exists {
@@ -356,11 +347,11 @@ func generateComputedData(build *HyperBuild, verbose bool) error {
 		if verbose {
 			fmt.Printf("computed data \"%s\" loading\n", build.Website.RelativePath(absPath))
 		}
-		src, err := os.ReadFile(absPath)
+		plugin, err := data.LoadPlugin(absPath, bindings)
 		if err != nil {
 			return fmt.Errorf("computed data %q: %w", p, err)
 		}
-		result, err := scripting.SeededFunction(string(src), "namespace", bindings)
+		result, err := plugin.Run(context.Background())
 		if err != nil {
 			return fmt.Errorf("computed data %q: %w", p, err)
 		}

@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	htplugins "github.com/herdworks/hypertemplates-go/plugins"
+	htvalue "github.com/herdworks/hypertemplates-go/value"
 )
 
 type HyperBuild struct {
@@ -24,7 +24,7 @@ type HyperBuild struct {
 	Environment   Environment
 	Incremental   bool
 	IncludeDrafts bool
-	Plugins       htplugins.Plugins
+	Plugins       htvalue.Plugins
 
 	Pages  *Pages
 	Assets Counter
@@ -41,7 +41,7 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 	}
 
 	// load plugins
-	build.Plugins = htplugins.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
+	build.Plugins = htvalue.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
 
 	// validate build
 	if err = build.Validate(); err != nil {

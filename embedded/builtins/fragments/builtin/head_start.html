@@ -1,0 +1,7 @@
+<!-- fragments/builtin/head_start.html begin -->
+<meta ht-apply ht-if='page.redirect' http-equiv="refresh" content='0; url=${page.refresh}' />
+<meta ht-apply name='generator' content='${ site.generator, "hypertexting" }'>
+<link ht-apply rel='canonical' href='${ page.canonical_url }'>
+<link ht-apply rel='icon' type='image/jpeg' href='${ site.favicon.href, "/favicon.ico" }' sizes='${ site.favicon.size, "32x32"}'>
+<link ht-template='link:site.links' rel='${ link.rel, "" }' href='${ link.href }' type='${ link.type, "" }' title='${ link.title, "" }'>
+<!-- fragments/builtin/head_start.html end -->
