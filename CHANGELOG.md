@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## 0.27.0 (2026-05-06)
+
 * Updated `github.com/herdworks/hypertemplates-go` to v0.27.0. The `plugins` package is gone; variable-substitution plugins now live in `value` and computed-namespace plugins in `data`.
 * Changed `HyperBuild.Plugins` and `Website.Plugins` from `plugins.Plugins` to `htvalue.Plugins`. `Website.DiscoverPlugins` calls `htvalue.LoadPlugins` instead of `htplugins.LoadPlugins`.
 * Changed `generateComputedData` to load and run computed-namespace files through `data.LoadPlugin(path, bindings).Run(ctx)` rather than `scripting.SeededFunction`. The hypertexting layer keeps the directory walk, segment routing, and namespace-collision checks; per-file JS loading and validation now live in the `data` package.
