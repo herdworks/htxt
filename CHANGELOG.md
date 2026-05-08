@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.28.0 (2026-05-08)
+
 * Added `github.com/evanw/esbuild` v0.28.0 as an indirect dependency through hypertemplates-go.
 * Updated `github.com/herdworks/hypertemplates-go` to v0.28.0, which standardizes scripting plugins on the ESM default-export contract. Computed-data files under the website data directory and `htvalue` plugins under the website/theme `plugins` directory must now declare `export default <function>` instead of `function namespace()` / `function plugin(input)`. The `Entrypoint`-based authoring contract is gone.
 * Updated test fixtures (`assets_test.go`, `data_test.go`) to use `export default function(...)`.
