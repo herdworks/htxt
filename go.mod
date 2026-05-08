@@ -10,7 +10,7 @@ require (
 	github.com/herdworks/hyperfeed-go v0.19.1
 	github.com/herdworks/hypergraph-go v0.19.0
 	github.com/herdworks/hyperproviders-go v0.19.0
-	github.com/herdworks/hypertemplates-go v0.27.0
+	github.com/herdworks/hypertemplates-go v0.28.0
 )
 
 // direct dependencies
@@ -43,4 +43,9 @@ require (
 	github.com/yuin/goldmark-meta v1.1.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+)
+
+require (
+	github.com/evanw/esbuild v0.28.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
 )

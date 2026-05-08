@@ -192,8 +192,8 @@ func TestWebsiteDiscoverPluginsReplacesExistingPlugins(t *testing.T) {
 	website, _ := testWebsite(t)
 	website.Theme.Plugins = htvalue.Plugins{"stale-theme": {Name: "stale-theme"}}
 	website.Plugins = htvalue.Plugins{"stale-plugin": {Name: "stale-plugin"}}
-	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "theme.js"), "function plugin(input) { return input }")
-	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "site.js"), "function plugin(input) { return input }")
+	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "theme.js"), "export default function(input) { return input }")
+	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "site.js"), "export default function(input) { return input }")
 
 	if err := website.DiscoverPlugins(false); err != nil {
 		t.Fatalf("DiscoverPlugins returned error: %v", err)
@@ -211,8 +211,8 @@ func TestWebsiteDiscoverPluginsReplacesExistingPlugins(t *testing.T) {
 	if err := os.Remove(filepath.Join(website.PluginsDirPath(), "site.js")); err != nil {
 		t.Fatalf("remove website plugin: %v", err)
 	}
-	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "nextTheme.js"), "function plugin(input) { return input }")
-	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "nextSite.js"), "function plugin(input) { return input }")
+	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "nextTheme.js"), "export default function(input) { return input }")
+	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "nextSite.js"), "export default function(input) { return input }")
 
 	if err := website.DiscoverPlugins(false); err != nil {
 		t.Fatalf("second DiscoverPlugins returned error: %v", err)
@@ -227,8 +227,8 @@ func TestWebsiteDiscoverPluginsReplacesExistingPlugins(t *testing.T) {
 
 func TestWebsitePluginsUsesWebsitePrecedence(t *testing.T) {
 	website, _ := testWebsite(t)
-	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "label.js"), "function plugin() { return 'theme' }")
-	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "label.js"), "function plugin() { return 'website' }")
+	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "label.js"), "export default function() { return 'theme' }")
+	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "label.js"), "export default function() { return 'website' }")
 
 	if err := website.DiscoverPlugins(false); err != nil {
 		t.Fatalf("DiscoverPlugins returned error: %v", err)

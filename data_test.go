@@ -1,14 +1,12 @@
 package hypertexting
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertemplates-go/scripting"
 )
 
 func writeDataFile(t *testing.T, root, rel, content string) {
@@ -166,66 +164,6 @@ func TestNamespaceSegmentsFromRelPath(t *testing.T) {
 	}
 }
 
-func TestSeededFunctionInstallsNamespace(t *testing.T) {
-	// Verify the underlying seeded primitive works as the computed-data
-	// pass relies on it: function namespace() returns an object that the
-	// caller can install at any keypath.
-	src := `
-function namespace() {
-	return {
-		latest: site.pages.slice(0, 2),
-		count: data.posts.length,
-	}
-}
-`
-	bindings := map[string]any{
-		"site": map[string]any{
-			"pages": []any{
-				map[string]any{"title": "First"},
-				map[string]any{"title": "Second"},
-				map[string]any{"title": "Third"},
-			},
-		},
-		"data": map[string]any{
-			"posts": []any{1, 2, 3, 4, 5},
-		},
-	}
-
-	plugin := scripting.Plugin{Source: src, Entrypoint: "namespace", Bindings: bindings}
-	result, err := plugin.Run(context.Background())
-	if err != nil {
-		t.Fatalf("Plugin.Run: %v", err)
-	}
-	m, ok := result.(map[string]any)
-	if !ok {
-		t.Fatalf("result type = %T, want map[string]any", result)
-	}
-	latest, ok := m["latest"].([]any)
-	if !ok {
-		t.Fatalf("latest type = %T, want []any", m["latest"])
-	}
-	if len(latest) != 2 {
-		t.Fatalf("latest len = %d, want 2", len(latest))
-	}
-	if got, ok := m["count"].(int64); !ok || got != 5 {
-		t.Fatalf("count = %v (%T), want 5", m["count"], m["count"])
-	}
-}
-
-func TestSeededFunctionRejectsCollidingEntry(t *testing.T) {
-	// The scripting layer's pre-flight collision check fires when the
-	// entry name is also a binding name. This is what protects callers from
-	// accidentally repeating the data() / data shadowing problem.
-	src := `function data() { return 1 }`
-	bindings := map[string]any{"data": map[string]any{}}
-
-	plugin := scripting.Plugin{Source: src, Entrypoint: "data", Bindings: bindings}
-	_, err := plugin.Run(context.Background())
-	if err == nil {
-		t.Fatal("Plugin.Run: want collision error, got nil")
-	}
-}
-
 func TestGenerateComputedDataDiscoversAndExecutes(t *testing.T) {
 	website, build := testWebsite(t)
 
@@ -233,7 +171,7 @@ func TestGenerateComputedDataDiscoversAndExecutes(t *testing.T) {
 	dataDir := website.DataDirPath()
 	writeDataFile(t, dataDir, "site.yaml", "title: Hello\n")
 	writeDataFile(t, dataDir, "feed.js", `
-function namespace() {
+export default function() {
 	return { title: site.title + "!" };
 }
 `)

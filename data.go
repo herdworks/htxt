@@ -295,9 +295,9 @@ func loadStaticData(website *Website, dataDir string, config *hypertemplates.Hyp
 }
 
 // generateComputedData discovers *.js files in the website's data directory and
-// executes each as a "seeded" script. Each file must define a top-level
-// `function namespace()`; its return value is installed under the keypath
-// derived from the file's path. The script sees the static-data context
+// executes each as a "seeded" script. Each file must `export default` a
+// function; its return value is installed under the keypath derived from
+// the file's path. The script sees the static-data context
 // (ht/build/env/site/data/theme) as ambient bindings.
 //
 // Computed data must run AFTER all static data is loaded and after pages
