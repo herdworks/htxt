@@ -314,7 +314,7 @@ func (build *HyperBuild) WritePage(page *Page) (err error) {
 	var filePath string = build.BuildPath(page)
 	var fileBytes []byte
 	if fileBytes, err = RenderPage(build, build.Website, page); err != nil {
-		return err
+		return fmt.Errorf("failed to generate %q with error: %w", build.Website.RelativePath(page.URI.Path), err)
 	}
 	if err = os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err

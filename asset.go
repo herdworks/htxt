@@ -58,33 +58,36 @@ func AssetPublicPaths(theme *hypertemplates.Theme, website *Website, pages Pages
 	return assets.PublicPaths(), nil
 }
 
-// AssetEntries combines theme, website, and page assets into resolved asset entries.
-// Later sources replace earlier entries with the same public path.
-func AssetEntries(theme *hypertemplates.Theme, website *Website, pages Pages) (Assets, error) {
+// AssetCandidates returns the full, un-collapsed list of theme, website, and
+// page asset entries in iteration order (theme first, then website, then
+// page-by-page). Entries that share a public path are preserved so callers can
+// inspect every contributor; use AssetEntries for the collapsed view.
+func AssetCandidates(theme *hypertemplates.Theme, website *Website, pages Pages) (Assets, error) {
 	if website == nil {
 		return nil, fmt.Errorf("website is required")
 	}
-	assets := Assets{}
-	indexes := map[string]int{}
-	var err error
-
+	candidates := Assets{}
 	if theme != nil {
 		themeAssetSourcePath := func(relPath string) (string, error) {
 			return hypertemplates.LocalFilePath(theme.StaticDirPath(), relPath)
 		}
 		for _, relPath := range theme.Assets {
-			if assets, err = appendAssetEntry(website, assets, indexes, AssetSourceTheme, relPath, themeAssetSourcePath); err != nil {
+			asset, err := buildAssetEntry(website, AssetSourceTheme, relPath, themeAssetSourcePath)
+			if err != nil {
 				return nil, err
 			}
+			candidates = append(candidates, asset)
 		}
 	}
 	websiteAssetSourcePath := func(relPath string) (string, error) {
 		return website.ResourcePath(website.StaticDirPath(), relPath)
 	}
 	for _, relPath := range website.Assets {
-		if assets, err = appendAssetEntry(website, assets, indexes, AssetSourceWebsite, relPath, websiteAssetSourcePath); err != nil {
+		asset, err := buildAssetEntry(website, AssetSourceWebsite, relPath, websiteAssetSourcePath)
+		if err != nil {
 			return nil, err
 		}
+		candidates = append(candidates, asset)
 	}
 	pageAssetSourcePath := func(relPath string) (string, error) {
 		return website.ResourcePath(website.ContentDirPath(), relPath)
@@ -94,37 +97,53 @@ func AssetEntries(theme *hypertemplates.Theme, website *Website, pages Pages) (A
 			continue
 		}
 		for _, relPath := range page.Assets {
-			if assets, err = appendAssetEntry(website, assets, indexes, AssetSourcePage, relPath, pageAssetSourcePath); err != nil {
+			asset, err := buildAssetEntry(website, AssetSourcePage, relPath, pageAssetSourcePath)
+			if err != nil {
 				return nil, err
 			}
+			candidates = append(candidates, asset)
 		}
+	}
+	return candidates, nil
+}
+
+// AssetEntries combines theme, website, and page assets into resolved asset entries.
+// Later sources replace earlier entries with the same public path.
+func AssetEntries(theme *hypertemplates.Theme, website *Website, pages Pages) (Assets, error) {
+	candidates, err := AssetCandidates(theme, website, pages)
+	if err != nil {
+		return nil, err
+	}
+	assets := Assets{}
+	indexes := map[string]int{}
+	for _, asset := range candidates {
+		if index, exists := indexes[asset.PublicPath]; exists {
+			assets[index] = asset
+			continue
+		}
+		indexes[asset.PublicPath] = len(assets)
+		assets = append(assets, asset)
 	}
 	return assets, nil
 }
 
-func appendAssetEntry(website *Website, assets Assets, indexes map[string]int, source AssetSource, relPath string, sourcePath func(string) (string, error)) (Assets, error) {
+func buildAssetEntry(website *Website, source AssetSource, relPath string, sourcePath func(string) (string, error)) (Asset, error) {
 	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
 	if err != nil {
-		return nil, err
+		return Asset{}, err
 	}
 	publicPath, err := website.AssetPublicPath(relPath)
 	if err != nil {
-		return nil, err
+		return Asset{}, err
 	}
 	srcPath, err := sourcePath(relPath)
 	if err != nil {
-		return nil, err
+		return Asset{}, err
 	}
-	asset := Asset{
+	return Asset{
 		Source:     source,
 		RelPath:    filepath.ToSlash(relPath),
 		PublicPath: publicPath,
 		SourcePath: srcPath,
-	}
-	if index, exists := indexes[publicPath]; exists {
-		assets[index] = asset
-		return assets, nil
-	}
-	indexes[publicPath] = len(assets)
-	return append(assets, asset), nil
+	}, nil
 }
