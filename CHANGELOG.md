@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.29.0 (2026-05-11)
+
 * Added `AssetCandidates(theme, website, pages)` in `asset.go` returning the full un-collapsed list of theme, website, and page asset entries in iteration order. `AssetEntries` now delegates to it and applies the public-path collapse so the two helpers stay consistent. Enables callers (e.g. `hyperctl cms asset lookup`) to enumerate every contributor for a given asset.
 
 ## v0.28.0 (2026-05-08)
