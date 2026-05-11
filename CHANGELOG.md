@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.29.1 (2026-05-11)
+
 * Updated `github.com/herdworks/hypertemplates-go` to version 0.29.0
 
 ## v0.29.0 (2026-05-11)
