@@ -348,6 +348,17 @@ func (pages Pages) TemplateData() (data []hypertemplates.TemplateData) {
 	return data
 }
 
+// TemplateDataWithout returns each page's TemplateData with the named
+// top-level keys omitted. Used by HyperFeed.TemplateData to break the
+// page→feed→pages→page reference cycle that arises when two feed-bearing
+// pages both match each other.
+func (pages Pages) TemplateDataWithout(keys ...string) (data []hypertemplates.TemplateData) {
+	for i := range pages {
+		data = append(data, pages[i].TemplateData.Without(keys...))
+	}
+	return data
+}
+
 func (pages Pages) DiscoverAssets(website *Website, verbose bool) error {
 	for i := range pages {
 		if err := pages[i].DiscoverAssets(website, verbose); err != nil {

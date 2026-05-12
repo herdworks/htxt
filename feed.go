@@ -33,7 +33,7 @@ func (feed HyperFeed) TemplateData() (data hypertemplates.TemplateData) {
 		data["author"] = feed.Byline.TemplateData()
 	}
 	data["tags"] = feed.Tags
-	data["pages"] = feed.Pages.TemplateData()
+	data["pages"] = feed.Pages.TemplateDataWithout("feed")
 	return data
 }
 
