@@ -19,11 +19,11 @@
 * Release commits and tags must only be cut from the `main` branch
 * Before creating a release commit, verify that `main` is cleanly formatted, passes tests, and builds by running `go fmt ./...`, `go test ./... -v`, and `go build ./...`
 * Move the relevant `CHANGELOG.md` entries from `Unreleased` into `## vX.Y.Z (YYYY-MM-DD)`
-* Update `version.go` with `LibVersion = "X.Y.Z"`
+* Update `version.go` with `LibVersion = "vX.Y.Z"`
 * Set `LibReleaseDate` to the current local time rounded down to the most recent hour; for example, `2026-05-11T10:36:31-07:00` becomes `2026-05-11T10:00:00-07:00`
 * After the version/changelog edits, run `go fmt ./...`, `go test ./... -v`, and `go build ./...` again
 * Commit as `updated changelog and bumped version for X.Y.Z`
-* Create an annotated tag `vX.Y.Z` with message `release version X.Y.Z`
+* Create an annotated tag `vX.Y.Z` with message `release version vX.Y.Z`
 * Tags should not skip version numbers (e.g. don't jump from v0.1.0 to v0.3.0)
 
 <!-- See https://agents.md for more information -->
