@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.29.2 (2026-05-11)
+
 * Fixed infinite recursion when two feed-bearing pages both match each other. `HyperFeed.TemplateData()` now strips the `feed` key from each entry in `feed.pages`, breaking the `page→feed→pages→page` reference cycle that previously caused template traversal to recurse without a base case. Added `Pages.TemplateDataWithout(keys ...string)` as the helper.
 
 ## v0.29.1 (2026-05-11)
