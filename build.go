@@ -78,6 +78,14 @@ func (build *HyperBuild) Execute(ctx context.Context, baseurl *url.URL, configOv
 // loading the website, data files, pages, and computed-data scripts.
 func (build *HyperBuild) LoadContext(ctx context.Context, baseurl *url.URL, configOverrides *WebsiteConfig, verbose bool) (err error) {
 	build.Reset()
+	usesWebsitePages := build.Website != nil && build.Pages == &build.Website.Pages
+	requestedPages := build.Pages != nil && len(*build.Pages) > 0 && !usesWebsitePages
+	if !build.Incremental && requestedPages {
+		return fmt.Errorf("build.pages is only supported for incremental builds")
+	}
+	if build.Incremental && (build.Pages == nil || len(*build.Pages) == 0) {
+		return fmt.Errorf("build.pages is required for incremental builds")
+	}
 	if build.Pages == nil {
 		build.Pages = &Pages{}
 	}
@@ -100,6 +108,9 @@ func (build *HyperBuild) LoadContext(ctx context.Context, baseurl *url.URL, conf
 	}
 	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDirPath()); err != nil {
 		return err
+	}
+	if !build.Incremental {
+		build.Pages = &build.Website.Pages
 	}
 
 	// load build pages first (in case of incremental build)

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed `HyperBuild.LoadContext` page-selection semantics: non-incremental builds now treat nil or empty `build.Pages` as a request for all discovered website pages, explicit page selections are limited to incremental builds, and incremental builds require at least one page.
+
 ## v0.29.2 (2026-05-11)
 
 * Fixed infinite recursion when two feed-bearing pages both match each other. `HyperFeed.TemplateData()` now strips the `feed` key from each entry in `feed.pages`, breaking the `page→feed→pages→page` reference cycle that previously caused template traversal to recurse without a base case. Added `Pages.TemplateDataWithout(keys ...string)` as the helper.
