@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.29.4 (2026-05-19)
+
 * Fixed content type and page saves so overwriting an existing source file truncates stale trailing bytes before writing shorter JSON, YAML, or Markdown content.
 
 ## v0.29.3 (2026-05-13)
