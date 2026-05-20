@@ -589,7 +589,7 @@ func WritePage(website *Website, page *Page, format string) (err error) {
 	if err = os.MkdirAll(filepath.Dir(page.URI.Path), 0755); err != nil {
 		return err
 	}
-	if file, err = os.OpenFile(page.URI.Path, os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+	if file, err = os.OpenFile(page.URI.Path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
 	defer file.Close()

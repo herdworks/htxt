@@ -155,7 +155,7 @@ func (contenttype *ContentType) Save(website *Website) (err error) {
 	if err = os.MkdirAll(filepath.Dir(contenttype.URI.Path), 0755); err != nil {
 		return err
 	}
-	if file, err = os.OpenFile(contenttype.URI.Path, os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+	if file, err = os.OpenFile(contenttype.URI.Path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
 	defer file.Close()

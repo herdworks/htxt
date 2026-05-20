@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/herdworks/hypertexting-go/href"
@@ -118,6 +119,73 @@ func TestLoadPageResolvesUglyURLPathAfterParsing(t *testing.T) {
 	}
 	if page.Path != "/404.html" {
 		t.Fatalf("LoadPage() path = %q, want %q", page.Path, "/404.html")
+	}
+}
+
+func TestWritePageTruncatesExistingFile(t *testing.T) {
+	website, _ := testWebsite(t)
+	tests := []struct {
+		name   string
+		format string
+		ext    string
+	}{
+		{name: "json", format: "json", ext: ".json"},
+		{name: "yaml", format: "yaml", ext: ".yaml"},
+		{name: "markdown", format: "markdown", ext: ".md"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(website.ContentDirPath(), "shorter-"+tc.name, "index"+tc.ext)
+			uri := &url.URL{Path: path}
+			first := &Page{
+				URI:         uri,
+				CreatedAt:   "2026-05-19T00:00:00Z",
+				LayoutRef:   "default",
+				Title:       "Long Page",
+				Description: "stale description should disappear after shorter save",
+				Content:     "stale body should disappear after shorter save",
+			}
+			if err := WritePage(website, first, tc.format); err != nil {
+				t.Fatalf("first WritePage() error = %v", err)
+			}
+
+			second := &Page{
+				URI:       uri,
+				CreatedAt: "2026-05-19T00:00:00Z",
+				LayoutRef: "default",
+				Title:     "Short Page",
+				Content:   "ok",
+			}
+			if err := WritePage(website, second, tc.format); err != nil {
+				t.Fatalf("second WritePage() error = %v", err)
+			}
+
+			bytes, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			contents := string(bytes)
+			for _, stale := range []string{"stale description", "stale body"} {
+				if strings.Contains(contents, stale) {
+					t.Fatalf("saved page still contains stale data %q:\n%s", stale, contents)
+				}
+			}
+
+			loaded := &Page{URI: uri}
+			if err := LoadPage(website, loaded, false); err != nil {
+				t.Fatalf("LoadPage() error = %v", err)
+			}
+			if loaded.Title != "Short Page" {
+				t.Fatalf("loaded Title = %q, want %q", loaded.Title, "Short Page")
+			}
+			if tc.format == "markdown" && !strings.Contains(loaded.Content, "ok") {
+				t.Fatalf("loaded Content = %q, want content containing %q", loaded.Content, "ok")
+			}
+			if tc.format != "markdown" && loaded.Content != "ok" {
+				t.Fatalf("loaded Content = %q, want %q", loaded.Content, "ok")
+			}
+		})
 	}
 }
 

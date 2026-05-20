@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Fixed content type and page saves so overwriting an existing source file truncates stale trailing bytes before writing shorter JSON, YAML, or Markdown content.
+
 ## v0.29.3 (2026-05-13)
 
 * Changed `HyperBuild.LoadContext` page-selection semantics: non-incremental builds now treat nil or empty `build.Pages` as a request for all discovered website pages, explicit page selections are limited to incremental builds, and incremental builds require at least one page.
