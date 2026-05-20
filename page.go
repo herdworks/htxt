@@ -535,6 +535,13 @@ type PageCache struct {
 // Persists the page content file to disk according to specifications provided
 // by contenttype, and updates page.URI.
 func CreatePage(website *Website, page *Page, contenttype *ContentType) (err error) {
+	if page == nil {
+		return fmt.Errorf("page.create requires page")
+	}
+	if page.URI != nil {
+		return fmt.Errorf("page.create requires page.uri to be empty; use page.update to modify an existing page")
+	}
+
 	// timestamp
 	timestamp := time.Now().Format(time.RFC3339)
 	if len(page.CreatedAt) == 0 {
@@ -543,9 +550,7 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	page.UpdatedAt = timestamp
 
 	// content-type
-	if contenttype.IsEmpty() {
-		contenttype = &DefaultContentType
-	}
+	contenttype = pageContentType(contenttype)
 	if !page.Draft {
 		if err = contenttype.Validate(page); err != nil {
 			return err
@@ -554,9 +559,220 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	if err = contenttype.Apply(website, page); err != nil {
 		return err
 	}
+	if err = assertPageCreateDestinationAvailable(page); err != nil {
+		return err
+	}
 
 	// write to disk
 	return WritePage(website, page, contenttype.Spec.Format)
+}
+
+// UpdatePage updates an existing persisted page. The input page.URI identifies
+// the current source file. The destination path is always recomputed from the
+// submitted page and content type, allowing content type, slug, and format
+// changes to rehome the page payload without touching nested page directories.
+func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err error) {
+	if page == nil {
+		return fmt.Errorf("page.update requires page")
+	}
+	if page.URI == nil || page.URI.Path == "" {
+		return fmt.Errorf("page.update requires page.uri")
+	}
+
+	sourceURI := *page.URI
+	sourcePath := sourceURI.Path
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("page.update source does not exist: %s", sourcePath)
+		}
+		return err
+	}
+	if sourceInfo.IsDir() || !sourceInfo.Mode().IsRegular() {
+		return fmt.Errorf("page.update source must be a regular file: %s", sourcePath)
+	}
+
+	// timestamp
+	timestamp := time.Now().Format(time.RFC3339)
+	if len(page.CreatedAt) == 0 {
+		existing := &Page{URI: &sourceURI}
+		if err = LoadPage(website, existing, false); err == nil && existing.CreatedAt != "" {
+			page.CreatedAt = existing.CreatedAt
+		}
+	}
+	if len(page.CreatedAt) == 0 {
+		page.CreatedAt = timestamp
+	}
+	page.UpdatedAt = timestamp
+
+	// content-type
+	contenttype = pageContentType(contenttype)
+	if !page.Draft {
+		if err = contenttype.Validate(page); err != nil {
+			return err
+		}
+	}
+	page.URI = nil
+	page.Path = ""
+	if err = contenttype.Apply(website, page); err != nil {
+		return err
+	}
+	if page.URI == nil || page.URI.Path == "" {
+		return fmt.Errorf("page.update failed to resolve destination page.uri")
+	}
+	destinationPath := page.URI.Path
+
+	if err = assertPageUpdateDestinationAvailable(sourcePath, destinationPath); err != nil {
+		return err
+	}
+	moves, err := pageRegularFileMoves(sourcePath, destinationPath)
+	if err != nil {
+		return err
+	}
+	if len(moves) > 0 {
+		if err = os.MkdirAll(filepath.Dir(destinationPath), 0755); err != nil {
+			return err
+		}
+		for _, move := range moves {
+			if err = os.Rename(move.sourcePath, move.destinationPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err = WritePage(website, page, contenttype.Spec.Format); err != nil {
+		return err
+	}
+	if !sameCleanPath(sourcePath, destinationPath) {
+		if err = os.Remove(sourcePath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err = removeDirectoryIfEmpty(filepath.Dir(sourcePath)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type pageFileMove struct {
+	sourcePath      string
+	destinationPath string
+}
+
+func pageContentType(contenttype *ContentType) *ContentType {
+	if contenttype.IsEmpty() {
+		return &DefaultContentType
+	}
+	return contenttype
+}
+
+func assertPageCreateDestinationAvailable(page *Page) error {
+	if page.URI == nil || page.URI.Path == "" {
+		return fmt.Errorf("page.create failed to resolve destination page.uri")
+	}
+	if _, exists, err := fileInfoIfExists(page.URI.Path); err != nil {
+		return err
+	} else if exists {
+		return fmt.Errorf("page.create conflict: page already exists at %s", page.URI.Path)
+	}
+	return nil
+}
+
+func assertPageUpdateDestinationAvailable(sourcePath string, destinationPath string) error {
+	if _, exists, err := fileInfoIfExists(destinationPath); err != nil {
+		return err
+	} else if exists && !sameExistingFile(sourcePath, destinationPath) {
+		return fmt.Errorf("page.update conflict: page already exists at %s", destinationPath)
+	}
+	return nil
+}
+
+func pageRegularFileMoves(sourcePagePath string, destinationPagePath string) ([]pageFileMove, error) {
+	sourceDir := filepath.Dir(sourcePagePath)
+	destinationDir := filepath.Dir(destinationPagePath)
+	if sameCleanPath(sourceDir, destinationDir) {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		return nil, err
+	}
+	moves := []pageFileMove{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		sourcePath := filepath.Join(sourceDir, entry.Name())
+		if sameExistingFile(sourcePath, sourcePagePath) {
+			continue
+		}
+
+		destinationPath := filepath.Join(destinationDir, entry.Name())
+		if sameCleanPath(destinationPath, destinationPagePath) {
+			return nil, fmt.Errorf("page.update conflict: regular file %s would overwrite destination page file %s", sourcePath, destinationPagePath)
+		}
+		if _, exists, err := fileInfoIfExists(destinationPath); err != nil {
+			return nil, err
+		} else if exists {
+			return nil, fmt.Errorf("page.update conflict: regular file already exists at %s", destinationPath)
+		}
+		moves = append(moves, pageFileMove{sourcePath: sourcePath, destinationPath: destinationPath})
+	}
+	return moves, nil
+}
+
+func fileInfoIfExists(path string) (os.FileInfo, bool, error) {
+	info, err := os.Stat(path)
+	if err == nil {
+		return info, true, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	return nil, false, err
+}
+
+func sameExistingFile(a string, b string) bool {
+	if sameCleanPath(a, b) {
+		return true
+	}
+	aInfo, aErr := os.Stat(a)
+	bInfo, bErr := os.Stat(b)
+	return aErr == nil && bErr == nil && os.SameFile(aInfo, bInfo)
+}
+
+func sameCleanPath(a string, b string) bool {
+	aAbs, err := filepath.Abs(a)
+	if err == nil {
+		a = aAbs
+	}
+	bAbs, err := filepath.Abs(b)
+	if err == nil {
+		b = bAbs
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func removeDirectoryIfEmpty(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	return os.Remove(path)
 }
 
 // persist page index file to disk

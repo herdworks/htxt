@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `UpdatePage`, an existing-page persistence API that requires `page.URI`, recomputes the destination from the submitted page and content type, rehomes non-recursive regular page-directory files when the destination changes, preserves nested page directories, removes stale source page files after format changes, and rejects destination/file collisions.
+* Changed `CreatePage` to require an empty `page.URI` and fail if the resolved destination page file already exists; callers should use `UpdatePage` to modify existing pages.
+
 ## v0.29.4 (2026-05-19)
 
 * Fixed content type and page saves so overwriting an existing source file truncates stale trailing bytes before writing shorter JSON, YAML, or Markdown content.
