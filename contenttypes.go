@@ -2,6 +2,7 @@ package hypertexting
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -24,6 +25,8 @@ var (
 	CustomContentTypeMetadata      = ContentTypeMetadata{Name: "custom", Description: "Custom content type."}
 	CustomContentTypeSpecification = ContentTypeSpecification{Layout: "default", Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
 	CustomContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: CustomContentTypeMetadata, Spec: CustomContentTypeSpecification}
+
+	errPageSlugInputMissing = errors.New("page slug input missing")
 )
 
 type ContentType struct {
@@ -65,6 +68,10 @@ func (contenttype ContentType) Validate(page *Page) error {
 		return err
 	}
 	if contenttype.Spec.AutoSlug == TitleSnakeSlug && len(page.Title) == 0 {
+		return err
+	}
+	err = fmt.Errorf("content-type requires page.slug property")
+	if contenttype.Spec.AutoSlug == ManualSlug && len(page.Slug) == 0 {
 		return err
 	}
 
@@ -210,14 +217,6 @@ func (contenttype *ContentType) IsEmpty() bool {
 
 func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) {
 	op := *page // copy original page
-	if page.URI == nil {
-		// only generate Slug and set URI if not already set
-		page.Slug = contenttype.Spec.AutoSlug.Format(page)
-		page.URI = contenttype.PageURI(website, page)
-		page.Path = PagePath(website, page.URI)
-	} else {
-		fmt.Println("page.URI is already set, skipping AutoSlug and URI generation")
-	}
 	if err = page.Parse(contenttype.Spec.TemplateData); err != nil {
 		return err
 	}
@@ -235,11 +234,91 @@ func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) 
 	if len(op.Content) > 0 {
 		page.Content = op.Content
 	}
-	page.ResolvePath(website)
 	return nil
 }
 func (contenttype *ContentType) PageURI(website *Website, page *Page) *url.URL {
-	return &url.URL{Path: filepath.Join(website.ContentDirPath(), contenttype.Path(), page.Slug, contenttype.IndexFilename())}
+	return contenttype.PageURIForSlug(website, page.Slug)
+}
+func (contenttype *ContentType) PageURIForSlug(website *Website, slug string) *url.URL {
+	return &url.URL{Path: filepath.Join(website.ContentDirPath(), contenttype.Path(), slug, contenttype.IndexFilename())}
+}
+func ResolvePageURI(website *Website, page *Page, contenttype *ContentType) (*url.URL, error) {
+	if website == nil {
+		return nil, fmt.Errorf("page.uri resolution requires website")
+	}
+	if page == nil {
+		return nil, fmt.Errorf("page.uri resolution requires page")
+	}
+	contenttype = pageContentType(contenttype)
+	if page.Draft && draftPageNeedsTemporarySlug(page, contenttype) {
+		return contenttype.PageURIForSlug(website, ResolveDraftPageSlug(page)), nil
+	}
+	slug, err := ResolvePageSlug(page, contenttype)
+	if err != nil {
+		if page.Draft && errors.Is(err, errPageSlugInputMissing) {
+			return contenttype.PageURIForSlug(website, ResolveDraftPageSlug(page)), nil
+		}
+		return nil, err
+	}
+	return contenttype.PageURIForSlug(website, slug), nil
+}
+func ResolvePageSlug(page *Page, contenttype *ContentType) (string, error) {
+	if page == nil {
+		return "", fmt.Errorf("page.slug resolution requires page")
+	}
+	contenttype = pageContentType(contenttype)
+	if len(page.Slug) > 0 {
+		if strings.Contains(page.Slug, "/") {
+			return "", fmt.Errorf("page.slug cannot contain a slash (%s)", page.Slug)
+		}
+		return page.Slug, nil
+	}
+	switch contenttype.Spec.AutoSlug {
+	case NoSlug:
+		return "", nil
+	case ManualSlug:
+		return "", fmt.Errorf("content-type requires page.slug property: %w", errPageSlugInputMissing)
+	case UUIDSlug:
+		return strings.ToLower(uuid.New().String()), nil
+	case TitleKabobSlug:
+		if len(page.Title) == 0 {
+			return "", fmt.Errorf("content-type requires page.title property: %w", errPageSlugInputMissing)
+		}
+		return contenttype.Spec.AutoSlug.KabobCase(page.Title), nil
+	case TitleSnakeSlug:
+		if len(page.Title) == 0 {
+			return "", fmt.Errorf("content-type requires page.title property: %w", errPageSlugInputMissing)
+		}
+		return contenttype.Spec.AutoSlug.SnakeCase(page.Title), nil
+	case "", TimestampSlug:
+		return fmt.Sprintf("%v", page.LastModified().UnixMilli()), nil
+	default:
+		fmt.Printf("slug format \"%s\" unknown, falling back to \"timestamp\" format\n", contenttype.Spec.AutoSlug)
+		return fmt.Sprintf("%v", page.LastModified().UnixMilli()), nil
+	}
+}
+func ResolveDraftPageSlug(page *Page) string {
+	if page != nil && page.URI != nil && page.URI.Path != "" {
+		dir := filepath.Base(filepath.Dir(page.URI.Path))
+		if strings.HasPrefix(dir, "draft-") {
+			return dir
+		}
+	}
+	return "draft-" + strings.ToLower(uuid.New().String())
+}
+func draftPageNeedsTemporarySlug(page *Page, contenttype *ContentType) bool {
+	if page == nil || !page.Draft || len(page.Slug) > 0 {
+		return false
+	}
+	contenttype = pageContentType(contenttype)
+	switch contenttype.Spec.AutoSlug {
+	case NoSlug:
+		return false
+	case TitleKabobSlug, TitleSnakeSlug:
+		return len(page.Title) == 0
+	default:
+		return true
+	}
 }
 func (contenttype *ContentType) Path() string {
 	return contenttype.Spec.Path

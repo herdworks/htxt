@@ -27,7 +27,7 @@ import (
 type Page struct {
 	// Internal properties
 	URI    *url.URL   `json:"-" yaml:"-"`
-	Slug   string     `json:"-" yaml:"-"`
+	Slug   string     `json:"slug,omitempty" yaml:"slug,omitempty"`
 	Cache  *PageCache `json:"-" yaml:"-"`
 	Loaded bool       `json:"-" yaml:"-"`
 
@@ -173,6 +173,11 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	}
 	if len(page.UpdatedAt) > 0 {
 		page.TemplateData.Set("updated_at", page.UpdatedAt)
+	}
+	if len(page.Slug) > 0 {
+		page.TemplateData.Set("slug", page.Slug)
+	} else {
+		delete(page.TemplateData, "slug")
 	}
 	if len(page.LayoutRef) > 0 {
 		page.TemplateData.Set("layout", page.LayoutRef)
@@ -519,7 +524,7 @@ func (page *Page) MarshalYAML() (any, error) {
 		Other hypertemplates.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
-		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "ugly_url", "redirect", "attachments"),
+		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "ugly_url", "redirect", "attachments"),
 	}, nil
 }
 
@@ -559,6 +564,10 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	if err = contenttype.Apply(website, page); err != nil {
 		return err
 	}
+	if page.URI, err = ResolvePageURI(website, page, contenttype); err != nil {
+		return err
+	}
+	page.ResolvePath(website)
 	if err = assertPageCreateDestinationAvailable(page); err != nil {
 		return err
 	}
@@ -612,11 +621,13 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 			return err
 		}
 	}
-	page.URI = nil
-	page.Path = ""
 	if err = contenttype.Apply(website, page); err != nil {
 		return err
 	}
+	if page.URI, err = ResolvePageURI(website, page, contenttype); err != nil {
+		return err
+	}
+	page.ResolvePath(website)
 	if page.URI == nil || page.URI.Path == "" {
 		return fmt.Errorf("page.update failed to resolve destination page.uri")
 	}

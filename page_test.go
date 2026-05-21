@@ -32,12 +32,11 @@ func TestContentTypePageURIUsesContentDirForDraftPages(t *testing.T) {
 		Format: "markdown",
 		Path:   "posts",
 	}}
-	page := &Page{Draft: true, Slug: "draft-post"}
 
-	got := contenttype.PageURI(website, page).Path
+	got := contenttype.PageURIForSlug(website, "draft-post").Path
 	want := filepath.Join(website.ContentDirPath(), "posts", "draft-post", "index.md")
 	if got != want {
-		t.Fatalf("PageURI() = %q, want %q", got, want)
+		t.Fatalf("PageURIForSlug() = %q, want %q", got, want)
 	}
 }
 
@@ -200,6 +199,22 @@ func testPageContentType(format string, contentPath string) *ContentType {
 	}
 }
 
+func testPageContentTypeWithAutoSlug(format string, contentPath string, autoSlug ContentTypeSlugFormat) *ContentType {
+	contenttype := testPageContentType(format, contentPath)
+	contenttype.Spec.AutoSlug = autoSlug
+	return contenttype
+}
+
+func writePageTestFile(t *testing.T, path string, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("MkdirAll(%s) error = %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
 func TestCreatePageRequiresEmptyURI(t *testing.T) {
 	website, _ := testWebsite(t)
 	contenttype := testPageContentType("markdown", "posts")
@@ -226,6 +241,257 @@ func TestCreatePageFailsIfResolvedPathExists(t *testing.T) {
 	err := CreatePage(website, page, contenttype)
 	if err == nil || !strings.Contains(err.Error(), "page.create conflict") {
 		t.Fatalf("CreatePage() error = %v, want conflict", err)
+	}
+}
+
+func TestCreateDraftPageWithEmptySlugUsesTemporaryURI(t *testing.T) {
+	website, _ := testWebsite(t)
+	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	page := &Page{Draft: true, Content: "draft content"}
+
+	if err := CreatePage(website, page, contenttype); err != nil {
+		t.Fatalf("CreatePage() error = %v", err)
+	}
+	if page.Slug != "" {
+		t.Fatalf("page.Slug = %q, want empty", page.Slug)
+	}
+	if page.URI == nil {
+		t.Fatal("page.URI is nil")
+	}
+	pageDir := filepath.Dir(page.URI.Path)
+	draftSegment := filepath.Base(pageDir)
+	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "posts") {
+		t.Fatalf("page.URI = %s, want under posts draft directory", page.URI.Path)
+	}
+	if !strings.HasPrefix(draftSegment, "draft-") {
+		t.Fatalf("draft URI segment = %q, want draft-*", draftSegment)
+	}
+	if page.Path != "/posts/"+draftSegment+"/" {
+		t.Fatalf("page.Path = %q, want computed draft path", page.Path)
+	}
+	bytes, err := os.ReadFile(page.URI.Path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(string(bytes), "slug:") {
+		t.Fatalf("draft page serialized temporary slug:\n%s", string(bytes))
+	}
+}
+
+func TestCreateDraftPageWithUserSlugPreservesSlug(t *testing.T) {
+	website, _ := testWebsite(t)
+	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	page := &Page{Draft: true, Slug: "custom-draft", Content: "draft content"}
+
+	if err := CreatePage(website, page, contenttype); err != nil {
+		t.Fatalf("CreatePage() error = %v", err)
+	}
+	wantPath := filepath.Join(website.ContentDirPath(), "posts", "custom-draft", "index.md")
+	if page.URI == nil || page.URI.Path != wantPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+	}
+	if page.Slug != "custom-draft" {
+		t.Fatalf("page.Slug = %q, want custom-draft", page.Slug)
+	}
+	if page.Path != "/posts/custom-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/custom-draft/", page.Path)
+	}
+	bytes, err := os.ReadFile(page.URI.Path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(bytes), "slug: custom-draft") {
+		t.Fatalf("page did not serialize user slug:\n%s", string(bytes))
+	}
+	loaded := &Page{URI: page.URI}
+	if err := LoadPage(website, loaded, false); err != nil {
+		t.Fatalf("LoadPage() error = %v", err)
+	}
+	if loaded.Slug != "custom-draft" {
+		t.Fatalf("loaded Slug = %q, want custom-draft", loaded.Slug)
+	}
+}
+
+func TestUpdateDraftPageWithEmptySlugRehomesTemporaryURIForContentTypeChange(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := testPageContentTypeWithAutoSlug("json", "notes", TitleKabobSlug)
+	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Content: "updated"}
+
+	if err := UpdatePage(website, page, contenttype); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	destinationPath := filepath.Join(website.ContentDirPath(), "notes", "draft-fixed", "index.json")
+	if page.URI == nil || page.URI.Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	}
+	if page.Slug != "" {
+		t.Fatalf("page.Slug = %q, want empty", page.Slug)
+	}
+	if page.Path != "/notes/draft-fixed/" {
+		t.Fatalf("page.Path = %q, want /notes/draft-fixed/", page.Path)
+	}
+	if _, err := os.Stat(destinationPath); err != nil {
+		t.Fatalf("destination page missing: %v", err)
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("source page still exists or unexpected error = %v", err)
+	}
+	bytes, err := os.ReadFile(destinationPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(string(bytes), "\"slug\"") {
+		t.Fatalf("draft page serialized temporary slug:\n%s", string(bytes))
+	}
+}
+
+func TestUpdateDraftPageWithTitleRehomesToTitleSlug(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Title: "Final Draft", Content: "updated"}
+
+	if err := UpdatePage(website, page, contenttype); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "final-draft", "index.md")
+	if page.URI == nil || page.URI.Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	}
+	if page.Slug != "" {
+		t.Fatalf("page.Slug = %q, want empty", page.Slug)
+	}
+	if page.Path != "/posts/final-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/final-draft/", page.Path)
+	}
+	bytes, err := os.ReadFile(destinationPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(string(bytes), "slug:") {
+		t.Fatalf("title-derived draft page serialized generated slug:\n%s", string(bytes))
+	}
+}
+
+func TestPublishUpdateFromTemporaryDraftToTitleSlug(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	page := &Page{URI: &url.URL{Path: sourcePath}, Title: "Published Draft", Content: "published"}
+
+	if err := UpdatePage(website, page, contenttype); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "published-draft", "index.md")
+	if page.URI == nil || page.URI.Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	}
+	if page.Slug != "" {
+		t.Fatalf("page.Slug = %q, want empty", page.Slug)
+	}
+	if page.Path != "/posts/published-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/published-draft/", page.Path)
+	}
+}
+
+func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
+	tests := []struct {
+		name     string
+		autoSlug ContentTypeSlugFormat
+	}{
+		{name: "title kabob", autoSlug: TitleKabobSlug},
+		{name: "title snake", autoSlug: TitleSnakeSlug},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			website, _ := testWebsite(t)
+			sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+			writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+			contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", tc.autoSlug)
+			page := &Page{URI: &url.URL{Path: sourcePath}, Content: "published"}
+
+			err := UpdatePage(website, page, contenttype)
+			if err == nil || !strings.Contains(err.Error(), "content-type requires page.title property") {
+				t.Fatalf("UpdatePage() error = %v, want title validation", err)
+			}
+			if _, statErr := os.Stat(sourcePath); statErr != nil {
+				t.Fatalf("source page should remain after validation failure: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestPublishUpdateForManualSlugValidation(t *testing.T) {
+	t.Run("fails without slug", func(t *testing.T) {
+		website, _ := testWebsite(t)
+		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+		contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", ManualSlug)
+		page := &Page{URI: &url.URL{Path: sourcePath}, Content: "published"}
+
+		err := UpdatePage(website, page, contenttype)
+		if err == nil || !strings.Contains(err.Error(), "content-type requires page.slug property") {
+			t.Fatalf("UpdatePage() error = %v, want slug validation", err)
+		}
+		if _, statErr := os.Stat(sourcePath); statErr != nil {
+			t.Fatalf("source page should remain after validation failure: %v", statErr)
+		}
+	})
+
+	t.Run("succeeds with slug", func(t *testing.T) {
+		website, _ := testWebsite(t)
+		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+		contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", ManualSlug)
+		page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "manual-page", Content: "published"}
+
+		if err := UpdatePage(website, page, contenttype); err != nil {
+			t.Fatalf("UpdatePage() error = %v", err)
+		}
+		destinationPath := filepath.Join(website.ContentDirPath(), "posts", "manual-page", "index.md")
+		if page.URI == nil || page.URI.Path != destinationPath {
+			t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+		}
+		if page.Slug != "manual-page" {
+			t.Fatalf("page.Slug = %q, want manual-page", page.Slug)
+		}
+		bytes, err := os.ReadFile(destinationPath)
+		if err != nil {
+			t.Fatalf("ReadFile() error = %v", err)
+		}
+		if !strings.Contains(string(bytes), "slug: manual-page") {
+			t.Fatalf("page did not serialize manual slug:\n%s", string(bytes))
+		}
+	})
+}
+
+func TestUpdatePageSameDestinationWritesInPlace(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "same", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nslug: same\n---\n\nold")
+	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", ManualSlug)
+	page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "same", Content: "updated in place"}
+
+	if err := UpdatePage(website, page, contenttype); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	if page.URI == nil || page.URI.Path != sourcePath {
+		t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+	}
+	if page.Path != "/posts/same/" {
+		t.Fatalf("page.Path = %q, want /posts/same/", page.Path)
+	}
+	bytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(bytes), "updated in place") {
+		t.Fatalf("updated page contents = %q, want updated content", string(bytes))
 	}
 }
 

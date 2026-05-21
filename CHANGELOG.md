@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed page/content-type persistence so content types resolve destination `page.URI` without mutating `page.Slug`; draft pages with incomplete final slug inputs now use stable temporary `draft-*` URI segments derived from source URI state, and `page.Path` is recomputed from the resolved URI after create/update.
+* Changed page serialization to persist real user-provided `page.slug` values while leaving generated draft path segments out of page data.
+
 ## v0.30.0 (2026-05-20)
 
 * Added `UpdatePage`, an existing-page persistence API that requires `page.URI`, recomputes the destination from the submitted page and content type, rehomes non-recursive regular page-directory files when the destination changes, preserves nested page directories, removes stale source page files after format changes, and rejects destination/file collisions.
