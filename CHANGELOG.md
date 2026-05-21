@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.31.0 (2026-05-20)
+
 * Changed page/content-type persistence so content types resolve destination `page.URI` without mutating `page.Slug`; draft pages with incomplete final slug inputs now use stable temporary `draft-*` URI segments derived from source URI state, and `page.Path` is recomputed from the resolved URI after create/update.
 * Changed page serialization to persist real user-provided `page.slug` values while leaving generated draft path segments out of page data.
 
