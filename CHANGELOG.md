@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.31.1 (2026-05-21)
+
+* Added `ContentType.Ready(page)` for draft-agnostic content type requirement checks, while keeping `ContentType.Validate(page)` as the draft-skipping publish compatibility wrapper.
+
 ## v0.31.0 (2026-05-20)
 
 * Changed page/content-type persistence so content types resolve destination `page.URI` without mutating `page.Slug`; draft pages with incomplete final slug inputs now use stable temporary `draft-*` URI segments derived from source URI state, and `page.Path` is recomputed from the resolved URI after create/update.

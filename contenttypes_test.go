@@ -78,3 +78,77 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 		})
 	}
 }
+
+func TestContentTypeReadyValidatesDraftPageRequirements(t *testing.T) {
+	contenttype := ContentType{
+		Spec: ContentTypeSpecification{
+			Requires: ContentTypeRequirements{Content: true},
+		},
+	}
+	page := &Page{Draft: true}
+
+	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires page.content property") {
+		t.Fatalf("Ready() error = %v, want content requirement", err)
+	}
+	if err := contenttype.Validate(page); err != nil {
+		t.Fatalf("Validate() error = %v, want draft pages to skip validation", err)
+	}
+}
+
+func TestContentTypeReadyValidatesSlugInputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		autoSlug ContentTypeSlugFormat
+		page     *Page
+		want     string
+	}{
+		{
+			name:     "manual slug",
+			autoSlug: ManualSlug,
+			page:     &Page{Content: "ready"},
+			want:     "content-type requires page.slug property",
+		},
+		{
+			name:     "title kabob slug",
+			autoSlug: TitleKabobSlug,
+			page:     &Page{Content: "ready"},
+			want:     "content-type requires page.title property",
+		},
+		{
+			name:     "title snake slug",
+			autoSlug: TitleSnakeSlug,
+			page:     &Page{Content: "ready"},
+			want:     "content-type requires page.title property",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			contenttype := ContentType{Spec: ContentTypeSpecification{AutoSlug: tc.autoSlug}}
+			if err := contenttype.Ready(tc.page); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Ready() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestContentTypeReadyValidatesAttachmentKind(t *testing.T) {
+	contenttype := ContentType{
+		Spec: ContentTypeSpecification{
+			Requires: ContentTypeRequirements{Attachment: AttachmentKindImage},
+		},
+	}
+	page := &Page{
+		Draft:       true,
+		Attachments: Attachments{{Kind: AttachmentKindLink, Href: "https://example.com"}},
+	}
+
+	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires image attachment") {
+		t.Fatalf("Ready() error = %v, want image attachment requirement", err)
+	}
+
+	page.Attachments = append(page.Attachments, &Attachment{Kind: AttachmentKindImage, Href: "image.jpg"})
+	if err := contenttype.Ready(page); err != nil {
+		t.Fatalf("Ready() error = %v, want ready", err)
+	}
+}

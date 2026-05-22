@@ -52,12 +52,15 @@ func (types ContentTypes) ColumnValues(field string) []string {
 }
 
 func (contenttype ContentType) Validate(page *Page) error {
-	var err error
-
 	// skip validation for draft pages
 	if page.Draft {
 		return nil
 	}
+	return contenttype.Ready(page)
+}
+
+func (contenttype ContentType) Ready(page *Page) error {
+	var err error
 
 	// title validation
 	err = fmt.Errorf("content-type requires page.title property")
