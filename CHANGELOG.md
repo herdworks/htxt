@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.31.2 (2026-05-25)
+
 * Changed content type URI resolution from `spec.auto_slug` to `spec.uri_resolver`, with named internal URI resolvers that own full `page.URI` resolution.
 * Added strict `spec.path` templating with `${`/`}` delimiters and only zero-argument `year`, `month`, and `day` functions based on `page.created_at`.
 * Changed `DefaultContentType` to use the `-` content path, timestamp URI resolver, and Markdown format as the nil-content-type fallback for new page creation.
