@@ -2,13 +2,14 @@ package hypertexting
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"text/template"
+	"time"
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
@@ -19,14 +20,12 @@ import (
 
 var (
 	DefaultContentTypeMetadata      = ContentTypeMetadata{Name: "default", Description: "Default content type."}
-	DefaultContentTypeSpecification = ContentTypeSpecification{Layout: "default", Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
+	DefaultContentTypeSpecification = ContentTypeSpecification{Layout: "default", Path: "-", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
 	DefaultContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: DefaultContentTypeMetadata, Spec: DefaultContentTypeSpecification}
 
 	CustomContentTypeMetadata      = ContentTypeMetadata{Name: "custom", Description: "Custom content type."}
-	CustomContentTypeSpecification = ContentTypeSpecification{Layout: "default", Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
+	CustomContentTypeSpecification = ContentTypeSpecification{Layout: "default", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
 	CustomContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: CustomContentTypeMetadata, Spec: CustomContentTypeSpecification}
-
-	errPageSlugInputMissing = errors.New("page slug input missing")
 )
 
 type ContentType struct {
@@ -60,6 +59,12 @@ func (contenttype ContentType) Validate(page *Page) error {
 }
 
 func (contenttype ContentType) Ready(page *Page) error {
+	if err := contenttype.Spec.Validate(); err != nil {
+		return err
+	}
+	if page == nil {
+		return fmt.Errorf("content-type requires page")
+	}
 	var err error
 
 	// title validation
@@ -67,14 +72,14 @@ func (contenttype ContentType) Ready(page *Page) error {
 	if contenttype.Spec.Requires.Title && len(page.Title) == 0 {
 		return err
 	}
-	if contenttype.Spec.AutoSlug == TitleKabobSlug && len(page.Title) == 0 {
+	if contenttype.Spec.URIResolver == TitleKabobURIResolver && len(page.Title) == 0 {
 		return err
 	}
-	if contenttype.Spec.AutoSlug == TitleSnakeSlug && len(page.Title) == 0 {
+	if contenttype.Spec.URIResolver == TitleSnakeURIResolver && len(page.Title) == 0 {
 		return err
 	}
 	err = fmt.Errorf("content-type requires page.slug property")
-	if contenttype.Spec.AutoSlug == ManualSlug && len(page.Slug) == 0 {
+	if contenttype.Spec.URIResolver == ManualURIResolver && len(page.Slug) == 0 {
 		return err
 	}
 
@@ -145,6 +150,9 @@ func (contenttype *ContentType) Save(website *Website) (err error) {
 	var fileExt string = filepath.Ext(contenttype.URI.Path)
 	var fileBytes []byte
 	var fileBytesWritten int
+	if err = contenttype.Spec.Validate(); err != nil {
+		return err
+	}
 	switch fileExt {
 	case ".json":
 		bs, err := json.Marshal(contenttype)
@@ -199,6 +207,9 @@ func (contenttype *ContentType) Load() (err error) {
 	default:
 		return fmt.Errorf("unsupported file type: %s", fileExt)
 	}
+	if err = contenttype.Spec.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -220,10 +231,10 @@ func (contenttype *ContentType) IsEmpty() bool {
 
 func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) {
 	op := *page // copy original page
-	if err = page.Parse(contenttype.Spec.TemplateData); err != nil {
+	page.TemplateData = contenttype.Spec.TemplateData.MergeAppend(page.TemplateData)
+	if err = page.Parse(page.TemplateData); err != nil {
 		return err
 	}
-	page.TemplateData = page.TemplateData.MergeAppend(contenttype.Spec.TemplateData)
 	page.LayoutRef = contenttype.Spec.Layout
 	if len(op.LayoutRef) > 0 {
 		page.LayoutRef = op.LayoutRef
@@ -239,13 +250,7 @@ func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) 
 	}
 	return nil
 }
-func (contenttype *ContentType) PageURI(website *Website, page *Page) *url.URL {
-	return contenttype.PageURIForSlug(website, page.Slug)
-}
-func (contenttype *ContentType) PageURIForSlug(website *Website, slug string) *url.URL {
-	return &url.URL{Path: filepath.Join(website.ContentDirPath(), contenttype.Path(), slug, contenttype.IndexFilename())}
-}
-func ResolvePageURI(website *Website, page *Page, contenttype *ContentType) (*url.URL, error) {
+func ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
 	if website == nil {
 		return nil, fmt.Errorf("page.uri resolution requires website")
 	}
@@ -253,90 +258,11 @@ func ResolvePageURI(website *Website, page *Page, contenttype *ContentType) (*ur
 		return nil, fmt.Errorf("page.uri resolution requires page")
 	}
 	contenttype = pageContentType(contenttype)
-	if page.Draft && draftPageNeedsTemporarySlug(page, contenttype) {
-		return contenttype.PageURIForSlug(website, ResolveDraftPageSlug(page)), nil
-	}
-	slug, err := ResolvePageSlug(page, contenttype)
+	resolver, err := PageURIResolverFor(contenttype.Spec.URIResolver)
 	if err != nil {
-		if page.Draft && errors.Is(err, errPageSlugInputMissing) {
-			return contenttype.PageURIForSlug(website, ResolveDraftPageSlug(page)), nil
-		}
 		return nil, err
 	}
-	return contenttype.PageURIForSlug(website, slug), nil
-}
-func ResolvePageSlug(page *Page, contenttype *ContentType) (string, error) {
-	if page == nil {
-		return "", fmt.Errorf("page.slug resolution requires page")
-	}
-	contenttype = pageContentType(contenttype)
-	if len(page.Slug) > 0 {
-		if strings.Contains(page.Slug, "/") {
-			return "", fmt.Errorf("page.slug cannot contain a slash (%s)", page.Slug)
-		}
-		return page.Slug, nil
-	}
-	switch contenttype.Spec.AutoSlug {
-	case NoSlug:
-		return "", nil
-	case ManualSlug:
-		return "", fmt.Errorf("content-type requires page.slug property: %w", errPageSlugInputMissing)
-	case UUIDSlug:
-		return strings.ToLower(uuid.New().String()), nil
-	case TitleKabobSlug:
-		if len(page.Title) == 0 {
-			return "", fmt.Errorf("content-type requires page.title property: %w", errPageSlugInputMissing)
-		}
-		return contenttype.Spec.AutoSlug.KabobCase(page.Title), nil
-	case TitleSnakeSlug:
-		if len(page.Title) == 0 {
-			return "", fmt.Errorf("content-type requires page.title property: %w", errPageSlugInputMissing)
-		}
-		return contenttype.Spec.AutoSlug.SnakeCase(page.Title), nil
-	case "", TimestampSlug:
-		return fmt.Sprintf("%v", page.LastModified().UnixMilli()), nil
-	default:
-		fmt.Printf("slug format \"%s\" unknown, falling back to \"timestamp\" format\n", contenttype.Spec.AutoSlug)
-		return fmt.Sprintf("%v", page.LastModified().UnixMilli()), nil
-	}
-}
-func ResolveDraftPageSlug(page *Page) string {
-	if page != nil && page.URI != nil && page.URI.Path != "" {
-		dir := filepath.Base(filepath.Dir(page.URI.Path))
-		if strings.HasPrefix(dir, "draft-") {
-			return dir
-		}
-	}
-	return "draft-" + strings.ToLower(uuid.New().String())
-}
-func draftPageNeedsTemporarySlug(page *Page, contenttype *ContentType) bool {
-	if page == nil || !page.Draft || len(page.Slug) > 0 {
-		return false
-	}
-	contenttype = pageContentType(contenttype)
-	switch contenttype.Spec.AutoSlug {
-	case NoSlug:
-		return false
-	case TitleKabobSlug, TitleSnakeSlug:
-		return len(page.Title) == 0
-	default:
-		return true
-	}
-}
-func (contenttype *ContentType) Path() string {
-	return contenttype.Spec.Path
-}
-func (contenttype ContentType) IndexFilename() string {
-	switch contenttype.Spec.Format {
-	case "json":
-		return "index.json"
-	case "yaml", "yml":
-		return "index.yaml"
-	case "markdown", "md":
-		return "index.md"
-	default:
-		return fmt.Sprintf("index.%s", contenttype.Spec.Format)
-	}
+	return resolver.ResolvePageURI(website, page, contenttype, sourceURI)
 }
 
 type ContentTypeMetadata struct {
@@ -349,7 +275,7 @@ type ContentTypeMetadata struct {
 type ContentTypeSpecification struct {
 	Layout       string                      `json:"layout" yaml:"layout"`
 	Path         string                      `json:"path" yaml:"path"`
-	AutoSlug     ContentTypeSlugFormat       `json:"auto_slug" yaml:"auto_slug"`
+	URIResolver  PageURIResolverName         `json:"uri_resolver" yaml:"uri_resolver"`
 	Format       string                      `json:"format" yaml:"format"`
 	Requires     ContentTypeRequirements     `json:"requires,omitempty" yaml:"requires,omitempty"`
 	Unlisted     bool                        `json:"unlisted" yaml:"unlisted"`
@@ -358,52 +284,293 @@ type ContentTypeSpecification struct {
 	Patches      ContentTypePatches          `json:"patches,omitempty" yaml:"patches,omitempty"`
 }
 
-type ContentTypeSlugFormat string
+func (spec ContentTypeSpecification) Validate() error {
+	if spec.Format == "" {
+		return fmt.Errorf("content-type spec.format is required")
+	}
+	if _, err := contentTypeIndexFilename(spec.Format); err != nil {
+		return err
+	}
+	if spec.URIResolver == "" {
+		return fmt.Errorf("content-type spec.uri_resolver is required")
+	}
+	if _, err := PageURIResolverFor(spec.URIResolver); err != nil {
+		return err
+	}
+	renderedPath, err := renderContentTypePathTemplate(spec.Path, time.Date(2006, 1, 2, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		return fmt.Errorf("content-type spec.path invalid: %w", err)
+	}
+	if _, err := cleanRelativeURIPath(renderedPath); err != nil {
+		return fmt.Errorf("content-type spec.path invalid: %w", err)
+	}
+	return nil
+}
+
+type PageURIResolver interface {
+	ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error)
+}
+
+type PageURIResolverName string
 
 const (
-	TimestampSlug  ContentTypeSlugFormat = "timestamp" // default
-	TitleKabobSlug ContentTypeSlugFormat = "title-kabob"
-	TitleSnakeSlug ContentTypeSlugFormat = "title_snake"
-	ManualSlug     ContentTypeSlugFormat = "manual"
-	UUIDSlug       ContentTypeSlugFormat = "uuid"
-	NoSlug         ContentTypeSlugFormat = "none"
+	ManualURIResolver     PageURIResolverName = "manual"
+	TitleKabobURIResolver PageURIResolverName = "title-kabob"
+	TitleSnakeURIResolver PageURIResolverName = "title_snake"
+	TimestampURIResolver  PageURIResolverName = "timestamp"
+	UUIDURIResolver       PageURIResolverName = "uuid"
+	NoURIResolver         PageURIResolverName = "none"
 )
 
-func (format ContentTypeSlugFormat) Format(page *Page) string {
-	if len(page.Slug) > 0 {
-		return page.Slug // skip if page already has a slug
-	}
-	switch format {
-	case NoSlug:
-		return "" // no-op
-	case ManualSlug:
-		return strings.ReplaceAll(format.NormalizeSlug(page.Slug), " ", "")
-	case UUIDSlug:
-		return strings.ToLower(uuid.New().String())
-	case TitleKabobSlug:
-		return format.KabobCase(page.Title)
-	case TitleSnakeSlug:
-		return format.SnakeCase(page.Title)
-	case TimestampSlug:
-		return fmt.Sprintf("%v", page.LastModified().UnixMilli())
+func PageURIResolverFor(name PageURIResolverName) (PageURIResolver, error) {
+	switch name {
+	case ManualURIResolver:
+		return manualURIResolver{}, nil
+	case TitleKabobURIResolver:
+		return titleKabobURIResolver{}, nil
+	case TitleSnakeURIResolver:
+		return titleSnakeURIResolver{}, nil
+	case TimestampURIResolver:
+		return timestampURIResolver{}, nil
+	case UUIDURIResolver:
+		return uuidURIResolver{}, nil
+	case NoURIResolver:
+		return noURIResolver{}, nil
 	default:
-		fmt.Printf("slug format \"%s\" unknown, falling back to \"timestamp\" format\n", format)
-		return fmt.Sprintf("%v", page.LastModified().UnixMilli())
+		return nil, fmt.Errorf("content-type spec.uri_resolver %q is not supported", name)
 	}
+}
 
+type manualURIResolver struct{}
+
+func (manualURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return contentTypePageURI(website, page, contenttype, suffix)
+	}
+	if page.Draft {
+		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+	}
+	return nil, fmt.Errorf("content-type requires page.slug property")
 }
-func (format ContentTypeSlugFormat) NormalizeSlug(s string) (slug string) {
-	slug = strings.ToLower(s)                                               // convert to lowercase
-	slug = strings.TrimSpace(slug)                                          // trim leading and trailing whitespace
-	slug = regexp.MustCompile(`[^a-zA-Z0-9\s]`).ReplaceAllString(slug, " ") // replace non-alphanumeric characters with spaces
-	slug = regexp.MustCompile(`\s+`).ReplaceAllString(slug, " ")            // replace consecurive whitespace characters with a single space
-	return slug
+
+type titleKabobURIResolver struct{}
+
+func (titleKabobURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return contentTypePageURI(website, page, contenttype, suffix)
+	}
+	if page.Title != "" {
+		return contentTypePageURI(website, page, contenttype, kabobURISuffix(page.Title))
+	}
+	if page.Draft {
+		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+	}
+	return nil, fmt.Errorf("content-type requires page.title property")
 }
-func (format ContentTypeSlugFormat) KabobCase(s string) (slug string) {
-	return strings.ReplaceAll(format.NormalizeSlug(s), " ", "-")
+
+type titleSnakeURIResolver struct{}
+
+func (titleSnakeURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return contentTypePageURI(website, page, contenttype, suffix)
+	}
+	if page.Title != "" {
+		return contentTypePageURI(website, page, contenttype, snakeURISuffix(page.Title))
+	}
+	if page.Draft {
+		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+	}
+	return nil, fmt.Errorf("content-type requires page.title property")
 }
-func (format ContentTypeSlugFormat) SnakeCase(s string) string {
-	return strings.ReplaceAll(format.NormalizeSlug(s), " ", "_")
+
+type timestampURIResolver struct{}
+
+func (timestampURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return contentTypePageURI(website, page, contenttype, suffix)
+	}
+	if page.Draft {
+		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+	}
+	return contentTypePageURI(website, page, contenttype, fmt.Sprintf("%v", page.LastModified().UnixMilli()))
+}
+
+type uuidURIResolver struct{}
+
+func (uuidURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return contentTypePageURI(website, page, contenttype, suffix)
+	}
+	if page.Draft {
+		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+	}
+	return contentTypePageURI(website, page, contenttype, strings.ToLower(uuid.New().String()))
+}
+
+type noURIResolver struct{}
+
+func (noURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
+		if err != nil {
+			return nil, err
+		}
+		return contentTypePageURI(website, page, contenttype, suffix)
+	}
+	return contentTypePageURI(website, page, contenttype, "")
+}
+
+func explicitPageURISuffix(page *Page) (string, bool, error) {
+	if page == nil || page.Slug == "" {
+		return "", false, nil
+	}
+	if strings.Contains(page.Slug, "/") {
+		return "", false, fmt.Errorf("page.slug cannot contain a slash (%s)", page.Slug)
+	}
+	return page.Slug, true, nil
+}
+
+func stableDraftURISuffix(page *Page, sourceURI *url.URL) string {
+	uri := sourceURI
+	if uri == nil && page != nil {
+		uri = page.URI
+	}
+	if uri != nil && uri.Path != "" {
+		dir := filepath.Base(filepath.Dir(uri.Path))
+		if strings.HasPrefix(dir, "draft-") {
+			return dir
+		}
+	}
+	return "draft-" + strings.ToLower(uuid.New().String())
+}
+
+func contentTypePageURI(website *Website, page *Page, contenttype *ContentType, suffix string) (*url.URL, error) {
+	if website == nil {
+		return nil, fmt.Errorf("page.uri resolution requires website")
+	}
+	if page == nil {
+		return nil, fmt.Errorf("page.uri resolution requires page")
+	}
+	if contenttype == nil {
+		return nil, fmt.Errorf("page.uri resolution requires content type")
+	}
+	renderedPath, err := renderContentTypePath(contenttype.Spec.Path, page)
+	if err != nil {
+		return nil, fmt.Errorf("content-type spec.path invalid: %w", err)
+	}
+	prefix, err := cleanRelativeURIPath(renderedPath)
+	if err != nil {
+		return nil, fmt.Errorf("content-type spec.path invalid: %w", err)
+	}
+	cleanSuffix, err := cleanRelativeURIPath(suffix)
+	if err != nil {
+		return nil, fmt.Errorf("page uri suffix invalid: %w", err)
+	}
+	filename, err := contentTypeIndexFilename(contenttype.Spec.Format)
+	if err != nil {
+		return nil, err
+	}
+	parts := []string{website.ContentDirPath()}
+	if prefix != "" {
+		parts = append(parts, prefix)
+	}
+	if cleanSuffix != "" {
+		parts = append(parts, cleanSuffix)
+	}
+	parts = append(parts, filename)
+	return &url.URL{Path: filepath.Join(parts...)}, nil
+}
+
+func renderContentTypePath(path string, page *Page) (string, error) {
+	if !strings.Contains(path, "${") {
+		return path, nil
+	}
+	date, err := contentTypePathDate(page)
+	if err != nil {
+		return "", err
+	}
+	return renderContentTypePathTemplate(path, date)
+}
+
+func renderContentTypePathTemplate(path string, date time.Time) (string, error) {
+	return renderTemplate(path, contentTypePathFuncMap(date))
+}
+
+func contentTypePathFuncMap(date time.Time) template.FuncMap {
+	return template.FuncMap{
+		"year":  func() string { return date.Format("2006") },
+		"month": func() string { return date.Format("01") },
+		"day":   func() string { return date.Format("02") },
+	}
+}
+
+func contentTypePathDate(page *Page) (time.Time, error) {
+	if page == nil {
+		return time.Time{}, fmt.Errorf("content-type path template requires page")
+	}
+	if page.CreatedAt == "" {
+		return time.Time{}, fmt.Errorf("content-type path template requires page.created_at")
+	}
+	date, err := time.Parse(time.RFC3339, page.CreatedAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("content-type path template requires valid page.created_at: %w", err)
+	}
+	return date, nil
+}
+func contentTypeIndexFilename(format string) (string, error) {
+	switch format {
+	case "json":
+		return "index.json", nil
+	case "yaml", "yml":
+		return "index.yaml", nil
+	case "markdown", "md":
+		return "index.md", nil
+	default:
+		return "", fmt.Errorf("unsupported content type format: %s", format)
+	}
+}
+
+func cleanRelativeURIPath(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	cleaned := filepath.Clean(filepath.FromSlash(strings.Trim(value, "/")))
+	if cleaned == "." {
+		return "", nil
+	}
+	if filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe relative path %q", value)
+	}
+	return cleaned, nil
+}
+
+func normalizeURISuffix(s string) string {
+	s = strings.ToLower(s)
+	s = strings.TrimSpace(s)
+	s = regexp.MustCompile(`[^a-zA-Z0-9\s]`).ReplaceAllString(s, " ")
+	return regexp.MustCompile(`\s+`).ReplaceAllString(s, " ")
+}
+
+func kabobURISuffix(s string) string {
+	return strings.ReplaceAll(normalizeURISuffix(s), " ", "-")
+}
+
+func snakeURISuffix(s string) string {
+	return strings.ReplaceAll(normalizeURISuffix(s), " ", "_")
 }
 
 type ContentTypeRequirements struct {

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed content type URI resolution from `spec.auto_slug` to `spec.uri_resolver`, with named internal URI resolvers that own full `page.URI` resolution.
+* Added strict `spec.path` templating with `${`/`}` delimiters and only zero-argument `year`, `month`, and `day` functions based on `page.created_at`.
+* Changed `DefaultContentType` to use the `-` content path, timestamp URI resolver, and Markdown format as the nil-content-type fallback for new page creation.
+* Changed `ResolvePageURI` and page URI resolvers to accept `sourceURI` directly instead of carrying a `PageURIResolution` wrapper struct.
+* Changed content type validation to require `spec.format` and `spec.uri_resolver`, reject unsupported formats, and validate content type paths as safe relative URI paths.
+* Changed `UpdatePage` so nil or empty content types perform an in-place auto update using the source file format instead of falling back to `DefaultContentType` URI resolution.
+* Fixed content type application so `spec.template` data is treated as defaults and page template data overrides matching values.
+
 ## v0.31.1 (2026-05-21)
 
 * Added `ContentType.Ready(page)` for draft-agnostic content type requirement checks, while keeping `ContentType.Validate(page)` as the draft-skipping publish compatibility wrapper.

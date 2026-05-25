@@ -556,6 +556,9 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 
 	// content-type
 	contenttype = pageContentType(contenttype)
+	if err = contenttype.Spec.Validate(); err != nil {
+		return err
+	}
 	if !page.Draft {
 		if err = contenttype.Validate(page); err != nil {
 			return err
@@ -564,7 +567,7 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	if err = contenttype.Apply(website, page); err != nil {
 		return err
 	}
-	if page.URI, err = ResolvePageURI(website, page, contenttype); err != nil {
+	if page.URI, err = ResolvePageURI(website, page, contenttype, nil); err != nil {
 		return err
 	}
 	page.ResolvePath(website)
@@ -577,7 +580,8 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 }
 
 // UpdatePage updates an existing persisted page. The input page.URI identifies
-// the current source file. The destination path is always recomputed from the
+// the current source file. Empty content types write in place using the source
+// file format. Real content types recompute the destination path from the
 // submitted page and content type, allowing content type, slug, and format
 // changes to rehome the page payload without touching nested page directories.
 func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err error) {
@@ -600,7 +604,6 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	if sourceInfo.IsDir() || !sourceInfo.Mode().IsRegular() {
 		return fmt.Errorf("page.update source must be a regular file: %s", sourcePath)
 	}
-
 	// timestamp
 	timestamp := time.Now().Format(time.RFC3339)
 	if len(page.CreatedAt) == 0 {
@@ -614,8 +617,21 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	}
 	page.UpdatedAt = timestamp
 
+	if contenttype.IsEmpty() {
+		format, err := pageUpdateSourceFormat(sourcePath)
+		if err != nil {
+			return err
+		}
+		page.URI = &sourceURI
+		page.ResolvePath(website)
+		return WritePage(website, page, format)
+	}
+
 	// content-type
 	contenttype = pageContentType(contenttype)
+	if err = contenttype.Spec.Validate(); err != nil {
+		return err
+	}
 	if !page.Draft {
 		if err = contenttype.Validate(page); err != nil {
 			return err
@@ -624,7 +640,7 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	if err = contenttype.Apply(website, page); err != nil {
 		return err
 	}
-	if page.URI, err = ResolvePageURI(website, page, contenttype); err != nil {
+	if page.URI, err = ResolvePageURI(website, page, contenttype, &sourceURI); err != nil {
 		return err
 	}
 	page.ResolvePath(website)
@@ -675,6 +691,19 @@ func pageContentType(contenttype *ContentType) *ContentType {
 		return &DefaultContentType
 	}
 	return contenttype
+}
+
+func pageUpdateSourceFormat(sourcePath string) (string, error) {
+	switch strings.ToLower(filepath.Ext(sourcePath)) {
+	case ".md", ".markdown":
+		return "markdown", nil
+	case ".json":
+		return "json", nil
+	case ".yaml", ".yml":
+		return "yaml", nil
+	default:
+		return "", fmt.Errorf("page.update auto content type does not support source file extension %q: %s", filepath.Ext(sourcePath), sourcePath)
+	}
 }
 
 func assertPageCreateDestinationAvailable(page *Page) error {

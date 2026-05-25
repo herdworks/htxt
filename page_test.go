@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,17 +27,24 @@ func TestPagesFilterDraft(t *testing.T) {
 	}
 }
 
-func TestContentTypePageURIUsesContentDirForDraftPages(t *testing.T) {
+func TestResolvePageURIUsesContentDirForDraftPages(t *testing.T) {
 	website, _ := testWebsite(t)
-	contenttype := &ContentType{Spec: ContentTypeSpecification{
-		Format: "markdown",
-		Path:   "posts",
+	contenttype := &ContentType{Metadata: ContentTypeMetadata{Name: "Test"}, Spec: ContentTypeSpecification{
+		Layout:      "default",
+		URIResolver: ManualURIResolver,
+		Format:      "markdown",
+		Path:        "posts",
 	}}
+	page := &Page{Draft: true, Slug: "draft-post"}
 
-	got := contenttype.PageURIForSlug(website, "draft-post").Path
+	uri, err := ResolvePageURI(website, page, contenttype, nil)
+	if err != nil {
+		t.Fatalf("ResolvePageURI() error = %v", err)
+	}
+	got := uri.Path
 	want := filepath.Join(website.ContentDirPath(), "posts", "draft-post", "index.md")
 	if got != want {
-		t.Fatalf("PageURIForSlug() = %q, want %q", got, want)
+		t.Fatalf("ResolvePageURI() = %q, want %q", got, want)
 	}
 }
 
@@ -192,16 +200,17 @@ func testPageContentType(format string, contentPath string) *ContentType {
 	return &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Test"},
 		Spec: ContentTypeSpecification{
-			Layout: "default",
-			Format: format,
-			Path:   contentPath,
+			Layout:      "default",
+			URIResolver: TimestampURIResolver,
+			Format:      format,
+			Path:        contentPath,
 		},
 	}
 }
 
-func testPageContentTypeWithAutoSlug(format string, contentPath string, autoSlug ContentTypeSlugFormat) *ContentType {
+func testPageContentTypeWithURIResolver(format string, contentPath string, resolver PageURIResolverName) *ContentType {
 	contenttype := testPageContentType(format, contentPath)
-	contenttype.Spec.AutoSlug = autoSlug
+	contenttype.Spec.URIResolver = resolver
 	return contenttype
 }
 
@@ -244,9 +253,117 @@ func TestCreatePageFailsIfResolvedPathExists(t *testing.T) {
 	}
 }
 
+func TestCreatePageWithNilContentTypeUsesDefaultTimestampPath(t *testing.T) {
+	website, _ := testWebsite(t)
+	page := &Page{Content: "default content"}
+
+	if err := CreatePage(website, page, nil); err != nil {
+		t.Fatalf("CreatePage() error = %v", err)
+	}
+	if page.URI == nil {
+		t.Fatal("page.URI is nil")
+	}
+	pageDir := filepath.Dir(page.URI.Path)
+	timestampSegment := filepath.Base(pageDir)
+	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "-") {
+		t.Fatalf("page.URI = %s, want under default '-' content path", page.URI.Path)
+	}
+	if _, err := strconv.ParseInt(timestampSegment, 10, 64); err != nil {
+		t.Fatalf("default URI segment = %q, want millisecond timestamp", timestampSegment)
+	}
+	if filepath.Base(page.URI.Path) != "index.md" {
+		t.Fatalf("page.URI = %s, want markdown index file", page.URI.Path)
+	}
+	if page.Path != "/-/"+timestampSegment+"/" {
+		t.Fatalf("page.Path = %q, want /-/%s/", page.Path, timestampSegment)
+	}
+	bytes, err := os.ReadFile(page.URI.Path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(bytes), "default content") {
+		t.Fatalf("default page contents = %q, want page content", string(bytes))
+	}
+}
+
+func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver PageURIResolverName
+		wantSlug string
+	}{
+		{name: "title kabob", resolver: TitleKabobURIResolver, wantSlug: "hello-world"},
+		{name: "title snake", resolver: TitleSnakeURIResolver, wantSlug: "hello_world"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			website, _ := testWebsite(t)
+			contenttype := &ContentType{
+				Metadata: ContentTypeMetadata{Name: "Blog"},
+				Spec: ContentTypeSpecification{
+					Layout:      "default",
+					Path:        "/blog/${year}/${month}/${day}/",
+					URIResolver: tc.resolver,
+					Format:      "markdown",
+				},
+			}
+			page := &Page{
+				CreatedAt: "2026-05-24T13:30:00-07:00",
+				Title:     "Hello World",
+				Content:   "templated content type path",
+			}
+
+			if err := CreatePage(website, page, contenttype); err != nil {
+				t.Fatalf("CreatePage() error = %v", err)
+			}
+			wantPath := filepath.Join(website.ContentDirPath(), "blog", "2026", "05", "24", tc.wantSlug, "index.md")
+			if page.URI == nil || page.URI.Path != wantPath {
+				t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+			}
+			if page.Path != "/blog/2026/05/24/"+tc.wantSlug+"/" {
+				t.Fatalf("page.Path = %q, want templated date path", page.Path)
+			}
+		})
+	}
+}
+
+func TestUpdatePageWithTemplatedContentTypePathUsesExistingCreatedAt(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "drafts", "working", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := &ContentType{
+		Metadata: ContentTypeMetadata{Name: "Blog"},
+		Spec: ContentTypeSpecification{
+			Layout:      "default",
+			Path:        "/blog/${year}/${month}/${day}/",
+			URIResolver: TitleKabobURIResolver,
+			Format:      "markdown",
+		},
+	}
+	page := &Page{URI: &url.URL{Path: sourcePath}, Title: "Published Draft", Content: "published"}
+
+	if err := UpdatePage(website, page, contenttype); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	destinationPath := filepath.Join(website.ContentDirPath(), "blog", "2026", "05", "20", "published-draft", "index.md")
+	if page.URI == nil || page.URI.Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	}
+	if page.Path != "/blog/2026/05/20/published-draft/" {
+		t.Fatalf("page.Path = %q, want existing created_at date path", page.Path)
+	}
+	if _, err := os.Stat(destinationPath); err != nil {
+		t.Fatalf("destination page missing: %v", err)
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("source page still exists or unexpected error = %v", err)
+	}
+}
+
 func TestCreateDraftPageWithEmptySlugUsesTemporaryURI(t *testing.T) {
 	website, _ := testWebsite(t)
-	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
 	page := &Page{Draft: true, Content: "draft content"}
 
 	if err := CreatePage(website, page, contenttype); err != nil {
@@ -280,7 +397,7 @@ func TestCreateDraftPageWithEmptySlugUsesTemporaryURI(t *testing.T) {
 
 func TestCreateDraftPageWithUserSlugPreservesSlug(t *testing.T) {
 	website, _ := testWebsite(t)
-	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
 	page := &Page{Draft: true, Slug: "custom-draft", Content: "draft content"}
 
 	if err := CreatePage(website, page, contenttype); err != nil {
@@ -316,7 +433,7 @@ func TestUpdateDraftPageWithEmptySlugRehomesTemporaryURIForContentTypeChange(t *
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
-	contenttype := testPageContentTypeWithAutoSlug("json", "notes", TitleKabobSlug)
+	contenttype := testPageContentTypeWithURIResolver("json", "notes", TitleKabobURIResolver)
 	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Content: "updated"}
 
 	if err := UpdatePage(website, page, contenttype); err != nil {
@@ -351,7 +468,7 @@ func TestUpdateDraftPageWithTitleRehomesToTitleSlug(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
-	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
 	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Title: "Final Draft", Content: "updated"}
 
 	if err := UpdatePage(website, page, contenttype); err != nil {
@@ -380,7 +497,7 @@ func TestPublishUpdateFromTemporaryDraftToTitleSlug(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
-	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", TitleKabobSlug)
+	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
 	page := &Page{URI: &url.URL{Path: sourcePath}, Title: "Published Draft", Content: "published"}
 
 	if err := UpdatePage(website, page, contenttype); err != nil {
@@ -401,10 +518,10 @@ func TestPublishUpdateFromTemporaryDraftToTitleSlug(t *testing.T) {
 func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 	tests := []struct {
 		name     string
-		autoSlug ContentTypeSlugFormat
+		resolver PageURIResolverName
 	}{
-		{name: "title kabob", autoSlug: TitleKabobSlug},
-		{name: "title snake", autoSlug: TitleSnakeSlug},
+		{name: "title kabob", resolver: TitleKabobURIResolver},
+		{name: "title snake", resolver: TitleSnakeURIResolver},
 	}
 
 	for _, tc := range tests {
@@ -412,7 +529,7 @@ func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 			website, _ := testWebsite(t)
 			sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 			writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
-			contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", tc.autoSlug)
+			contenttype := testPageContentTypeWithURIResolver("markdown", "posts", tc.resolver)
 			page := &Page{URI: &url.URL{Path: sourcePath}, Content: "published"}
 
 			err := UpdatePage(website, page, contenttype)
@@ -426,12 +543,12 @@ func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 	}
 }
 
-func TestPublishUpdateForManualSlugValidation(t *testing.T) {
+func TestPublishUpdateForManualURIResolverValidation(t *testing.T) {
 	t.Run("fails without slug", func(t *testing.T) {
 		website, _ := testWebsite(t)
 		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
-		contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", ManualSlug)
+		contenttype := testPageContentTypeWithURIResolver("markdown", "posts", ManualURIResolver)
 		page := &Page{URI: &url.URL{Path: sourcePath}, Content: "published"}
 
 		err := UpdatePage(website, page, contenttype)
@@ -447,7 +564,7 @@ func TestPublishUpdateForManualSlugValidation(t *testing.T) {
 		website, _ := testWebsite(t)
 		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
-		contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", ManualSlug)
+		contenttype := testPageContentTypeWithURIResolver("markdown", "posts", ManualURIResolver)
 		page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "manual-page", Content: "published"}
 
 		if err := UpdatePage(website, page, contenttype); err != nil {
@@ -474,7 +591,7 @@ func TestUpdatePageSameDestinationWritesInPlace(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "same", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nslug: same\n---\n\nold")
-	contenttype := testPageContentTypeWithAutoSlug("markdown", "posts", ManualSlug)
+	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", ManualURIResolver)
 	page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "same", Content: "updated in place"}
 
 	if err := UpdatePage(website, page, contenttype); err != nil {
@@ -492,6 +609,115 @@ func TestUpdatePageSameDestinationWritesInPlace(t *testing.T) {
 	}
 	if !strings.Contains(string(bytes), "updated in place") {
 		t.Fatalf("updated page contents = %q, want updated content", string(bytes))
+	}
+}
+
+func TestUpdatePageAutoContentTypeWritesMarkdownInPlace(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\n---\n\nold")
+	emptyContentType := &ContentType{Spec: ContentTypeSpecification{Layout: "default", URIResolver: TimestampURIResolver, Format: "markdown"}}
+	page := &Page{
+		URI:       &url.URL{Path: sourcePath},
+		Slug:      "renamed",
+		LayoutRef: "default",
+		Title:     "Renamed",
+		Content:   "updated in place",
+	}
+
+	if err := UpdatePage(website, page, emptyContentType); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	if page.URI == nil || page.URI.Path != sourcePath {
+		t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+	}
+	if page.Path != "/posts/draft-fixed/" {
+		t.Fatalf("page.Path = %q, want /posts/draft-fixed/", page.Path)
+	}
+	if page.CreatedAt != "2026-05-20T00:00:00Z" {
+		t.Fatalf("page.CreatedAt = %q, want preserved source created_at", page.CreatedAt)
+	}
+	bytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	contents := string(bytes)
+	if !strings.Contains(contents, "updated in place") {
+		t.Fatalf("updated page contents = %q, want updated content", contents)
+	}
+	if _, err := os.Stat(filepath.Join(website.ContentDirPath(), "renamed", "index.md")); !os.IsNotExist(err) {
+		t.Fatalf("auto update rehomed by slug or unexpected error = %v", err)
+	}
+}
+
+func TestUpdatePageAutoContentTypeWritesStructuredFormatsInPlace(t *testing.T) {
+	tests := []struct {
+		name        string
+		relPath     string
+		oldContents string
+		want        string
+	}{
+		{
+			name:        "json",
+			relPath:     filepath.Join("notes", "same", "index.json"),
+			oldContents: `{"created_at":"2026-05-20T00:00:00Z","layout":"default","content":"old"}`,
+			want:        `"content":"updated json"`,
+		},
+		{
+			name:        "yaml",
+			relPath:     filepath.Join("notes", "same", "index.yaml"),
+			oldContents: "created_at: 2026-05-20T00:00:00Z\nlayout: default\ncontent: old\n",
+			want:        "content: updated yaml",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			website, _ := testWebsite(t)
+			sourcePath := filepath.Join(website.ContentDirPath(), tc.relPath)
+			writePageTestFile(t, sourcePath, tc.oldContents)
+			page := &Page{
+				URI:       &url.URL{Path: sourcePath},
+				Slug:      "renamed",
+				LayoutRef: "default",
+				Content:   "updated " + tc.name,
+			}
+
+			if err := UpdatePage(website, page, nil); err != nil {
+				t.Fatalf("UpdatePage() error = %v", err)
+			}
+			if page.URI == nil || page.URI.Path != sourcePath {
+				t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+			}
+			if page.Path != "/notes/same/" {
+				t.Fatalf("page.Path = %q, want /notes/same/", page.Path)
+			}
+			if page.CreatedAt != "2026-05-20T00:00:00Z" {
+				t.Fatalf("page.CreatedAt = %q, want preserved source created_at", page.CreatedAt)
+			}
+			bytes, err := os.ReadFile(sourcePath)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			if !strings.Contains(string(bytes), tc.want) {
+				t.Fatalf("updated page contents = %q, want %q", string(bytes), tc.want)
+			}
+		})
+	}
+}
+
+func TestUpdatePageAutoContentTypeFailsForUnsupportedSourceFormat(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "notes", "same", "index.txt")
+	writePageTestFile(t, sourcePath, "old")
+	page := &Page{URI: &url.URL{Path: sourcePath}, CreatedAt: "2026-05-20T00:00:00Z", Content: "updated"}
+
+	err := UpdatePage(website, page, nil)
+	if err == nil || !strings.Contains(err.Error(), "auto content type does not support source file extension") {
+		t.Fatalf("UpdatePage() error = %v, want unsupported extension", err)
+	}
+	if _, statErr := os.Stat(sourcePath); statErr != nil {
+		t.Fatalf("source page should remain after unsupported extension: %v", statErr)
 	}
 }
 
