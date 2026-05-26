@@ -26,6 +26,8 @@ var (
 	CustomContentTypeMetadata      = ContentTypeMetadata{Name: "custom", Description: "Custom content type."}
 	CustomContentTypeSpecification = ContentTypeSpecification{Layout: "default", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
 	CustomContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: CustomContentTypeMetadata, Spec: CustomContentTypeSpecification}
+
+	draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
 )
 
 type ContentType struct {
@@ -451,11 +453,19 @@ func stableDraftURISuffix(page *Page, sourceURI *url.URL) string {
 	}
 	if uri != nil && uri.Path != "" {
 		dir := filepath.Base(filepath.Dir(uri.Path))
-		if strings.HasPrefix(dir, "draft-") {
+		if isStableDraftURISuffix(dir) {
 			return dir
 		}
 	}
-	return "draft-" + strings.ToLower(uuid.New().String())
+	return timestampDraftURISuffix(time.Now())
+}
+
+func isStableDraftURISuffix(suffix string) bool {
+	return strings.HasPrefix(suffix, "draft-") || draftTimestampURISuffixPattern.MatchString(suffix)
+}
+
+func timestampDraftURISuffix(t time.Time) string {
+	return fmt.Sprintf("d%011x", t.UnixMilli())
 }
 
 func contentTypePageURI(website *Website, page *Page, contenttype *ContentType, suffix string) (*url.URL, error) {
