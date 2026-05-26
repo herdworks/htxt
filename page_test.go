@@ -7,9 +7,24 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/herdworks/hypertexting-go/href"
 )
+
+func assertTimestampDraftSegment(t *testing.T, draftSegment string) {
+	t.Helper()
+	if len(draftSegment) != 12 || !strings.HasPrefix(draftSegment, "d") {
+		t.Fatalf("draft URI segment = %q, want d followed by 11 hex digits", draftSegment)
+	}
+	hex := draftSegment[1:]
+	if strings.ToLower(hex) != hex {
+		t.Fatalf("draft URI segment = %q, want lowercase hex", draftSegment)
+	}
+	if _, err := strconv.ParseInt(hex, 16, 64); err != nil {
+		t.Fatalf("draft URI segment = %q, want valid hex: %v", draftSegment, err)
+	}
+}
 
 func TestPagesFilterDraft(t *testing.T) {
 	published := &Page{Title: "Published"}
@@ -380,9 +395,7 @@ func TestCreateDraftPageWithEmptySlugUsesTemporaryURI(t *testing.T) {
 	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "posts") {
 		t.Fatalf("page.URI = %s, want under posts draft directory", page.URI.Path)
 	}
-	if !strings.HasPrefix(draftSegment, "draft-") {
-		t.Fatalf("draft URI segment = %q, want draft-*", draftSegment)
-	}
+	assertTimestampDraftSegment(t, draftSegment)
 	if page.Path != "/posts/"+draftSegment+"/" {
 		t.Fatalf("page.Path = %q, want computed draft path", page.Path)
 	}
@@ -429,6 +442,13 @@ func TestCreateDraftPageWithUserSlugPreservesSlug(t *testing.T) {
 	}
 }
 
+func TestTimestampDraftURISuffixUsesUnixMillisecondsHex(t *testing.T) {
+	got := timestampDraftURISuffix(time.UnixMilli(0x19ac0ffee0))
+	if got != "d019ac0ffee0" {
+		t.Fatalf("timestampDraftURISuffix() = %q, want d019ac0ffee0", got)
+	}
+}
+
 func TestUpdateDraftPageWithEmptySlugRehomesTemporaryURIForContentTypeChange(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
@@ -461,6 +481,28 @@ func TestUpdateDraftPageWithEmptySlugRehomesTemporaryURIForContentTypeChange(t *
 	}
 	if strings.Contains(string(bytes), "\"slug\"") {
 		t.Fatalf("draft page serialized temporary slug:\n%s", string(bytes))
+	}
+}
+
+func TestUpdateDraftPageWithEmptySlugPreservesTimestampTemporaryURI(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "d019ac0ffee0", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := testPageContentTypeWithURIResolver("json", "notes", TitleKabobURIResolver)
+	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Content: "updated"}
+
+	if err := UpdatePage(website, page, contenttype); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	destinationPath := filepath.Join(website.ContentDirPath(), "notes", "d019ac0ffee0", "index.json")
+	if page.URI == nil || page.URI.Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	}
+	if page.Path != "/notes/d019ac0ffee0/" {
+		t.Fatalf("page.Path = %q, want /notes/d019ac0ffee0/", page.Path)
+	}
+	if _, err := os.Stat(destinationPath); err != nil {
+		t.Fatalf("destination page missing: %v", err)
 	}
 }
 
