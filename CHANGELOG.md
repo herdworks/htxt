@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Updated `github.com/herdworks/hyperproviders-go` to version 0.21.0 for new files secret provider and git ssh known_hosts support
+
 ## v0.32.1 (2026-05-27)
 
 * Changed draft URIs from UUID to shorter timestamp based hex codes 
