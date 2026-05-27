@@ -106,6 +106,56 @@ func TestPageResolvePath(t *testing.T) {
 	}
 }
 
+func TestPageCanonicalURL(t *testing.T) {
+	website, _ := testWebsite(t)
+	page := &Page{Path: "/about/"}
+
+	canonicalURL, err := page.CanonicalURL(website)
+	if err != nil {
+		t.Fatalf("CanonicalURL() error = %v", err)
+	}
+	if got, want := canonicalURL.String(), "https://example.com/about/"; got != want {
+		t.Fatalf("CanonicalURL() = %q, want %q", got, want)
+	}
+}
+
+func TestPageResolveTemplateDataSetsCanonicalURL(t *testing.T) {
+	website, _ := testWebsite(t)
+	page := &Page{Path: "/about/"}
+
+	page.ResolveTemplateData(website)
+	if got, want := page.TemplateData.Get("canonical_url"), "https://example.com/about/"; got != want {
+		t.Fatalf("canonical_url = %q, want %q", got, want)
+	}
+}
+
+func TestPageAtomEntryUsesCanonicalURLForIDAndRelatedLink(t *testing.T) {
+	website, _ := testWebsite(t)
+	page := Page{
+		Path:     "/about/",
+		Redirect: "https://elsewhere.example/post/",
+	}
+
+	entry := page.AtomEntry(website)
+	if entry == nil {
+		t.Fatal("AtomEntry() returned nil")
+	}
+	if got, want := entry.ID, "https://example.com/about/"; got != want {
+		t.Fatalf("entry ID = %q, want %q", got, want)
+	}
+
+	links := map[string]string{}
+	for _, link := range entry.Links {
+		links[link.Rel] = link.Href
+	}
+	if got, want := links["alternate"], "https://elsewhere.example/post/"; got != want {
+		t.Fatalf("alternate link = %q, want %q", got, want)
+	}
+	if got, want := links["related"], "https://example.com/about/"; got != want {
+		t.Fatalf("related link = %q, want %q", got, want)
+	}
+}
+
 func TestLoadPageResolvesUglyURLPathAfterParsing(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "404", "index.md")

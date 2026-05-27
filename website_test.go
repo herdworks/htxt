@@ -78,6 +78,32 @@ func TestWebsite_DeploymentProviders(t *testing.T) {
 	}
 }
 
+func TestWebsiteResolveHrefUsesURLReferenceSemantics(t *testing.T) {
+	website := &Website{BaseURL: "https://example.com/blog/"}
+	tests := []struct {
+		name string
+		href string
+		want string
+	}{
+		{name: "absolute", href: "https://elsewhere.example/post/?q=1#top", want: "https://elsewhere.example/post/?q=1#top"},
+		{name: "protocol relative", href: "//cdn.example/avatar.png", want: "https://cdn.example/avatar.png"},
+		{name: "root relative", href: "/about/?q=1#top", want: "https://example.com/about/?q=1#top"},
+		{name: "path relative", href: "assets/avatar.png?q=1#top", want: "https://example.com/blog/assets/avatar.png?q=1#top"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := website.ResolveHref(test.href)
+			if err != nil {
+				t.Fatalf("ResolveHref() error = %v", err)
+			}
+			if got.String() != test.want {
+				t.Fatalf("ResolveHref() = %q, want %q", got.String(), test.want)
+			}
+		})
+	}
+}
+
 func TestWebsiteDirectoryGettersDoNotMutateConfig(t *testing.T) {
 	website, _ := testWebsite(t)
 	root := website.RootDir()

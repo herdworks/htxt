@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `Page.CanonicalURL(website)` and changed `page.canonical_url`, Atom entry IDs, and Atom `related` links to use canonical page URLs, preserving directory-style trailing slashes.
+* Changed `Website.ResolveHref` to use URL reference resolution semantics instead of filesystem path joining, preserving queries/fragments and supporting protocol-relative hrefs.
+
 ## v0.31.2 (2026-05-25)
 
 * Changed content type URI resolution from `spec.auto_slug` to `spec.uri_resolver`, with named internal URI resolvers that own full `page.URI` resolution.

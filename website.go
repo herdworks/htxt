@@ -373,12 +373,7 @@ func (website *Website) ResolveHref(href string) (*url.URL, error) {
 	if err != nil {
 		return nil, err
 	}
-	if u.IsAbs() {
-		return u, nil
-	}
-	link := website.URL()
-	link.Path = filepath.Join(link.Path, u.Path)
-	return link, nil
+	return website.URL().ResolveReference(u), nil
 }
 
 // Website.CreatePackage()

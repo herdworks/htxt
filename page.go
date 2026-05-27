@@ -137,9 +137,8 @@ func (page *Page) ApplyComputedProperties(website *Website) {
 	if len(page.Path) > 0 {
 		page.TemplateData.Set("path", page.Path)
 	}
-	if len(page.Path) > 0 {
-		path, _ := url.Parse(page.Path)
-		page.TemplateData.Set("canonical_url", website.URL().ResolveReference(path).String())
+	if canonicalURL, err := page.CanonicalURL(website); err == nil {
+		page.TemplateData.Set("canonical_url", canonicalURL.String())
 	}
 	if len(page.Redirect) > 0 {
 		page.TemplateData.Set("refresh", fmt.Sprintf("%d; url=%s", website.Config.RefreshInterval, page.Redirect))
@@ -222,6 +221,17 @@ func (page *Page) ResolveTemplateData(website *Website) {
 		page.TemplateData.Set("more", page.More)
 	}
 	page.ApplyComputedProperties(website)
+}
+
+func (page *Page) CanonicalURL(website *Website) (*url.URL, error) {
+	if page == nil  || len(page.Path) == 0 || website == nil {
+		return nil, fmt.Errorf("page canonical URL requires page for page.path and website for website.URL()")
+	}
+	path, err := url.Parse(page.Path)
+	if err != nil {
+		return nil, err
+	}
+	return website.URL().ResolveReference(path), nil
 }
 
 // Pages.LastModified()
@@ -422,10 +432,14 @@ func (page *Page) AssetNames() (names []string) {
 
 func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
 	var atomLinks []atom.Link
+	var atomIDURL *url.URL
 	var atomAuthor *atom.Author
 	var atomContributors []*atom.Author
 	var err error
 	if atomLinks, err = page.AtomEntryLinks(website); err != nil {
+		return nil
+	}
+	if atomIDURL, err = page.CanonicalURL(website); err != nil {
 		return nil
 	}
 	if atomAuthor, err = page.AtomEntryAuthor(website); err != nil {
@@ -436,7 +450,7 @@ func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
 	}
 	return &atom.Entry{
 		Title:        page.AtomEntryTitle(),
-		ID:           atomLinks[len(atomLinks)-1].Href,
+		ID:           atomIDURL.String(),
 		Links:        atomLinks,
 		Published:    atom.TimeStamp(page.CreatedAt),
 		Updated:      atom.TimeStamp(page.UpdatedAt),
@@ -453,7 +467,7 @@ func (page *Page) AtomEntryLinks(website *Website) (atomLinks []atom.Link, err e
 	if atomURL, err = website.ResolveHref(page.AtomEntryLink()); err != nil {
 		return nil, err
 	}
-	if atomRelatedURL, err = website.ResolveHref(page.Path); err != nil {
+	if atomRelatedURL, err = page.CanonicalURL(website); err != nil {
 		return nil, err
 	}
 	return []atom.Link{
