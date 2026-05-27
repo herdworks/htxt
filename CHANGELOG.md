@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.32.1 (2026-05-27)
+
+* Changed draft URIs from UUID to shorter timestamp based hex codes 
+
 ## v0.32.0 (2026-05-27)
 
 * Added `Page.CanonicalURL(website)` and changed `page.canonical_url`, Atom entry IDs, and Atom `related` links to use canonical page URLs, preserving directory-style trailing slashes.
