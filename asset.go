@@ -45,7 +45,7 @@ func (assets Assets) FilterSource(source AssetSource) Assets {
 	return filtered
 }
 
-func (asset Asset) BuildPath(build *HyperBuild) (string, error) {
+func (asset Asset) BuildPath(build *Build) (string, error) {
 	return build.Website.AssetBuildPath(build, asset.RelPath)
 }
 

@@ -3,6 +3,7 @@ package hypertexting
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -248,7 +249,7 @@ func namespaceSegmentsFromDirRelPath(rel string) ([]string, error) {
 // loadStaticData walks dataDir for *.yaml, *.json, *.opml (etc.) files and
 // installs each parsed TemplateData under the keypath derived from its
 // filename. Subdirectories nest.
-func loadStaticData(website *Website, dataDir string, config *hypertemplates.HyperMarkConfig, verbose bool) (hypertemplates.TemplateData, error) {
+func loadStaticData(website *Website, dataDir string, config *hypertemplates.HyperMarkConfig, verbose bool, w io.Writer) (hypertemplates.TemplateData, error) {
 	out := hypertemplates.TemplateData{}
 
 	if err := scanNamespaceTree(dataDir); err != nil {
@@ -281,7 +282,7 @@ func loadStaticData(website *Website, dataDir string, config *hypertemplates.Hyp
 		claimants[key] = p
 
 		if verbose && website != nil {
-			fmt.Printf("data \"%s\" loading\n", website.RelativePath(absPath))
+			fmt.Fprintf(w, "data \"%s\" loading\n", website.RelativePath(absPath))
 		}
 		parsed, err := hypertemplates.ParseTemplateDataFile(absPath, config)
 		if err != nil {
@@ -304,7 +305,7 @@ func loadStaticData(website *Website, dataDir string, config *hypertemplates.Hyp
 // have been discovered/loaded — site.pages, in particular, is what gives
 // computed scripts their primary purpose. The build's Execute method
 // invokes this between Pages.ResolveTemplateData and WritePages.
-func generateComputedData(build *HyperBuild, verbose bool) error {
+func generateComputedData(build *Build, verbose bool, w io.Writer) error {
 	if build.Website == nil {
 		return nil
 	}
@@ -332,7 +333,7 @@ func generateComputedData(build *HyperBuild, verbose bool) error {
 	}
 
 	// Snapshot the bindings once. site.pages and feed/tag pages are populated
-	// before this runs (see HyperBuild.Execute).
+	// before this runs (see Build.Execute).
 	bindings := map[string]any(build.Context())
 
 	for _, p := range paths {
@@ -345,7 +346,7 @@ func generateComputedData(build *HyperBuild, verbose bool) error {
 			return fmt.Errorf("computed data %q: %w", p, err)
 		}
 		if verbose {
-			fmt.Printf("computed data \"%s\" loading\n", build.Website.RelativePath(absPath))
+			fmt.Fprintf(w, "computed data \"%s\" loading\n", build.Website.RelativePath(absPath))
 		}
 		plugin, err := data.LoadPlugin(absPath, bindings)
 		if err != nil {

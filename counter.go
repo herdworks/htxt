@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 )
@@ -25,4 +26,34 @@ func (c *Counter) Increment(value int, keys ...string) {
 func (c *Counter) Reset() {
 	c.Counters = map[string]int{}
 	c.Lock = sync.RWMutex{}
+}
+
+func (c *Counter) Map() map[string]int {
+	if c == nil {
+		return nil
+	}
+	c.Lock.RLock()
+	defer c.Lock.RUnlock()
+	if len(c.Counters) == 0 {
+		return nil
+	}
+	values := make(map[string]int, len(c.Counters))
+	for key, value := range c.Counters {
+		values[key] = value
+	}
+	return values
+}
+
+func (c Counter) MarshalJSON() ([]byte, error) {
+	return json.Marshal((&c).Map())
+}
+
+func (c *Counter) UnmarshalJSON(data []byte) error {
+	var values map[string]int
+	if err := json.Unmarshal(data, &values); err != nil {
+		return err
+	}
+	c.Counters = values
+	c.Lock = sync.RWMutex{}
+	return nil
 }

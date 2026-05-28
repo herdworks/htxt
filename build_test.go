@@ -2,6 +2,8 @@ package hypertexting
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -38,6 +40,33 @@ config:
 	return buildSelectionFixture{root: root, sitePath: filepath.Join(root, "site.yaml"), pages: pages}
 }
 
+type buildExecutionFixture struct {
+	root      string
+	sitePath  string
+	buildPath string
+}
+
+func newBuildExecutionFixture(t *testing.T) buildExecutionFixture {
+	t.Helper()
+	root := t.TempDir()
+	writeBuildSelectionFile(t, filepath.Join(root, "site.yaml"), `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+`)
+	writeBuildSelectionFile(t, filepath.Join(root, "theme.json"), "{}")
+	writeBuildSelectionFile(t, filepath.Join(root, "content", "index.html"), "<h1>Home</h1>")
+	writeBuildSelectionFile(t, filepath.Join(root, "custom-content", "index.html"), "<h1>Custom</h1>")
+	return buildExecutionFixture{
+		root:      root,
+		sitePath:  filepath.Join(root, "site.yaml"),
+		buildPath: filepath.Join(root, "builds", "test"),
+	}
+}
+
 func writeBuildSelectionFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -48,8 +77,8 @@ func writeBuildSelectionFile(t *testing.T, path string, content string) {
 	}
 }
 
-func (fixture buildSelectionFixture) build(pages *Pages, incremental bool) *HyperBuild {
-	return &HyperBuild{
+func (fixture buildSelectionFixture) build(pages *Pages, incremental bool) *Build {
+	return &Build{
 		URI:         &url.URL{Path: filepath.Join(fixture.root, "builds", "test")},
 		ID:          "test",
 		Website:     &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
@@ -58,7 +87,15 @@ func (fixture buildSelectionFixture) build(pages *Pages, incremental bool) *Hype
 	}
 }
 
-func TestHyperBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
+func (fixture buildExecutionFixture) build() *Build {
+	return &Build{
+		URI:     &url.URL{Path: fixture.buildPath},
+		ID:      "test",
+		Website: &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
+	}
+}
+
+func TestBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	tests := []struct {
 		name  string
@@ -70,7 +107,7 @@ func TestHyperBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			build := fixture.build(tc.pages, false)
-			if err := build.LoadContext(context.Background(), nil, nil, false); err != nil {
+			if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 				t.Fatalf("LoadContext() error = %v", err)
 			}
 			if build.Pages == nil {
@@ -83,12 +120,12 @@ func TestHyperBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	}
 }
 
-func TestHyperBuildLoadContextFullBuildRejectsExplicitPages(t *testing.T) {
+func TestBuildLoadContextFullBuildRejectsExplicitPages(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	pages := Pages{&Page{URI: &url.URL{Path: fixture.pages[0]}}}
 	build := fixture.build(&pages, false)
 
-	err := build.LoadContext(context.Background(), nil, nil, false)
+	err := build.LoadContext(context.Background(), io.Discard)
 	if err == nil {
 		t.Fatal("LoadContext() error = nil")
 	}
@@ -97,7 +134,7 @@ func TestHyperBuildLoadContextFullBuildRejectsExplicitPages(t *testing.T) {
 	}
 }
 
-func TestHyperBuildLoadContextIncrementalBuildRequiresPages(t *testing.T) {
+func TestBuildLoadContextIncrementalBuildRequiresPages(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	tests := []struct {
 		name  string
@@ -109,7 +146,7 @@ func TestHyperBuildLoadContextIncrementalBuildRequiresPages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			build := fixture.build(tc.pages, true)
-			err := build.LoadContext(context.Background(), nil, nil, false)
+			err := build.LoadContext(context.Background(), io.Discard)
 			if err == nil {
 				t.Fatal("LoadContext() error = nil")
 			}
@@ -120,12 +157,12 @@ func TestHyperBuildLoadContextIncrementalBuildRequiresPages(t *testing.T) {
 	}
 }
 
-func TestHyperBuildLoadContextIncrementalBuildPreservesRequestedPages(t *testing.T) {
+func TestBuildLoadContextIncrementalBuildPreservesRequestedPages(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	pages := Pages{&Page{URI: &url.URL{Path: fixture.pages[0]}}}
 	build := fixture.build(&pages, true)
 
-	if err := build.LoadContext(context.Background(), nil, nil, false); err != nil {
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("LoadContext() error = %v", err)
 	}
 	if got, want := len(*build.Pages), 1; got != want {
@@ -136,19 +173,167 @@ func TestHyperBuildLoadContextIncrementalBuildPreservesRequestedPages(t *testing
 	}
 }
 
-func TestHyperBuildLoadContextFullBuildCanReloadWebsitePagesAlias(t *testing.T) {
+func TestBuildLoadContextFullBuildCanReloadWebsitePagesAlias(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	build := fixture.build(nil, false)
-	if err := build.LoadContext(context.Background(), nil, nil, false); err != nil {
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("first LoadContext() error = %v", err)
 	}
 	if build.Pages == nil || len(*build.Pages) == 0 {
 		t.Fatal("first LoadContext() did not load pages")
 	}
-	if err := build.LoadContext(context.Background(), nil, nil, false); err != nil {
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("second LoadContext() error = %v", err)
 	}
 	if got, want := len(*build.Pages), len(fixture.pages); got != want {
 		t.Fatalf("len(build.Pages) after reload = %d, want %d", got, want)
+	}
+}
+
+func TestBuildLoadContextUsesBuildConfig(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config = BuildConfig{
+		WebsiteConfig: WebsiteConfig{ContentDirectory: "custom-content"},
+		BaseURL:       "https://preview.example.com/",
+		Verbose:       true,
+	}
+
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("LoadContext() error = %v", err)
+	}
+	if got := build.Website.BaseURL; got != "https://preview.example.com/" {
+		t.Fatalf("Website.BaseURL = %q, want preview override", got)
+	}
+	if build.Pages == nil || len(*build.Pages) != 1 {
+		t.Fatalf("len(Build.Pages) = %v, want 1", build.Pages)
+	}
+	if got := (*build.Pages)[0].URI.Path; !strings.Contains(got, "custom-content") {
+		t.Fatalf("page URI = %q, want custom content directory", got)
+	}
+}
+
+func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config = BuildConfig{DataFile: "build.json", LogFile: "build.log", Verbose: true}
+
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	logBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.log"))
+	if err != nil {
+		t.Fatalf("ReadFile(build.log) error = %v", err)
+	}
+	if got := string(logBytes); !strings.Contains(got, `build "test" starting`) {
+		t.Fatalf("build.log = %q, want build start log", got)
+	}
+
+	dataBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.json"))
+	if err != nil {
+		t.Fatalf("ReadFile(build.json) error = %v", err)
+	}
+	var data BuildResult
+	if err := json.Unmarshal(dataBytes, &data); err != nil {
+		t.Fatalf("Unmarshal(build.json) error = %v", err)
+	}
+	var rawData map[string]any
+	if err := json.Unmarshal(dataBytes, &rawData); err != nil {
+		t.Fatalf("Unmarshal(build.json map) error = %v", err)
+	}
+	if _, ok := rawData["status"]; ok {
+		t.Fatalf("build.json contains nested status: %s", dataBytes)
+	}
+	if _, ok := rawData["bytes"]; !ok {
+		t.Fatalf("build.json missing top-level bytes: %s", dataBytes)
+	}
+	if data.ID != "test" {
+		t.Fatalf("build data id = %q, want test", data.ID)
+	}
+	if data.DurationMS < 0 {
+		t.Fatalf("duration_ms = %d, want non-negative", data.DurationMS)
+	}
+	if data.Bytes["pages"] != len("<h1>Home</h1>") {
+		t.Fatalf("bytes pages = %d, want %d", data.Bytes["pages"], len("<h1>Home</h1>"))
+	}
+
+	ignoreBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deploymentignore"))
+	if err != nil {
+		t.Fatalf("ReadFile(.deploymentignore) error = %v", err)
+	}
+	ignore := string(ignoreBytes)
+	for _, want := range []string{"build.json", "build.log"} {
+		if !strings.Contains(ignore, want) {
+			t.Fatalf(".deploymentignore = %q, want %q", ignore, want)
+		}
+	}
+}
+
+func TestBuildExecuteUnsetArtifactFilesWritesNoArtifacts(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	for _, rel := range []string{"build.json", "build.log", ".deploymentignore"} {
+		if _, err := os.Stat(filepath.Join(fixture.buildPath, rel)); !os.IsNotExist(err) {
+			t.Fatalf("%s exists or stat error = %v, want not exist", rel, err)
+		}
+	}
+}
+
+func TestBuildArtifactPathUsesBuildRelativePaths(t *testing.T) {
+	root := t.TempDir()
+	build := &Build{URI: &url.URL{Path: filepath.Join(root, "build")}}
+	want := filepath.Join(root, "build", "logs", "build.log")
+
+	got, err := build.ArtifactPath("logs/build.log")
+	if err != nil {
+		t.Fatalf("ArtifactPath() error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("ArtifactPath() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildValidateRejectsAbsoluteArtifactPaths(t *testing.T) {
+	tests := []struct {
+		name   string
+		config BuildConfig
+	}{
+		{name: "data file", config: BuildConfig{DataFile: filepath.Join(t.TempDir(), "build.json")}},
+		{name: "log file", config: BuildConfig{LogFile: filepath.Join(t.TempDir(), "build.log")}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pages := Pages{&Page{}}
+			build := &Build{URI: &url.URL{Path: t.TempDir()}, Config: tc.config, Pages: &pages}
+			err := build.Validate()
+			if err == nil {
+				t.Fatal("Validate() error = nil, want absolute artifact path error")
+			}
+			if !strings.Contains(err.Error(), "build artifact path must be relative") {
+				t.Fatalf("Validate() error = %v, want relative artifact path error", err)
+			}
+		})
+	}
+}
+
+func TestBuildExecuteAddsNestedArtifactToDeploymentIgnore(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config.DataFile = filepath.Join("artifacts", "build.json")
+
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	ignoreBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deploymentignore"))
+	if err != nil {
+		t.Fatalf("ReadFile(.deploymentignore) error = %v", err)
+	}
+	if got := string(ignoreBytes); !strings.Contains(got, "artifacts/build.json") {
+		t.Fatalf(".deploymentignore = %q, want artifacts/build.json", got)
 	}
 }

@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -32,7 +33,7 @@ func writeAssetTestScript(t *testing.T, path string, source string) {
 	}
 }
 
-func testWebsite(t *testing.T) (*Website, *HyperBuild) {
+func testWebsite(t *testing.T) (*Website, *Build) {
 	t.Helper()
 	root := t.TempDir()
 	website := &Website{
@@ -42,7 +43,7 @@ func testWebsite(t *testing.T) (*Website, *HyperBuild) {
 			URI: &url.URL{Path: filepath.Join(root, "theme", "theme.json")},
 		},
 	}
-	build := &HyperBuild{
+	build := &Build{
 		URI:     &url.URL{Path: filepath.Join(root, "builds", "test")},
 		Website: website,
 	}
@@ -158,7 +159,7 @@ func TestWebsiteDiscoverAssetsReplacesExistingAssets(t *testing.T) {
 	writeAssetTestFile(t, filepath.Join(website.Theme.StaticDirPath(), "theme.css"))
 	writeAssetTestFile(t, filepath.Join(website.StaticDirPath(), "site.css"))
 
-	if err := website.DiscoverAssets(false); err != nil {
+	if err := website.DiscoverAssets(false, io.Discard); err != nil {
 		t.Fatalf("DiscoverAssets returned error: %v", err)
 	}
 	if want := []string{"theme.css"}; !reflect.DeepEqual(website.Theme.Assets, want) {
@@ -177,7 +178,7 @@ func TestWebsiteDiscoverAssetsReplacesExistingAssets(t *testing.T) {
 	writeAssetTestFile(t, filepath.Join(website.Theme.StaticDirPath(), "next-theme.css"))
 	writeAssetTestFile(t, filepath.Join(website.StaticDirPath(), "next-site.css"))
 
-	if err := website.DiscoverAssets(false); err != nil {
+	if err := website.DiscoverAssets(false, io.Discard); err != nil {
 		t.Fatalf("second DiscoverAssets returned error: %v", err)
 	}
 	if want := []string{"next-theme.css"}; !reflect.DeepEqual(website.Theme.Assets, want) {
@@ -195,7 +196,7 @@ func TestWebsiteDiscoverPluginsReplacesExistingPlugins(t *testing.T) {
 	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "theme.js"), "export default function(input) { return input }")
 	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "site.js"), "export default function(input) { return input }")
 
-	if err := website.DiscoverPlugins(false); err != nil {
+	if err := website.DiscoverPlugins(false, io.Discard); err != nil {
 		t.Fatalf("DiscoverPlugins returned error: %v", err)
 	}
 	if len(website.Theme.Plugins) != 1 || website.Theme.Plugins["theme"].Path != filepath.Join(website.Theme.PluginsDirPath(), "theme.js") {
@@ -214,7 +215,7 @@ func TestWebsiteDiscoverPluginsReplacesExistingPlugins(t *testing.T) {
 	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "nextTheme.js"), "export default function(input) { return input }")
 	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "nextSite.js"), "export default function(input) { return input }")
 
-	if err := website.DiscoverPlugins(false); err != nil {
+	if err := website.DiscoverPlugins(false, io.Discard); err != nil {
 		t.Fatalf("second DiscoverPlugins returned error: %v", err)
 	}
 	if len(website.Theme.Plugins) != 1 || website.Theme.Plugins["nextTheme"].Path != filepath.Join(website.Theme.PluginsDirPath(), "nextTheme.js") {
@@ -230,7 +231,7 @@ func TestWebsitePluginsUsesWebsitePrecedence(t *testing.T) {
 	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "label.js"), "export default function() { return 'theme' }")
 	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "label.js"), "export default function() { return 'website' }")
 
-	if err := website.DiscoverPlugins(false); err != nil {
+	if err := website.DiscoverPlugins(false, io.Discard); err != nil {
 		t.Fatalf("DiscoverPlugins returned error: %v", err)
 	}
 	plugins := htvalue.Merge(website.Theme.Plugins, website.Plugins)
@@ -253,7 +254,7 @@ func TestPageDiscoverAssetsReplacesExistingAssets(t *testing.T) {
 	writeAssetTestFile(t, page.URI.Path)
 	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "about", "photo.jpg"))
 
-	if err := page.DiscoverAssets(website, false); err != nil {
+	if err := page.DiscoverAssets(website, false, io.Discard); err != nil {
 		t.Fatalf("DiscoverAssets returned error: %v", err)
 	}
 	if want := []string{"about/photo.jpg"}; !reflect.DeepEqual(page.Assets, want) {
@@ -265,7 +266,7 @@ func TestPageDiscoverAssetsReplacesExistingAssets(t *testing.T) {
 	}
 	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "about", "next.jpg"))
 
-	if err := page.DiscoverAssets(website, false); err != nil {
+	if err := page.DiscoverAssets(website, false, io.Discard); err != nil {
 		t.Fatalf("second DiscoverAssets returned error: %v", err)
 	}
 	if want := []string{"about/next.jpg"}; !reflect.DeepEqual(page.Assets, want) {

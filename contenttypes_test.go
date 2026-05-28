@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,7 +40,7 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 					Format:      "markdown",
 				},
 			}
-			if err := first.Save(website); err != nil {
+			if err := first.Save(website, io.Discard); err != nil {
 				t.Fatalf("first Save() error = %v", err)
 			}
 
@@ -53,7 +54,7 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 					Format:      "markdown",
 				},
 			}
-			if err := second.Save(website); err != nil {
+			if err := second.Save(website, io.Discard); err != nil {
 				t.Fatalf("second Save() error = %v", err)
 			}
 

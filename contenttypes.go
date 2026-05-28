@@ -3,6 +3,7 @@ package hypertexting
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -121,15 +122,23 @@ func (contenttype ContentType) Ready(page *Page) error {
 	// success!
 	return nil
 }
-func (contenttype ContentType) Valid(page *Page) bool {
+func (contenttype ContentType) Valid(page *Page, w io.Writer) bool {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	err := contenttype.Validate(page)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(w, err)
 	}
 	return err == nil
 }
 
-func (contenttype *ContentType) Create(website *Website, format string) (err error) {
+func (contenttype *ContentType) Create(website *Website, format string, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var fileDirectory string = website.Theme.ContentTypesDirPath()
 	var fileName string
 	var fileExtension string
@@ -144,10 +153,14 @@ func (contenttype *ContentType) Create(website *Website, format string) (err err
 	fileName = strings.ToLower(contenttype.Metadata.Name)
 	fileName = strings.ReplaceAll(fileName, " ", "-")
 	contenttype.URI = &href.Href{URL: url.URL{Path: filepath.Join(fileDirectory, fileName+fileExtension)}}
-	return contenttype.Save(website)
+	return contenttype.Save(website, w)
 }
 
-func (contenttype *ContentType) Save(website *Website) (err error) {
+func (contenttype *ContentType) Save(website *Website, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var file *os.File
 	var fileExt string = filepath.Ext(contenttype.URI.Path)
 	var fileBytes []byte
@@ -171,7 +184,7 @@ func (contenttype *ContentType) Save(website *Website) (err error) {
 	default:
 		return fmt.Errorf("unsupported content type format: %s", fileExt)
 	}
-	fmt.Printf("writing %d bytes to %s\n", len(fileBytes), website.RelativePath(contenttype.URI.Path))
+	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), website.RelativePath(contenttype.URI.Path))
 	if err = os.MkdirAll(filepath.Dir(contenttype.URI.Path), 0755); err != nil {
 		return err
 	}

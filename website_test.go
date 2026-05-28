@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,7 +218,7 @@ config:
 		t.Fatalf("write site config: %v", err)
 	}
 
-	err := website.Load(false, nil)
+	err := website.Load(false, nil, io.Discard)
 	if err == nil {
 		t.Fatal("Load() error = nil")
 	}

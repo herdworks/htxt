@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func TestLoadStaticDataFlatNamespaces(t *testing.T) {
 	writeDataFile(t, root, "site.yaml", "title: Hello\n")
 	writeDataFile(t, root, "nav.json", `{"items":[{"label":"Home"}]}`)
 
-	got, err := loadStaticData(nil, root, nil, false)
+	got, err := loadStaticData(nil, root, nil, false, io.Discard)
 	if err != nil {
 		t.Fatalf("loadStaticData: %v", err)
 	}
@@ -43,7 +44,7 @@ func TestLoadStaticDataSubdirsNest(t *testing.T) {
 	writeDataFile(t, root, "social/twitter.yaml", "handle: htmarkdown\n")
 	writeDataFile(t, root, "social/opengraph.yaml", "type: website\n")
 
-	got, err := loadStaticData(nil, root, nil, false)
+	got, err := loadStaticData(nil, root, nil, false, io.Discard)
 	if err != nil {
 		t.Fatalf("loadStaticData: %v", err)
 	}
@@ -67,7 +68,7 @@ func TestLoadStaticDataRejectsInvalidFilenames(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			writeDataFile(t, root, name, "x: 1\n")
-			_, err := loadStaticData(nil, root, nil, false)
+			_, err := loadStaticData(nil, root, nil, false, io.Discard)
 			if err == nil {
 				t.Fatalf("loadStaticData(%q): want error, got nil", name)
 			}
@@ -83,7 +84,7 @@ func TestLoadStaticDataCrossFormatCollisionErrors(t *testing.T) {
 	writeDataFile(t, root, "foo.yaml", "x: 1\n")
 	writeDataFile(t, root, "foo.json", `{"y":2}`)
 
-	_, err := loadStaticData(nil, root, nil, false)
+	_, err := loadStaticData(nil, root, nil, false, io.Discard)
 	if err == nil {
 		t.Fatal("loadStaticData: want collision error, got nil")
 	}
@@ -101,7 +102,7 @@ func TestLoadStaticDataDirVsFileCollisionErrors(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	_, err := loadStaticData(nil, root, nil, false)
+	_, err := loadStaticData(nil, root, nil, false, io.Discard)
 	if err == nil {
 		t.Fatal("loadStaticData: want dir-vs-file collision error, got nil")
 	}
@@ -118,7 +119,7 @@ func TestLoadStaticDataDirVsFileCollisionDetectedFirst(t *testing.T) {
 	writeDataFile(t, root, "foo.yaml", "x: 1\n")
 	writeDataFile(t, root, "foo/bar.yaml", "y: 2\n")
 
-	_, err := loadStaticData(nil, root, nil, false)
+	_, err := loadStaticData(nil, root, nil, false, io.Discard)
 	if err == nil {
 		t.Fatal("loadStaticData: want dir-vs-file collision error, got nil")
 	}
@@ -177,7 +178,7 @@ export default function() {
 `)
 
 	// Run static loader first so GlobalData reflects the static layout.
-	static, err := loadStaticData(website, dataDir, nil, false)
+	static, err := loadStaticData(website, dataDir, nil, false, io.Discard)
 	if err != nil {
 		t.Fatalf("loadStaticData: %v", err)
 	}
@@ -187,7 +188,7 @@ export default function() {
 	siteData := hypertemplates.TemplateData{"title": "Hello"}
 	website.TemplateData = &siteData
 
-	if err := generateComputedData(build, false); err != nil {
+	if err := generateComputedData(build, false, io.Discard); err != nil {
 		t.Fatalf("generateComputedData: %v", err)
 	}
 

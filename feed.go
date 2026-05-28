@@ -3,6 +3,7 @@ package hypertexting
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -77,15 +78,23 @@ func (feed *HyperFeed) ResolvedLink(website *Website, href string) (*url.URL, er
 // HyperFeeds.Matching()
 //
 // Check if pages match a given feed.
-func (feed *HyperFeed) MatchesAny(pages Pages) bool {
+func (feed *HyperFeed) MatchesAny(pages Pages, w io.Writer) bool {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	for i := range pages {
-		if feed.Matches(pages[i]) {
+		if feed.Matches(pages[i], w) {
 			return true
 		}
 	}
 	return false
 }
-func (feed *HyperFeed) Matches(page *Page) bool {
+func (feed *HyperFeed) Matches(page *Page, w io.Writer) bool {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if page.Unlisted {
 		return false // never include unlisted pages
 	}
@@ -98,7 +107,7 @@ func (feed *HyperFeed) Matches(page *Page) bool {
 	if matches(feed.Tags, page.Tags...) {
 		return true // feed tags match page tags
 	}
-	if matchesPatterns(feed.Paths, page.Path) {
+	if matchesPatterns(feed.Paths, page.Path, w) {
 		return true // feed paths matches prefix of page path
 	}
 	return false
@@ -123,12 +132,12 @@ func matchesPrefix(a []string, b ...string) bool {
 	}
 	return false
 }
-func matchesPatterns(patterns []string, pagePath string) bool {
+func matchesPatterns(patterns []string, pagePath string, w io.Writer) bool {
 	var pattern *regexp.Regexp
 	var err error
 	for i := range patterns {
 		if pattern, err = regexp.Compile(patterns[i]); err != nil {
-			fmt.Printf("ignoring invalid feed pattern: %s\n\n%s\n", patterns[i], err)
+			fmt.Fprintf(w, "ignoring invalid feed pattern: %s\n\n%s\n", patterns[i], err)
 			continue
 		}
 		if pattern.MatchString(pagePath) {
@@ -138,9 +147,13 @@ func matchesPatterns(patterns []string, pagePath string) bool {
 	return false
 }
 
-func (feed *HyperFeed) AddPages(pages ...*Page) (err error) {
+func (feed *HyperFeed) AddPages(w io.Writer, pages ...*Page) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	for i := range pages {
-		if !feed.Matches(pages[i]) {
+		if !feed.Matches(pages[i], w) {
 			continue
 		}
 		feed.Pages = append(feed.Pages, pages[i])
@@ -177,7 +190,11 @@ func (feed HyperFeed) AtomPerson(website *Website, byline *Byline) (person *atom
 	}, nil
 }
 
-func (feed *HyperFeed) WriteAtom(build *HyperBuild, path string) (err error) {
+func (feed *HyperFeed) WriteAtom(build *Build, path string, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var atomFeed *atom.Atom
 	var atomPath string = filepath.Join(build.URI.Path, strings.ToLower(filepath.Join(path, "atom.xml")))
 	var atomBytes []byte
@@ -191,6 +208,6 @@ func (feed *HyperFeed) WriteAtom(build *HyperBuild, path string) (err error) {
 	if err = os.MkdirAll(filepath.Dir(atomPath), 0755); err != nil {
 		return err
 	}
-	build.Bytes.Increment(len(atomBytes), "feeds")
-	return build.WriteFile(atomPath, atomBytes)
+	build.Status.Bytes.Increment(len(atomBytes), "feeds")
+	return build.WriteFile(atomPath, atomBytes, w)
 }

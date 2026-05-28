@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
@@ -27,6 +28,10 @@ type Attachment struct {
 type Attachments []*Attachment
 
 func (attachments Attachments) Process(verbose bool, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if len(attachments) == 0 {
 		return nil // guard
 	}
@@ -38,6 +43,10 @@ func (attachments Attachments) Process(verbose bool, w io.Writer) (err error) {
 	return nil
 }
 func (attachment *Attachment) Process(verbose bool, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	switch attachment.Kind {
 	case AttachmentKindLink:
 		return attachment.ProcessLink(verbose, w)
@@ -47,6 +56,10 @@ func (attachment *Attachment) Process(verbose bool, w io.Writer) (err error) {
 	}
 }
 func (attachment *Attachment) ProcessLink(verbose bool, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var ctx context.Context = context.Background()
 	attachment.document = &hypergraph.Document{Href: attachment.Href}
 	if err = attachment.document.Download(ctx, verbose, nil, 10, w); err != nil {

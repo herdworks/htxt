@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** Changed `HyperBuild` to `Build`, moving build options into `Build.Config`. `Build.Execute(ctx)` now consumes the build's configured base URL, website overrides, artifact files, and verbose setting; `Build.LoadContext(ctx, w)` now uses the same build-owned config instead of per-call base URL, config override, and verbose arguments.
+* Added `BuildConfig.BaseURL`, `BuildConfig.DataFile`, `BuildConfig.LogFile`, and `BuildConfig.Verbose`. Builds can now write flat `BuildResult` JSON data artifacts, mirror build logs to configured build-root-relative files, and automatically add in-build artifact files to `.deploymentignore`.
+* Changed build status counters to live under `Build.Status`, with `Counter.Map()`, JSON helpers for safe counter snapshots, and `duration_ms` tracking through `BuildResult`.
+* **BREAKING:** Changed website, page, content type, data, feed, asset, and attachment logging APIs to accept explicit `io.Writer` arguments, removing the package-global build logging state while preserving stdout and configured build log-file behavior through `Build.Execute(ctx)`.
+* Updated `github.com/herdworks/hyperproviders-go` to `v0.23.0` and `github.com/herdworks/hypertemplates-go` to `v0.30.0` for explicit writer plumbing in downstream build and deployment paths.
+
 ## v0.32.2 (2026-05-27)
 
 * Updated `github.com/herdworks/hyperproviders-go` to version 0.21.0 for new files secret provider and git ssh known_hosts support

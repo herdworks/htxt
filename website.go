@@ -79,12 +79,16 @@ type WebsiteConfig struct {
 
 // METHODS =====================================================================
 
-func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err error) {
+func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var fileExt string = filepath.Ext(website.URI.Path)
 	var fileBytes []byte
 	var fileTemplateData hypertemplates.TemplateData
 	if verbose {
-		fmt.Printf("website \"%s\" load\n", website.URI.String())
+		fmt.Fprintf(w, "website \"%s\" load\n", website.URI.String())
 	}
 	if fileBytes, err = os.ReadFile(website.URI.Path); err != nil {
 		return err
@@ -111,13 +115,13 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig) (err 
 	}
 	website.ResolveEnvironments()
 	website.Theme.URI = website.ThemeURI()
-	if err = website.Theme.Parse(); err != nil {
+	if err = website.Theme.Parse(w); err != nil {
 		return err
 	}
-	if err = website.DiscoverAssets(verbose); err != nil {
+	if err = website.DiscoverAssets(verbose, w); err != nil {
 		return err
 	}
-	if err = website.DiscoverPlugins(verbose); err != nil {
+	if err = website.DiscoverPlugins(verbose, w); err != nil {
 		return err
 	}
 	var assetPublicPaths []string
@@ -331,7 +335,7 @@ func (website *Website) AssetPublicPath(relPath string) (string, error) {
 	return "/" + relPath, nil
 }
 
-func (website *Website) AssetBuildPath(build *HyperBuild, relPath string) (string, error) {
+func (website *Website) AssetBuildPath(build *Build, relPath string) (string, error) {
 	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
 	if err != nil {
 		return "", err
@@ -379,7 +383,11 @@ func (website *Website) ResolveHref(href string) (*url.URL, error) {
 // Website.CreatePackage()
 //
 // Persists new website to disk by creating the website directory and writing the config file.
-func (website *Website) CreatePackage() (err error) {
+func (website *Website) CreatePackage(w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var embedded fs.FS = bootstrap.Website
 
 	website.Theme.URI = website.ThemeURI()
@@ -421,12 +429,12 @@ func (website *Website) CreatePackage() (err error) {
 		if _, err = io.Copy(dstFile, srcFile); err != nil {
 			return err // copy file contents
 		}
-		fmt.Printf("file %s created\n", dstPath)
+		fmt.Fprintf(w, "file %s created\n", dstPath)
 		return nil
 	}); err != nil {
 		return err
 	}
-	fmt.Printf("website \"%s\" created\n", website.URI.Path)
+	fmt.Fprintf(w, "website \"%s\" created\n", website.URI.Path)
 
 	return nil
 }
@@ -463,7 +471,11 @@ func (website *Website) WriteFile() (err error) {
 	return nil
 }
 
-func (website *Website) DiscoverAssets(verbose bool) error {
+func (website *Website) DiscoverAssets(verbose bool, w io.Writer) error {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if err := website.Theme.DiscoverAssets(); err != nil {
 		return err
 	}
@@ -481,18 +493,22 @@ func (website *Website) DiscoverAssets(verbose bool) error {
 	}
 	for _, asset := range website.Theme.Assets {
 		if srcPath, err := website.ResourcePath(website.Theme.StaticDirPath(), asset); err == nil {
-			fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(srcPath))
+			fmt.Fprintf(w, "asset \"%s\" discovered\n", website.RelativePath(srcPath))
 		}
 	}
 	for _, asset := range website.Assets {
 		if srcPath, err := website.ResourcePath(website.StaticDirPath(), asset); err == nil {
-			fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(srcPath))
+			fmt.Fprintf(w, "asset \"%s\" discovered\n", website.RelativePath(srcPath))
 		}
 	}
 	return nil
 }
 
-func (website *Website) DiscoverPlugins(verbose bool) error {
+func (website *Website) DiscoverPlugins(verbose bool, w io.Writer) error {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if err := website.Theme.DiscoverPlugins(); err != nil {
 		return err
 	}
@@ -516,19 +532,23 @@ func (website *Website) DiscoverPlugins(verbose bool) error {
 		return nil
 	}
 	for _, plugin := range website.Theme.Plugins {
-		fmt.Printf("plugin \"%s\" discovered\n", website.RelativePath(plugin.Path))
+		fmt.Fprintf(w, "plugin \"%s\" discovered\n", website.RelativePath(plugin.Path))
 	}
 	for _, plugin := range website.Plugins {
-		fmt.Printf("plugin \"%s\" discovered\n", website.RelativePath(plugin.Path))
+		fmt.Fprintf(w, "plugin \"%s\" discovered\n", website.RelativePath(plugin.Path))
 	}
 	return nil
 }
 
-func (website *Website) CopyAsset(srcPath string, dstPath string) (err error) {
+func (website *Website) CopyAsset(srcPath string, dstPath string, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var srcFile *os.File
 	var dstFile *os.File
 	dstPath = filepath.Join(website.StaticDirPath(), dstPath)
-	fmt.Printf("copying %s to %s\n", srcPath, dstPath)
+	fmt.Fprintf(w, "copying %s to %s\n", srcPath, dstPath)
 	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
 	}
@@ -546,11 +566,15 @@ func (website *Website) CopyAsset(srcPath string, dstPath string) (err error) {
 	return nil
 }
 
-func (website *Website) GetAssetURI(assetPath string) *url.URL {
+func (website *Website) GetAssetURI(assetPath string, w io.Writer) *url.URL {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var uri *url.URL
 	var uris []*url.URL = []*url.URL{}
 	var err error
-	fmt.Printf("asset \"%s\" lookup\n", assetPath)
+	fmt.Fprintf(w, "asset \"%s\" lookup\n", assetPath)
 	for _, assetDir := range []string{website.ContentDirPath(), website.StaticDirPath(), website.Theme.StaticDirPath()} {
 		var u *url.URL
 		if u, err = url.Parse(filepath.Join(assetDir, assetPath)); err != nil {
@@ -566,7 +590,7 @@ func (website *Website) GetAssetURI(assetPath string) *url.URL {
 	}
 	if uri != nil {
 		uri.Path = website.RelativePath(uri.Path)
-		fmt.Printf("asset \"%s\" candidate \"%s\" found\n", assetPath, uri.Path)
+		fmt.Fprintf(w, "asset \"%s\" candidate \"%s\" found\n", assetPath, uri.Path)
 	}
 	return uri
 }
@@ -590,16 +614,20 @@ func (website *Website) ContentTypes() (types ContentTypes, err error) {
 	}
 	return types, nil
 }
-func (website *Website) GetContentTypeByName(name string, verbose bool) (contenttype *ContentType) {
+func (website *Website) GetContentTypeByName(name string, verbose bool, w io.Writer) (contenttype *ContentType) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	contenttypes, err := website.ContentTypes()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(w, err)
 		contenttypes = ContentTypes{}
 	}
 	for _, c := range contenttypes {
 		if strings.EqualFold(c.Metadata.Name, name) {
 			if verbose {
-				fmt.Printf("content-type \"%s\" loading\n", c.Metadata.Name)
+				fmt.Fprintf(w, "content-type \"%s\" loading\n", c.Metadata.Name)
 			}
 			return c
 		}
@@ -617,7 +645,11 @@ func (website *Website) ListPages() (Pages, error) {
 
 // Recursively walk website.ThemesDirPath() looking for theme.json config files;
 // for each config, marshal the file into a Theme and return []Theme.
-func (website *Website) ListThemes() (themes []hypertemplates.Theme, err error) {
+func (website *Website) ListThemes(w io.Writer) (themes []hypertemplates.Theme, err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var discovered []hypertemplates.Theme
 	// include the current theme, which could be a "local" theme (installed outside of the themes directory)
 	if website.ThemeURI() != nil {
@@ -647,8 +679,8 @@ func (website *Website) ListThemes() (themes []hypertemplates.Theme, err error) 
 		return nil, err
 	}
 	for theme := range discovered {
-		if err = discovered[theme].Parse(); err != nil {
-			fmt.Printf("warning: %s\n", err)
+		if err = discovered[theme].Parse(w); err != nil {
+			fmt.Fprintf(w, "warning: %s\n", err)
 			continue
 		}
 		discovered[theme].ResolveConfig()

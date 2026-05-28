@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path"
@@ -98,22 +99,30 @@ func (page *Page) Validate() (err error) {
 //
 // Deletes the page from disk. If the page has child pages, the page files are
 // deleted but the directory is retained.
-func (page *Page) Delete() (err error) {
-	fmt.Printf("page \"%s\" delete\n", page.URI.Path)
+func (page *Page) Delete(w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
+	fmt.Fprintf(w, "page \"%s\" delete\n", page.URI.Path)
 	if page.HasChildPages() {
-		fmt.Printf("page \"%s\" files will be deleted (descendents will be preserved)\n", filepath.Dir(page.URI.Path))
-		if err = page.DeleteFiles(); err != nil {
+		fmt.Fprintf(w, "page \"%s\" files will be deleted (descendents will be preserved)\n", filepath.Dir(page.URI.Path))
+		if err = page.DeleteFiles(w); err != nil {
 			return err
 		}
 	} else {
-		fmt.Printf("page \"%s\" directory will be deleted (no descendents to be preserved)\n", filepath.Dir(page.URI.Path))
+		fmt.Fprintf(w, "page \"%s\" directory will be deleted (no descendents to be preserved)\n", filepath.Dir(page.URI.Path))
 		if err := os.RemoveAll(filepath.Dir(page.URI.Path)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-func (page *Page) DeleteFiles() (err error) {
+func (page *Page) DeleteFiles(w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var entries []os.DirEntry
 	if entries, err = os.ReadDir(filepath.Dir(page.URI.Path)); err != nil {
 		return err
@@ -121,7 +130,7 @@ func (page *Page) DeleteFiles() (err error) {
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			filePath := filepath.Join(filepath.Dir(page.URI.Path), entry.Name())
-			fmt.Printf("file \"%s\" delete\n", filePath)
+			fmt.Fprintf(w, "file \"%s\" delete\n", filePath)
 			if err := os.Remove(filePath); err != nil {
 				return err
 			}
@@ -224,7 +233,7 @@ func (page *Page) ResolveTemplateData(website *Website) {
 }
 
 func (page *Page) CanonicalURL(website *Website) (*url.URL, error) {
-	if page == nil  || len(page.Path) == 0 || website == nil {
+	if page == nil || len(page.Path) == 0 || website == nil {
 		return nil, fmt.Errorf("page canonical URL requires page for page.path and website for website.URL()")
 	}
 	path, err := url.Parse(page.Path)
@@ -374,15 +383,23 @@ func (pages Pages) TemplateDataWithout(keys ...string) (data []hypertemplates.Te
 	return data
 }
 
-func (pages Pages) DiscoverAssets(website *Website, verbose bool) error {
+func (pages Pages) DiscoverAssets(website *Website, verbose bool, w io.Writer) error {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	for i := range pages {
-		if err := pages[i].DiscoverAssets(website, verbose); err != nil {
+		if err := pages[i].DiscoverAssets(website, verbose, w); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-func (page *Page) DiscoverAssets(website *Website, verbose bool) error {
+func (page *Page) DiscoverAssets(website *Website, verbose bool, w io.Writer) error {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	exclude := "(index|page)\\.(md|yaml|json|html)$"
 	exclude += "|(site)\\.(yaml|json)$"
 	exclude += "|theme\\.json$"
@@ -417,7 +434,7 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool) error {
 	}
 	for _, asset := range page.Assets {
 		if srcPath, err := website.ResourcePath(website.ContentDirPath(), asset); err == nil {
-			fmt.Printf("asset \"%s\" discovered\n", website.RelativePath(srcPath))
+			fmt.Fprintf(w, "asset \"%s\" discovered\n", website.RelativePath(srcPath))
 		}
 	}
 	return nil
@@ -553,7 +570,11 @@ type PageCache struct {
 //
 // Persists the page content file to disk according to specifications provided
 // by contenttype, and updates page.URI.
-func CreatePage(website *Website, page *Page, contenttype *ContentType) (err error) {
+func CreatePage(website *Website, page *Page, contenttype *ContentType, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if page == nil {
 		return fmt.Errorf("page.create requires page")
 	}
@@ -590,7 +611,7 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	}
 
 	// write to disk
-	return WritePage(website, page, contenttype.Spec.Format)
+	return WritePage(website, page, contenttype.Spec.Format, w)
 }
 
 // UpdatePage updates an existing persisted page. The input page.URI identifies
@@ -598,7 +619,11 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType) (err err
 // file format. Real content types recompute the destination path from the
 // submitted page and content type, allowing content type, slug, and format
 // changes to rehome the page payload without touching nested page directories.
-func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err error) {
+func UpdatePage(website *Website, page *Page, contenttype *ContentType, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if page == nil {
 		return fmt.Errorf("page.update requires page")
 	}
@@ -622,7 +647,7 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 	timestamp := time.Now().Format(time.RFC3339)
 	if len(page.CreatedAt) == 0 {
 		existing := &Page{URI: &sourceURI}
-		if err = LoadPage(website, existing, false); err == nil && existing.CreatedAt != "" {
+		if err = LoadPage(website, existing, false, w); err == nil && existing.CreatedAt != "" {
 			page.CreatedAt = existing.CreatedAt
 		}
 	}
@@ -638,7 +663,7 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 		}
 		page.URI = &sourceURI
 		page.ResolvePath(website)
-		return WritePage(website, page, format)
+		return WritePage(website, page, format, w)
 	}
 
 	// content-type
@@ -681,7 +706,7 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType) (err err
 		}
 	}
 
-	if err = WritePage(website, page, contenttype.Spec.Format); err != nil {
+	if err = WritePage(website, page, contenttype.Spec.Format, w); err != nil {
 		return err
 	}
 	if !sameCleanPath(sourcePath, destinationPath) {
@@ -830,7 +855,11 @@ func removeDirectoryIfEmpty(path string) error {
 }
 
 // persist page index file to disk
-func WritePage(website *Website, page *Page, format string) (err error) {
+func WritePage(website *Website, page *Page, format string, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var file *os.File
 	var fileBytes []byte
 	var fileBytesWritten int
@@ -855,7 +884,7 @@ func WritePage(website *Website, page *Page, format string) (err error) {
 		}
 		fileBytes = fmt.Appendf([]byte{}, "---\n%s---\n\n%s", frontmatter, page.Content)
 	}
-	fmt.Printf("writing %d bytes to %s\n", len(fileBytes), website.RelativePath(page.URI.Path))
+	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), website.RelativePath(page.URI.Path))
 	if err = os.MkdirAll(filepath.Dir(page.URI.Path), 0755); err != nil {
 		return err
 	}
@@ -875,7 +904,11 @@ func WritePage(website *Website, page *Page, format string) (err error) {
 // LoadPages(ctx context.Context, website *Website, pages Pages, cache *Pages, verbose bool)
 //
 // Loads the pages in parallel using a task group.
-func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, verbose bool) (err error) {
+func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, verbose bool, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	if cache == nil {
 		cache = Pages{}
 	}
@@ -885,7 +918,7 @@ func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, 
 			if cache.Contains(pages[i]) {
 				pages[i] = cache.PageByURI(pages[i].URI)
 			}
-			return LoadPage(website, pages[i], verbose)
+			return LoadPage(website, pages[i], verbose, w)
 		})
 	}
 	return taskgroup.Wait()
@@ -894,7 +927,11 @@ func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, 
 // LoadPage(website *Website, page *Page, verbose bool)
 //
 // Loads the page from disk and parses the content into the page object.
-func LoadPage(website *Website, page *Page, verbose bool) (err error) {
+func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	var fileExt string = filepath.Ext(page.URI.Path)
 	var fileBytes []byte
 	var fileData hypertemplates.TemplateData
@@ -902,7 +939,7 @@ func LoadPage(website *Website, page *Page, verbose bool) (err error) {
 		return // guard
 	}
 	if verbose {
-		fmt.Printf("page \"%s\" loading\n", website.RelativePath(page.URI.Path))
+		fmt.Fprintf(w, "page \"%s\" loading\n", website.RelativePath(page.URI.Path))
 	}
 	if fileBytes, err = os.ReadFile(page.URI.Path); err != nil {
 		return err
@@ -917,24 +954,28 @@ func LoadPage(website *Website, page *Page, verbose bool) (err error) {
 	if page.LayoutRef == "" {
 		page.LayoutRef = "default" // TODO: should layout be required?
 	}
-	if err = page.DiscoverAssets(website, verbose); err != nil {
+	if err = page.DiscoverAssets(website, verbose, w); err != nil {
 		return err
 	}
 	page.Loaded = true
 	return nil
 }
 
-// AddFeedPages(context context.Context, build *HyperBuild)
+// AddFeedPages(context context.Context, build *Build)
 //
 // Adds pages to a build if a build page matches a non-build page feed.
-func AddFeedPages(context context.Context, build *HyperBuild) (err error) {
+func AddFeedPages(context context.Context, build *Build, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	taskgroup, _ := errgroup.WithContext(context)
 	for i := range build.Website.Pages {
 		taskgroup.Go(func() error {
 			if build.Website.Pages[i].Feed == nil {
 				return nil // skip page if no page feed is configured
 			}
-			if !build.Website.Pages[i].Feed.MatchesAny(*build.Pages) {
+			if !build.Website.Pages[i].Feed.MatchesAny(*build.Pages, w) {
 				return nil // check if a build page is in a site page feed
 			}
 			*build.Pages = append(*build.Pages, build.Website.Pages[i]) // add page to build pages
@@ -945,7 +986,11 @@ func AddFeedPages(context context.Context, build *HyperBuild) (err error) {
 }
 
 // LoadPageFeeds(website *Website, pages Pages)
-func LoadPageFeeds(context context.Context, website *Website, pages Pages) (err error) {
+func LoadPageFeeds(context context.Context, website *Website, pages Pages, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+
 	taskgroup, _ := errgroup.WithContext(context)
 	website.Pages.ResolveTemplateData(website) // resolve template data for source pages
 	for i := range pages {
@@ -962,7 +1007,7 @@ func LoadPageFeeds(context context.Context, website *Website, pages Pages) (err 
 			if pages[i].Feed.Byline == nil {
 				pages[i].Feed.Byline = &website.Byline
 			}
-			if err = pages[i].Feed.AddPages(website.Pages...); err != nil {
+			if err = pages[i].Feed.AddPages(w, website.Pages...); err != nil {
 				return err
 			}
 			pages[i].Feed.Pages.Sort() // sort the feed pages in reverse-chron order, as nature intended 🤌🏽
@@ -973,12 +1018,16 @@ func LoadPageFeeds(context context.Context, website *Website, pages Pages) (err 
 }
 
 // LoadTagPages(website *Website, pages Pages) (err error)
-func LoadTagPages(build *HyperBuild) (err error) {
-	for i := range *build.Pages {
-		build.Tags.Increment(1, (*build.Pages)[i].Tags...) // count tags
+func LoadTagPages(build *Build, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
 	}
-	for tag := range build.Tags.Counters {
-		fmt.Printf("tag \"%s\" loading\n", tag)
+
+	for i := range *build.Pages {
+		build.Status.Tags.Increment(1, (*build.Pages)[i].Tags...) // count tags
+	}
+	for tag := range build.Status.Tags.Counters {
+		fmt.Fprintf(w, "tag \"%s\" loading\n", tag)
 		tagPath := filepath.Join(build.Website.Config.TagPath, tag)
 		tagPage := build.Pages.PageByPath(tagPath)
 		if tagPage == nil {
@@ -1000,10 +1049,10 @@ func LoadTagPages(build *HyperBuild) (err error) {
 				Pages:       Pages{},
 			}
 		}
-		tagPage.Feed.AddPages(build.Website.Pages...) // populate tag page feed with pages
-		tagPage.Feed.Pages.Sort()                     // sort the feed pages in reverse-chron order, as nature intended 🤌🏽
-		tagPage.ResolveTemplateData(build.Website)    // resolve template data for tag page so it's ready for
-		*build.Pages = append(*build.Pages, tagPage)  // attach feed to the page
+		tagPage.Feed.AddPages(w, build.Website.Pages...) // populate tag page feed with pages
+		tagPage.Feed.Pages.Sort()                        // sort the feed pages in reverse-chron order, as nature intended 🤌🏽
+		tagPage.ResolveTemplateData(build.Website)       // resolve template data for tag page so it's ready for
+		*build.Pages = append(*build.Pages, tagPage)     // attach feed to the page
 	}
 	return nil
 }
