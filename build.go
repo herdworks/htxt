@@ -52,6 +52,8 @@ type BuildStatus struct {
 type BuildResult struct {
 	ID         string         `json:"id,omitempty"`
 	URI        string         `json:"uri,omitempty"`
+	PageCount  int            `json:"page_count"`
+	FeedCount  int            `json:"feed_count"`
 	Assets     map[string]int `json:"assets,omitempty"`
 	Tags       map[string]int `json:"tags,omitempty"`
 	Bytes      map[string]int `json:"bytes,omitempty"`
@@ -74,13 +76,15 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 		return fmt.Errorf("build.uri is required")
 	}
 
-	// load the io.Writer for stdout & optional file logging
+	// load an io.Writer for stdout & optional file logging
 	w, wc, err := build.logger()
 	if err != nil {
 		return err
 	}
 	defer wc() // close the log writer
-	fmt.Fprintf(w, "build \"%s\" starting\n", filepath.Base(build.URI.Path))
+	fmt.Fprintf(w, "build %q starting\n", build.ID)
+
+	// measure build execution time from here
 	start := time.Now()
 
 	// load the build context
@@ -104,23 +108,31 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	if err = writegroup.Wait(); err != nil {
 		return err
 	}
-	if err = build.writeDeploymentIgnore(); err != nil {
-		return err
-	}
 
 	// finalize build
-	build.BuildStats(time.Since(start), w)
-	return build.writeDataArtifact(w)
+	build.Status.DurationMS = int(time.Since(start).Milliseconds())
+	result := build.Result()
+	build.writeBuildData(result, w)
+	build.writeDeploymentIgnore(w)
+	fmt.Fprintf(w, "build %q completed\n", build.ID)
+	build.logResult(result, w)
+	return nil
 }
 
 func (build *Build) logger() (w io.Writer, wc func(), err error) {
 	w = io.Writer(os.Stdout)
 	wc = func() {}
-	logFile, err := build.buildArtifactPath(build.Config.LogFile)
-	if err != nil {
-		return nil, nil, err
-	}
-	if logFile != "" {
+	if build.Config.LogFile != "" {
+		if filepath.IsAbs(build.Config.LogFile) {
+			return nil, nil, fmt.Errorf("build artifact path must be relative: %s", build.Config.LogFile)
+		}
+		if strings.HasSuffix(build.Config.LogFile, "/") || strings.HasSuffix(build.Config.LogFile, string(filepath.Separator)) {
+			return nil, nil, fmt.Errorf("build artifact path must be a file: %s", build.Config.LogFile)
+		}
+		logFile, err := build.AbsolutePath(build.Config.LogFile)
+		if err != nil {
+			return nil, nil, err
+		}
 		if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
 			return nil, nil, err
 		}
@@ -275,11 +287,27 @@ func (build *Build) Validate() (err error) {
 	if build.URI.Path == "" {
 		return fmt.Errorf("build.uri is required")
 	}
-	if _, err := build.buildArtifactPath(build.Config.DataFile); err != nil {
-		return err
+	if filepath.IsAbs(build.Config.DataFile) {
+		return fmt.Errorf("build artifact path must be relative: %s", build.Config.DataFile)
 	}
-	if _, err := build.buildArtifactPath(build.Config.LogFile); err != nil {
-		return err
+	if filepath.IsAbs(build.Config.LogFile) {
+		return fmt.Errorf("build artifact path must be relative: %s", build.Config.LogFile)
+	}
+	if strings.HasSuffix(build.Config.DataFile, "/") || strings.HasSuffix(build.Config.DataFile, string(filepath.Separator)) {
+		return fmt.Errorf("build artifact path must be a file: %s", build.Config.DataFile)
+	}
+	if strings.HasSuffix(build.Config.LogFile, "/") || strings.HasSuffix(build.Config.LogFile, string(filepath.Separator)) {
+		return fmt.Errorf("build artifact path must be a file: %s", build.Config.LogFile)
+	}
+	if build.Config.DataFile != "" {
+		if _, err := build.AbsolutePath(build.Config.DataFile); err != nil {
+			return err
+		}
+	}
+	if build.Config.LogFile != "" {
+		if _, err := build.AbsolutePath(build.Config.LogFile); err != nil {
+			return err
+		}
 	}
 	if build.Pages == nil {
 		return fmt.Errorf("build.pages is required")
@@ -366,7 +394,11 @@ func (build *Build) copyAsset(srcPath string, relPath string, w io.Writer) (err 
 	if dstPath, err = build.Website.AssetBuildPath(build, relPath); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "copying \"%s\" to \"%s\"\n", build.Website.RelativePath(srcPath), build.Website.RelativePath(dstPath))
+	dstRelPath, err := build.RelativePath(dstPath)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "copying \"%s\" to \"%s\"\n", build.Website.RelativePath(srcPath), filepath.ToSlash(filepath.Join(build.ID, dstRelPath)))
 	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
 	}
@@ -457,7 +489,11 @@ func (build *Build) WriteFile(fileName string, fileBytes []byte, w io.Writer) (e
 
 	var file *os.File
 	var fileBytesWritten int
-	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), build.Website.RelativePath(fileName))
+	fileRelPath, err := build.RelativePath(fileName)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), filepath.ToSlash(filepath.Join(build.ID, fileRelPath)))
 	if file, err = os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
@@ -477,41 +513,81 @@ func (build *Build) BuildPath(page *Page) string {
 		publicPath = PagePath(build.Website, page.URI)
 	}
 	publicPath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(publicPath)), "/")
+	var relPath string
 	if publicPath == "" {
-		return filepath.Join(build.URI.Path, "index.html")
+		relPath = "index.html"
+	} else if strings.HasSuffix(publicPath, "/") {
+		relPath = filepath.ToSlash(filepath.Join(publicPath, "index.html"))
+	} else if filepath.Ext(publicPath) == ".html" {
+		relPath = publicPath
+	} else {
+		relPath = filepath.ToSlash(filepath.Join(publicPath, "index.html"))
 	}
-	if strings.HasSuffix(publicPath, "/") {
-		return filepath.Join(build.URI.Path, publicPath, "index.html")
+	filePath, err := build.AbsolutePath(relPath)
+	if err != nil {
+		if build != nil && build.URI != nil {
+			return filepath.Join(build.URI.Path, relPath)
+		}
+		return relPath
 	}
-	if filepath.Ext(publicPath) == ".html" {
-		return filepath.Join(build.URI.Path, publicPath)
-	}
-	return filepath.Join(build.URI.Path, publicPath, "index.html")
+	return filePath
 }
 
-func (build *Build) BuildStats(duration time.Duration, w io.Writer) {
+func (build *Build) AbsolutePath(relPath string) (string, error) {
+	if build == nil || build.URI == nil || build.URI.Path == "" {
+		return "", fmt.Errorf("build.uri is required")
+	}
+	if filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("build path must be relative: %s", relPath)
+	}
+	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
+	if err != nil {
+		return "", err
+	}
+	root, err := filepath.Abs(build.URI.Path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, relPath), nil
+}
+
+func (build *Build) RelativePath(path string) (string, error) {
+	if build == nil || build.URI == nil || build.URI.Path == "" {
+		return "", fmt.Errorf("build.uri is required")
+	}
+	root, err := filepath.Abs(build.URI.Path)
+	if err != nil {
+		return "", err
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	relPath, err := filepath.Rel(root, path)
+	if err != nil {
+		return "", err
+	}
+	if filepath.IsAbs(relPath) || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("build path %q is outside build root %q", path, root)
+	}
+	return filepath.ToSlash(relPath), nil
+}
+
+func (*Build) logResult(result BuildResult, w io.Writer) {
 	if w == nil {
 		w = os.Stdout
 	}
-
-	build.Status.DurationMS = int(duration.Milliseconds())
-	feedCount := 0
-	for _, p := range *build.Pages {
-		if p.Feed != nil {
-			feedCount += 1
-		}
-	}
 	fmt.Fprintf(w,
 		"\nPages:  %8v (%s)\nAssets: %8v (%s)\nFeeds:  %8v (%s)\nTags:   %8v\n----------------\nTOTAL %8vms\n",
-		len(*build.Pages), byteSize(build.Status.Bytes.Counters["pages"]),
-		len(build.Status.Assets.Counters), byteSize(build.Status.Bytes.Counters["assets"]),
-		feedCount, byteSize(build.Status.Bytes.Counters["feeds"]),
-		len(build.Status.Tags.Counters),
-		build.Status.DurationMS,
+		result.PageCount, byteSize(result.Bytes["pages"]),
+		len(result.Assets), byteSize(result.Bytes["assets"]),
+		result.FeedCount, byteSize(result.Bytes["feeds"]),
+		len(result.Tags),
+		result.DurationMS,
 	)
 }
 
-func (build *Build) Data() BuildResult {
+func (build *Build) Result() BuildResult {
 	result := BuildResult{
 		ID:         build.ID,
 		Assets:     build.Status.Assets.Map(),
@@ -522,78 +598,67 @@ func (build *Build) Data() BuildResult {
 	if build.URI != nil {
 		result.URI = build.URI.String()
 	}
+	if build.Pages != nil {
+		result.PageCount = len(*build.Pages)
+		for _, page := range *build.Pages {
+			if page != nil && page.Feed != nil {
+				result.FeedCount++
+			}
+		}
+	}
 	return result
 }
 
-func (build *Build) WriteData(fileName string, w io.Writer) error {
+func (build *Build) writeBuildData(result BuildResult, w io.Writer) {
 	if w == nil {
 		w = os.Stdout
 	}
-
-	fileBytes, err := json.MarshalIndent(build.Data(), "", "\t")
+	if build.Config.DataFile == "" {
+		return
+	}
+	dataFile, err := build.AbsolutePath(build.Config.DataFile)
 	if err != nil {
-		return err
+		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
+		return
+	}
+	fileBytes, err := json.MarshalIndent(result, "", "\t")
+	if err != nil {
+		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
+		return
 	}
 	fileBytes = append(fileBytes, '\n')
-	if err := os.MkdirAll(filepath.Dir(fileName), 0755); err != nil {
-		return err
+	if err := os.MkdirAll(filepath.Dir(dataFile), 0755); err != nil {
+		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
+		return
 	}
-	return build.WriteFile(fileName, fileBytes, w)
+	if err := build.WriteFile(dataFile, fileBytes, w); err != nil {
+		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
+	}
 }
 
-func (build *Build) writeDataArtifact(w io.Writer) error {
-	dataFile, err := build.buildArtifactPath(build.Config.DataFile)
-	if err != nil {
-		return err
+func (build *Build) writeDeploymentIgnore(w io.Writer) {
+	if w == nil {
+		w = os.Stdout
 	}
-	if dataFile == "" {
-		return nil
-	}
-	return build.WriteData(dataFile, w)
-}
-
-func (build *Build) ArtifactPath(configured string) (string, error) {
-	return build.buildArtifactPath(configured)
-}
-
-func (build *Build) buildArtifactPath(configured string) (string, error) {
-	if configured == "" {
-		return "", nil
-	}
-	if build.URI == nil || build.URI.Path == "" {
-		return "", fmt.Errorf("build.uri is required")
-	}
-	if filepath.IsAbs(configured) {
-		return "", fmt.Errorf("build artifact path must be relative: %s", configured)
-	}
-	if strings.HasSuffix(configured, "/") || strings.HasSuffix(configured, string(filepath.Separator)) {
-		return "", fmt.Errorf("build artifact path must be a file: %s", configured)
-	}
-
-	rel, err := hypertemplates.CleanRelativeFilePath(configured)
-	if err != nil {
-		return "", err
-	}
-	if rel == "." {
-		return "", fmt.Errorf("build artifact path must be a file: %s", configured)
-	}
-	return filepath.Join(build.URI.Path, rel), nil
-}
-
-func (build *Build) writeDeploymentIgnore() error {
 	paths, err := build.deploymentIgnoreArtifactPaths()
 	if err != nil {
-		return err
+		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		return
 	}
 	if len(paths) == 0 {
-		return nil
+		return
 	}
 	if build.URI == nil || build.URI.Path == "" {
-		return fmt.Errorf("build.uri is required")
+		fmt.Fprintf(w, "deployment ignore skipped: build.uri is required\n")
+		return
 	}
 
-	root := build.URI.Path
-	ignorePath := filepath.Join(root, ".deploymentignore")
+	ignorePath, err := build.AbsolutePath(".deploymentignore")
+	if err != nil {
+		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		return
+	}
+	root := filepath.Dir(ignorePath)
 	seen := map[string]bool{}
 	lines := []string{}
 	if data, err := os.ReadFile(ignorePath); err == nil {
@@ -606,7 +671,8 @@ func (build *Build) writeDeploymentIgnore() error {
 			lines = append(lines, entry)
 		}
 	} else if !os.IsNotExist(err) {
-		return err
+		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		return
 	}
 
 	changed := false
@@ -620,12 +686,15 @@ func (build *Build) writeDeploymentIgnore() error {
 		changed = true
 	}
 	if !changed {
-		return nil
+		return
 	}
 	if err := os.MkdirAll(root, 0755); err != nil {
-		return err
+		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		return
 	}
-	return os.WriteFile(ignorePath, []byte(strings.Join(lines, "\n")+"\n"), 0644)
+	if err := build.WriteFile(ignorePath, []byte(strings.Join(lines, "\n")+"\n"), w); err != nil {
+		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+	}
 }
 
 func (build *Build) deploymentIgnoreArtifactPaths() ([]string, error) {
@@ -634,14 +703,15 @@ func (build *Build) deploymentIgnoreArtifactPaths() ([]string, error) {
 		if configured == "" {
 			continue
 		}
-		if _, err := build.buildArtifactPath(configured); err != nil {
-			return nil, err
-		}
-		rel, err := hypertemplates.CleanRelativeFilePath(configured)
+		absPath, err := build.AbsolutePath(configured)
 		if err != nil {
 			return nil, err
 		}
-		paths = append(paths, filepath.ToSlash(rel))
+		rel, err := build.RelativePath(absPath)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, rel)
 	}
 	return paths, nil
 }

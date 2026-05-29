@@ -196,7 +196,11 @@ func (feed *HyperFeed) WriteAtom(build *Build, path string, w io.Writer) (err er
 	}
 
 	var atomFeed *atom.Atom
-	var atomPath string = filepath.Join(build.URI.Path, strings.ToLower(filepath.Join(path, "atom.xml")))
+	atomRelPath := strings.TrimPrefix(strings.ToLower(filepath.ToSlash(filepath.Join(path, "atom.xml"))), "/")
+	atomPath, err := build.AbsolutePath(atomRelPath)
+	if err != nil {
+		return err
+	}
 	var atomBytes []byte
 	if atomFeed, err = feed.Atom(build.Website, path); err != nil {
 		return err

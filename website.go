@@ -336,11 +336,7 @@ func (website *Website) AssetPublicPath(relPath string) (string, error) {
 }
 
 func (website *Website) AssetBuildPath(build *Build, relPath string) (string, error) {
-	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(build.URI.Path, relPath), nil
+	return build.AbsolutePath(relPath)
 }
 
 func (website *Website) ResolveConfig(overrides *WebsiteConfig) {

@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -251,6 +252,12 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 	if data.ID != "test" {
 		t.Fatalf("build data id = %q, want test", data.ID)
 	}
+	if data.PageCount != 1 {
+		t.Fatalf("build data page_count = %d, want 1", data.PageCount)
+	}
+	if data.FeedCount != 0 {
+		t.Fatalf("build data feed_count = %d, want 0", data.FeedCount)
+	}
 	if data.DurationMS < 0 {
 		t.Fatalf("duration_ms = %d, want non-negative", data.DurationMS)
 	}
@@ -284,17 +291,75 @@ func TestBuildExecuteUnsetArtifactFilesWritesNoArtifacts(t *testing.T) {
 	}
 }
 
-func TestBuildArtifactPathUsesBuildRelativePaths(t *testing.T) {
+func TestBuildWriteFileLogsBuildRelativePathForExternalBuildRoot(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.ID = "build-1"
+	build.URI = &url.URL{Path: filepath.Join(t.TempDir(), "remote-output", build.ID)}
+	if err := os.MkdirAll(build.URI.Path, 0755); err != nil {
+		t.Fatalf("MkdirAll(build.URI.Path) error = %v", err)
+	}
+
+	var log bytes.Buffer
+	if err := build.WriteFile(filepath.Join(build.URI.Path, "index.html"), []byte("home"), &log); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if got, want := log.String(), "writing 4 bytes to build-1/index.html\n"; got != want {
+		t.Fatalf("log = %q, want %q", got, want)
+	}
+}
+
+func TestBuildCopyAssetLogsBuildRelativePathForExternalBuildRoot(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.ID = "build-1"
+	build.URI = &url.URL{Path: filepath.Join(t.TempDir(), "remote-output", build.ID)}
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "static", "favicon.png"), "icon")
+
+	var log bytes.Buffer
+	if err := build.CopyWebsiteAsset("favicon.png", &log); err != nil {
+		t.Fatalf("CopyWebsiteAsset() error = %v", err)
+	}
+	if got, want := log.String(), "copying \"static/favicon.png\" to \"build-1/favicon.png\"\n"; got != want {
+		t.Fatalf("log = %q, want %q", got, want)
+	}
+}
+
+func TestBuildAbsolutePathUsesBuildRelativePaths(t *testing.T) {
 	root := t.TempDir()
 	build := &Build{URI: &url.URL{Path: filepath.Join(root, "build")}}
 	want := filepath.Join(root, "build", "logs", "build.log")
 
-	got, err := build.ArtifactPath("logs/build.log")
+	got, err := build.AbsolutePath("logs/build.log")
 	if err != nil {
-		t.Fatalf("ArtifactPath() error = %v", err)
+		t.Fatalf("AbsolutePath() error = %v", err)
 	}
 	if got != want {
-		t.Fatalf("ArtifactPath() = %q, want %q", got, want)
+		t.Fatalf("AbsolutePath() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildPathHelpersUseAbsoluteBuildRoot(t *testing.T) {
+	build := &Build{URI: &url.URL{Path: filepath.Join("testdata", "site", ".builds", "test")}}
+	absRoot, err := filepath.Abs(build.URI.Path)
+	if err != nil {
+		t.Fatalf("Abs(build.URI.Path) error = %v", err)
+	}
+
+	absPath, err := build.AbsolutePath("posts/hello/index.html")
+	if err != nil {
+		t.Fatalf("AbsolutePath() error = %v", err)
+	}
+	if want := filepath.Join(absRoot, "posts", "hello", "index.html"); absPath != want {
+		t.Fatalf("AbsolutePath() = %q, want %q", absPath, want)
+	}
+
+	relPath, err := build.RelativePath(filepath.Join(build.URI.Path, "posts", "hello", "index.html"))
+	if err != nil {
+		t.Fatalf("RelativePath() error = %v", err)
+	}
+	if relPath != "posts/hello/index.html" {
+		t.Fatalf("RelativePath() = %q, want posts/hello/index.html", relPath)
 	}
 }
 
@@ -318,6 +383,85 @@ func TestBuildValidateRejectsAbsoluteArtifactPaths(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want relative artifact path error", err)
 			}
 		})
+	}
+}
+
+func TestBuildExecuteRejectsInvalidDataFileBeforeWritingOutput(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config.DataFile = filepath.Join(t.TempDir(), "build.json")
+
+	err := build.Execute(context.Background())
+	if err == nil {
+		t.Fatal("Execute() error = nil, want invalid data file error")
+	}
+	if !strings.Contains(err.Error(), "build artifact path must be relative") {
+		t.Fatalf("Execute() error = %v, want relative artifact path error", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(fixture.buildPath, "index.html")); !os.IsNotExist(statErr) {
+		t.Fatalf("build output exists or stat error = %v, want not exist", statErr)
+	}
+}
+
+func TestBuildExecuteContinuesWhenDeploymentIgnoreFails(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config.LogFile = "build.log"
+	if err := os.MkdirAll(filepath.Join(fixture.buildPath, ".deploymentignore"), 0755); err != nil {
+		t.Fatalf("MkdirAll(.deploymentignore) error = %v", err)
+	}
+
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.buildPath, "index.html")); err != nil {
+		t.Fatalf("build output missing: %v", err)
+	}
+	logBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.log"))
+	if err != nil {
+		t.Fatalf("ReadFile(build.log) error = %v", err)
+	}
+	if got := string(logBytes); !strings.Contains(got, "deployment ignore skipped:") {
+		t.Fatalf("build.log = %q, want deployment ignore warning", got)
+	}
+}
+
+func TestBuildExecuteContinuesWhenBuildDataFails(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config = BuildConfig{DataFile: "reports/build.json", LogFile: "build.log"}
+	if err := os.MkdirAll(fixture.buildPath, 0755); err != nil {
+		t.Fatalf("MkdirAll(buildPath) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.buildPath, "reports"), []byte("not a directory"), 0644); err != nil {
+		t.Fatalf("WriteFile(reports) error = %v", err)
+	}
+
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.buildPath, "index.html")); err != nil {
+		t.Fatalf("build output missing: %v", err)
+	}
+	logBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.log"))
+	if err != nil {
+		t.Fatalf("ReadFile(build.log) error = %v", err)
+	}
+	if got := string(logBytes); !strings.Contains(got, `build data "reports/build.json" skipped:`) {
+		t.Fatalf("build.log = %q, want build data warning", got)
+	}
+}
+
+func TestBuildWriteDeploymentIgnoreLogsBuildRelativePath(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config.DataFile = filepath.Join("artifacts", "build.json")
+
+	var log bytes.Buffer
+	build.writeDeploymentIgnore(&log)
+
+	if got, want := log.String(), "writing 21 bytes to test/.deploymentignore\n"; got != want {
+		t.Fatalf("log = %q, want %q", got, want)
 	}
 }
 

@@ -1018,7 +1018,10 @@ func TestBuildPathWithRelativeWebsiteRoot(t *testing.T) {
 	page := &Page{URI: &url.URL{Path: sourcePath}, Path: "/about/"}
 
 	got := build.BuildPath(page)
-	want := filepath.Join("testdata", "site", ".builds", "test", "about", "index.html")
+	want, err := filepath.Abs(filepath.Join("testdata", "site", ".builds", "test", "about", "index.html"))
+	if err != nil {
+		t.Fatalf("Abs() error = %v", err)
+	}
 	if got != want {
 		t.Fatalf("BuildPath() = %q, want %q", got, want)
 	}
