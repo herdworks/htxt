@@ -6,8 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
-* **BREAKING:** Replaced `Build.ArtifactPath(...)` with `Build.AbsolutePath(...)` and `Build.RelativePath(...)` for build-root path conversion, renamed `Build.Data()` to `Build.Result()`, and removed the standalone `Build.BuildStats(...)` and `Build.WriteData(...)` build-reporting helpers.
-* Added `page_count` and `feed_count` to `BuildResult`, and changed build reporting so build data files and summary logs consume the same completed result snapshot.
+## v0.33.1 (2026-05-29)
+
+* Added `page_count` and `feed_count` to `BuildResult`, and changed build reporting to generate report once, then log it and optionally write a build data file.
 * Changed build start/completion logs to use `build.ID`, changed output copy/write log destinations to use `<build id>/<build-relative path>` instead of website-relative paths, and made `.deploymentignore` writes log the same build-relative `writing N bytes to ...` line as other build outputs.
 * Changed post-output sidecars such as `.deploymentignore` and build data to log warnings instead of failing an otherwise successful build.
 
