@@ -27,6 +27,15 @@ func assertTimestampDraftSegment(t *testing.T, draftSegment string) {
 	}
 }
 
+func mustHref(t *testing.T, raw string) *href.Href {
+	t.Helper()
+	h, err := href.Parse(raw)
+	if err != nil {
+		t.Fatalf("href.Parse(%q) error = %v", raw, err)
+	}
+	return h
+}
+
 func TestPagesFilterDraft(t *testing.T) {
 	published := &Page{Title: "Published"}
 	draft := &Page{Title: "Draft", Draft: true}
@@ -145,7 +154,7 @@ func TestPageResolveTemplateDataSetsCanonicalURL(t *testing.T) {
 	}
 }
 
-func TestPageAtomEntryUsesCanonicalURLForIDAndRelatedLink(t *testing.T) {
+func TestPageAtomEntryUsesCanonicalURLForIDAndAlternateLink(t *testing.T) {
 	website, _ := testWebsite(t)
 	page := Page{
 		Path:     "/about/",
@@ -164,11 +173,74 @@ func TestPageAtomEntryUsesCanonicalURLForIDAndRelatedLink(t *testing.T) {
 	for _, link := range entry.Links {
 		links[link.Rel] = link.Href
 	}
-	if got, want := links["alternate"], "https://elsewhere.example/post/"; got != want {
+	if got, want := links["alternate"], "https://example.com/about/"; got != want {
 		t.Fatalf("alternate link = %q, want %q", got, want)
 	}
-	if got, want := links["related"], "https://example.com/about/"; got != want {
-		t.Fatalf("related link = %q, want %q", got, want)
+	if _, ok := links["related"]; ok {
+		t.Fatalf("unexpected related link = %q", links["related"])
+	}
+	if _, ok := links["via"]; ok {
+		t.Fatalf("unexpected via link = %q", links["via"])
+	}
+}
+
+func TestPageAtomEntryLinksRepresentAttachments(t *testing.T) {
+	website, _ := testWebsite(t)
+	pageDir := filepath.Join(website.ContentDirPath(), "s", "123")
+	writeAssetTestFile(t, filepath.Join(pageDir, "photo.png"))
+	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "docs", "guide.pdf"))
+	page := Page{
+		URI:  &url.URL{Path: filepath.Join(pageDir, "index.md")},
+		Path: "/s/123/",
+		Attachments: Attachments{
+			{Kind: AttachmentKindLink, Href: mustHref(t, "https://example.org/article"), Data: map[string]any{"hypergraph": map[string]any{"title": "Example Article"}}},
+			{Kind: AttachmentKindImage, Href: mustHref(t, "photo.png")},
+			{Kind: AttachmentKindLink, Href: mustHref(t, "https://example.net/second")},
+			{Kind: AttachmentKindDocument, Href: mustHref(t, "/docs/guide.pdf")},
+		},
+	}
+
+	entry := page.AtomEntry(website)
+	if entry == nil {
+		t.Fatal("AtomEntry() returned nil")
+	}
+	related := []string{}
+	enclosures := map[string]struct {
+		mimetype string
+		length   uint
+	}{}
+	for _, link := range entry.Links {
+		switch link.Rel {
+		case "alternate":
+			if got, want := link.Href, "https://example.com/s/123/"; got != want {
+				t.Fatalf("alternate link = %q, want %q", got, want)
+			}
+		case "via":
+			t.Fatalf("unexpected via link: %#v", link)
+		case "related":
+			related = append(related, link.Href)
+			if link.Href == "https://example.org/article" && link.Title != "Example Article" {
+				t.Fatalf("related title = %q, want Example Article", link.Title)
+			}
+		case "enclosure":
+			enclosures[link.Href] = struct {
+				mimetype string
+				length   uint
+			}{mimetype: link.Type, length: link.Length}
+		}
+	}
+	if got, want := strings.Join(related, ","), "https://example.org/article,https://example.net/second"; got != want {
+		t.Fatalf("related links = %q, want %q", got, want)
+	}
+	if got, ok := enclosures["https://example.com/s/123/photo.png"]; !ok {
+		t.Fatal("missing photo enclosure")
+	} else if got.mimetype != "image/png" || got.length != 5 {
+		t.Fatalf("photo enclosure = %#v, want image/png length 5", got)
+	}
+	if got, ok := enclosures["https://example.com/docs/guide.pdf"]; !ok {
+		t.Fatal("missing document enclosure")
+	} else if got.mimetype != "application/pdf" || got.length != 0 {
+		t.Fatalf("document enclosure = %#v, want application/pdf length 0", got)
 	}
 }
 

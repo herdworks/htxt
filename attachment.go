@@ -1,15 +1,11 @@
 package hypertexting
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"os"
 
-	hypergraph "github.com/herdworks/hypergraph-go/types"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/hypertexting-go/href"
 )
 
 const (
@@ -20,61 +16,10 @@ const (
 
 type Attachment struct {
 	Kind AttachmentKind              `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Href string                      `json:"href,omitempty" yaml:"href,omitempty"`
+	Href *href.Href                  `json:"href,omitempty" yaml:"href,omitempty"`
 	Data hypertemplates.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
-
-	document *hypergraph.Document
 }
 type Attachments []*Attachment
-
-func (attachments Attachments) Process(verbose bool, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	if len(attachments) == 0 {
-		return nil // guard
-	}
-	for _, attachment := range attachments {
-		if err := attachment.Process(verbose, w); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (attachment *Attachment) Process(verbose bool, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	switch attachment.Kind {
-	case AttachmentKindLink:
-		return attachment.ProcessLink(verbose, w)
-	default:
-		fmt.Fprintf(w, "attachment kind \"%s\" is not supported\n", attachment.Kind)
-		return nil // noop
-	}
-}
-func (attachment *Attachment) ProcessLink(verbose bool, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	var ctx context.Context = context.Background()
-	attachment.document = &hypergraph.Document{Href: attachment.Href}
-	if err = attachment.document.Download(ctx, verbose, nil, 10, w); err != nil {
-		return err
-	}
-	if err = attachment.document.Scrape(ctx, verbose, nil, 10, w); err != nil {
-		return err
-	}
-	// TODO: replace this with attachment.Data = attachment.document.Metadata.TemplateData() ??
-	attachment.Data["hypergraph"] = attachment.document.Metadata.HyperGraph.TemplateData()
-	attachment.Data["opengraph"] = attachment.document.Metadata.OpenGraph.TemplateData()
-	attachment.Data["twitter"] = attachment.document.Metadata.Twitter.TemplateData()
-	attachment.Data["oembed"] = attachment.document.Metadata.OEmbed.TemplateData()
-	return nil
-}
 
 func (attachments Attachments) TemplateData() hypertemplates.TemplateDataSet {
 	data := []hypertemplates.TemplateData{}
@@ -84,18 +29,34 @@ func (attachments Attachments) TemplateData() hypertemplates.TemplateDataSet {
 	return data
 }
 func (attachment *Attachment) TemplateData() (data hypertemplates.TemplateData) {
+	href := ""
+	if attachment.Href != nil {
+		href = attachment.Href.String()
+	}
 	return hypertemplates.TemplateData{
 		"kind": attachment.Kind,
-		"href": attachment.Href,
+		"href": href,
 		"data": attachment.Data,
 	}
+}
+
+func (attachment *Attachment) Title() string {
+	if attachment == nil || attachment.Data == nil {
+		return ""
+	}
+	for _, key := range []string{"hypergraph.title", "title", "opengraph.title", "twitter.title"} {
+		if title, ok := attachment.Data.Get(key).(string); ok {
+			return title
+		}
+	}
+	return ""
 }
 
 func (attachment *Attachment) Validate() (err error) {
 	if attachment.Kind == "" {
 		return errors.New(AttachmentErrorMissingKind)
 	}
-	if attachment.Href == "" {
+	if attachment.Href == nil || attachment.Href.String() == "" {
 		return errors.New(AttachmentErrorMissingHref)
 	}
 	return nil
@@ -119,8 +80,10 @@ func (attachment *Attachment) UnmarshalJSON(data []byte) (err error) {
 	if kind, ok := rawData["kind"].(string); ok {
 		attachment.Kind = AttachmentKind(kind)
 	}
-	if href, ok := rawData["href"].(string); ok {
-		attachment.Href = href
+	if rawHref, ok := rawData["href"].(string); ok {
+		if attachment.Href, err = href.Parse(rawHref); err != nil {
+			return err
+		}
 	}
 	if d, ok := rawData["data"].(string); ok {
 		if err = json.Unmarshal([]byte(d), &attachment.Data); err != nil {
@@ -138,9 +101,26 @@ func (attachment *Attachment) UnmarshalJSON(data []byte) (err error) {
 type AttachmentKind string
 
 const (
-	AttachmentKindLink  AttachmentKind = "link"
-	AttachmentKindFile  AttachmentKind = "file"
-	AttachmentKindImage AttachmentKind = "image"
-	AttachmentKindVideo AttachmentKind = "video"
-	AttachmentKindAudio AttachmentKind = "audio"
+	AttachmentKindLink     AttachmentKind = "link"
+	AttachmentKindFile     AttachmentKind = "file"
+	AttachmentKindImage    AttachmentKind = "image"
+	AttachmentKindVideo    AttachmentKind = "video"
+	AttachmentKindAudio    AttachmentKind = "audio"
+	AttachmentKindDocument AttachmentKind = "document"
 )
+
+func (attachment *Attachment) IsLink() bool {
+	return attachment != nil && attachment.Kind == AttachmentKindLink
+}
+
+func (attachment *Attachment) IsEnclosure() bool {
+	if attachment == nil {
+		return false
+	}
+	switch attachment.Kind {
+	case AttachmentKindFile, AttachmentKindImage, AttachmentKindAudio, AttachmentKindVideo, AttachmentKindDocument:
+		return true
+	default:
+		return false
+	}
+}

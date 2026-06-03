@@ -254,14 +254,23 @@ func TestContentTypeReadyValidatesAttachmentKind(t *testing.T) {
 	}
 	page := &Page{
 		Draft:       true,
-		Attachments: Attachments{{Kind: AttachmentKindLink, Href: "https://example.com"}},
+		Attachments: Attachments{{Kind: AttachmentKindLink, Href: mustHref(t, "https://example.com")}},
 	}
 
 	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires image attachment") {
 		t.Fatalf("Ready() error = %v, want image attachment requirement", err)
 	}
 
-	page.Attachments = append(page.Attachments, &Attachment{Kind: AttachmentKindImage, Href: "image.jpg"})
+	page.Attachments = append(page.Attachments, &Attachment{Kind: AttachmentKindImage, Href: mustHref(t, "image.jpg")})
+	if err := contenttype.Ready(page); err != nil {
+		t.Fatalf("Ready() error = %v, want ready", err)
+	}
+
+	contenttype.Spec.Requires.Attachment = AttachmentKindDocument
+	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires document attachment") {
+		t.Fatalf("Ready() error = %v, want document attachment requirement", err)
+	}
+	page.Attachments = append(page.Attachments, &Attachment{Kind: AttachmentKindDocument, Href: mustHref(t, "document.pdf")})
 	if err := contenttype.Ready(page); err != nil {
 		t.Fatalf("Ready() error = %v, want ready", err)
 	}

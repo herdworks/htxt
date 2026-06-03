@@ -118,6 +118,9 @@ func (contenttype ContentType) Ready(page *Page) error {
 	if contenttype.Spec.Requires.Attachment == AttachmentKindAudio && len(page.Attachments.FilteredBy(AttachmentKindAudio)) == 0 {
 		return fmt.Errorf("content-type requires audio attachment")
 	}
+	if contenttype.Spec.Requires.Attachment == AttachmentKindDocument && len(page.Attachments.FilteredBy(AttachmentKindDocument)) == 0 {
+		return fmt.Errorf("content-type requires document attachment")
+	}
 
 	// success!
 	return nil

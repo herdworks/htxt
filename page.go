@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/url"
 	"os"
 	"path"
@@ -480,27 +481,70 @@ func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
 
 func (page *Page) AtomEntryLinks(website *Website) (atomLinks []atom.Link, err error) {
 	var atomURL *url.URL
-	var atomRelatedURL *url.URL
-	if atomURL, err = website.ResolveHref(page.AtomEntryLink()); err != nil {
+	if atomURL, err = page.CanonicalURL(website); err != nil {
 		return nil, err
 	}
-	if atomRelatedURL, err = page.CanonicalURL(website); err != nil {
-		return nil, err
+	atomLinks = append(atomLinks, atom.Link{Rel: "alternate", Type: "text/html", Href: atomURL.String()})
+	for _, attachment := range page.Attachments {
+		if attachment == nil || attachment.Href == nil || attachment.Href.String() == "" {
+			continue
+		}
+		attachmentURL := atomURL.ResolveReference(&attachment.Href.URL)
+		switch {
+		case attachment.IsLink():
+			atomLinks = append(atomLinks, atom.Link{Rel: "related", Type: "text/html", Href: attachmentURL.String(), Title: attachment.Title()})
+		case attachment.IsEnclosure():
+			link := atom.Link{Rel: "enclosure", Href: attachmentURL.String(), Type: attachment.AtomMIMEType(attachmentURL), Title: attachment.Title()}
+			if length := page.AtomAttachmentLength(attachment); length > 0 {
+				link.Length = length
+			}
+			atomLinks = append(atomLinks, link)
+		}
 	}
-	return []atom.Link{
-		{Rel: "alternate", Type: "text/html", Href: atomURL.String()},
-		{Rel: "via", Type: "text/html", Href: atomURL.String()},
-		{Rel: "related", Type: "text/html", Href: atomRelatedURL.String()},
-	}, nil
+	return atomLinks, nil
 }
 
-func (page *Page) AtomEntryLink() string {
-	redirected := len(page.Redirect) > 0
-	nocontent := len(page.Content) == 0
-	if redirected && nocontent {
-		return page.Redirect
+func (attachment *Attachment) AtomMIMEType(u *url.URL) string {
+	if attachment != nil && attachment.Data != nil {
+		for _, key := range []string{"mimetype", "mime_type", "type"} {
+			if mimetype, ok := attachment.Data.Get(key).(string); ok && mimetype != "" {
+				return mimetype
+			}
+		}
 	}
-	return page.Path
+	if u == nil || u.Path == "" {
+		return ""
+	}
+	mimetype := mime.TypeByExtension(path.Ext(u.Path))
+	if mimetype == "" {
+		return ""
+	}
+	mediatype, _, err := mime.ParseMediaType(mimetype)
+	if err != nil || mediatype == "" {
+		return mimetype
+	}
+	return mediatype
+}
+
+func (page *Page) AtomAttachmentLength(attachment *Attachment) uint {
+	if page == nil || page.URI == nil || page.URI.Path == "" || attachment == nil || attachment.Href == nil {
+		return 0
+	}
+	ref := &attachment.Href.URL
+	if ref.IsAbs() || ref.Path == "" || strings.HasPrefix(ref.Path, "/") {
+		return 0
+	}
+	pageDir := filepath.Dir(page.URI.Path)
+	filePath := filepath.Clean(filepath.Join(pageDir, filepath.FromSlash(ref.Path)))
+	relPath, err := filepath.Rel(pageDir, filePath)
+	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) || filepath.IsAbs(relPath) {
+		return 0
+	}
+	info, err := os.Stat(filePath)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		return 0
+	}
+	return uint(info.Size())
 }
 
 func (page *Page) AtomEntryAuthor(website *Website) (person *atom.Author, err error) {
@@ -528,13 +572,11 @@ func (page *Page) AtomSummary() (summary atom.Text) {
 	if len(page.Content) > 0 {
 		return atom.Text{Type: "html", Body: page.Content}
 	}
-	if len(page.Attachments.FilteredBy(AttachmentKindLink)) > 0 {
-		attachment := page.Attachments.FilteredBy(AttachmentKindLink)[0]
-		attachment.Data.Get("hypergraph.description")
-		return atom.Text{Type: "html", Body: fmt.Sprintf("Link to %s", attachment.Href)}
-	}
-	if len(page.More) > 0 {
-		return atom.Text{Type: "html", Body: page.More}
+	if links := page.Attachments.FilteredBy(AttachmentKindLink); len(links) > 0 {
+		description, ok := links[0].Data.Get("hypergraph.description").(string)
+		if ok && len(strings.TrimSpace(description)) > 0 {
+			return atom.Text{Type: "html", Body: description}
+		}
 	}
 	ts, err := time.Parse(time.RFC3339, page.CreatedAt)
 	if err != nil {

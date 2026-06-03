@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** Changed `Attachment.Href` from `string` to `*href.Href`; Go callers constructing or inspecting attachments must use `href.Parse`, `*href.Href`, and `Href.String()`. JSON/YAML attachment `href` values still encode as strings, but invalid URL values now fail decoding instead of being stored as opaque strings.
+* **BREAKING:** Removed attachment link-scraping helpers `Attachments.Process`, `Attachment.Process`, and `Attachment.ProcessLink`, and dropped the direct `hypergraph-go` dependency. Callers should scrape link metadata with `hypergraph-go` before populating `Attachment.Data`.
+* **BREAKING:** Removed unused `Page.AtomEntryLink()` and changed `Page.AtomEntryLinks(website)` to emit the canonical page `alternate` link plus attachment `related`/`enclosure` links instead of redirect, `via`, and page-canonical `related` links.
+* Added `AttachmentKindDocument`, document attachment content-type requirements, attachment title helpers, and Atom enclosure MIME type/length metadata for file, image, audio, video, and document attachments.
+* Changed link-post Atom summaries to use `hypergraph.description` when present before falling back to the timestamp summary.
+* Updated `github.com/herdworks/hyperfeed-go` to `v0.20.0`.
+
 ## v0.33.1 (2026-05-29)
 
 * Added `page_count` and `feed_count` to `BuildResult`, and changed build reporting to generate report once, then log it and optionally write a build data file.

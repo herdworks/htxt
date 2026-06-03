@@ -7,8 +7,7 @@ go 1.25.0
 
 // first-party dependencies
 require (
-	github.com/herdworks/hyperfeed-go v0.19.1
-	github.com/herdworks/hypergraph-go v0.19.0
+	github.com/herdworks/hyperfeed-go v0.20.0
 	github.com/herdworks/hyperproviders-go v0.23.0
 	github.com/herdworks/hypertemplates-go v0.30.0
 )
@@ -24,7 +23,6 @@ require (
 // local development dependencies (replacements)
 //
 // uncomment to use local dependencies
-// replace github.com/herdworks/hypergraph-go => ../hypergraph-go
 // replace github.com/herdworks/hyperfeed-go => ../hyperfeed-go
 // replace github.com/herdworks/hyperproviders-go => ../hyperproviders-go
 // replace github.com/herdworks/hypertemplates-go => ../hypertemplates-go
