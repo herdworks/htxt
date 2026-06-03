@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.34.0 (2026-06-03)
+
 * **BREAKING:** Changed `Attachment.Href` from `string` to `*href.Href`; Go callers constructing or inspecting attachments must use `href.Parse`, `*href.Href`, and `Href.String()`. JSON/YAML attachment `href` values still encode as strings, but invalid URL values now fail decoding instead of being stored as opaque strings.
 * **BREAKING:** Removed attachment link-scraping helpers `Attachments.Process`, `Attachment.Process`, and `Attachment.ProcessLink`, and dropped the direct `hypergraph-go` dependency. Callers should scrape link metadata with `hypergraph-go` before populating `Attachment.Data`.
 * **BREAKING:** Removed unused `Page.AtomEntryLink()` and changed `Page.AtomEntryLinks(website)` to emit the canonical page `alternate` link plus attachment `related`/`enclosure` links instead of redirect, `via`, and page-canonical `related` links.
