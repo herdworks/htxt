@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.34.1 (2026-06-04)
+
 * Changed attachment JSON decoding to preserve object-shaped `data` metadata through direct `Attachment` unmarshalling instead of accepting legacy stringified JSON attachment data.
 
 ## v0.34.0 (2026-06-03)
