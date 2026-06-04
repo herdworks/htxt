@@ -41,3 +41,32 @@ func TestAttachmentHrefUnmarshalsAsHref(t *testing.T) {
 		})
 	}
 }
+
+func TestAttachmentDataUnmarshalsJSONObject(t *testing.T) {
+	var attachment Attachment
+	if err := json.Unmarshal([]byte(`{
+		"kind":"link",
+		"href":"https://example.org/article",
+		"data":{"hypergraph":{"title":"Example Article","description":"Metadata description"}}
+	}`), &attachment); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if got := attachment.Data.Get("hypergraph.title"); got != "Example Article" {
+		t.Fatalf("Data.Get(hypergraph.title) = %#v, want Example Article", got)
+	}
+	if got := attachment.Data.Get("hypergraph.description"); got != "Metadata description" {
+		t.Fatalf("Data.Get(hypergraph.description) = %#v, want Metadata description", got)
+	}
+}
+
+func TestAttachmentDataRejectsJSONString(t *testing.T) {
+	var attachment Attachment
+	if err := json.Unmarshal([]byte(`{
+		"kind":"link",
+		"href":"https://example.org/article",
+		"data":"{\"hypergraph\":{\"title\":\"Example Article\",\"description\":\"Metadata description\"}}"
+	}`), &attachment); err == nil {
+		t.Fatal("json.Unmarshal() error = nil, want error")
+	}
+}

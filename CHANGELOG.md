@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed attachment JSON decoding to preserve object-shaped `data` metadata through direct `Attachment` unmarshalling instead of accepting legacy stringified JSON attachment data.
+
 ## v0.34.0 (2026-06-03)
 
 * **BREAKING:** Changed `Attachment.Href` from `string` to `*href.Href`; Go callers constructing or inspecting attachments must use `href.Parse`, `*href.Href`, and `Href.String()`. JSON/YAML attachment `href` values still encode as strings, but invalid URL values now fail decoding instead of being stored as opaque strings.

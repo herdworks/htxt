@@ -1,7 +1,6 @@
 package hypertexting
 
 import (
-	"encoding/json"
 	"errors"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
@@ -70,29 +69,6 @@ func (attachments Attachments) FilteredBy(kind AttachmentKind) Attachments {
 		}
 	}
 	return filtered
-}
-
-func (attachment *Attachment) UnmarshalJSON(data []byte) (err error) {
-	var rawData map[string]any
-	if err = json.Unmarshal(data, &rawData); err != nil {
-		return err
-	}
-	if kind, ok := rawData["kind"].(string); ok {
-		attachment.Kind = AttachmentKind(kind)
-	}
-	if rawHref, ok := rawData["href"].(string); ok {
-		if attachment.Href, err = href.Parse(rawHref); err != nil {
-			return err
-		}
-	}
-	if d, ok := rawData["data"].(string); ok {
-		if err = json.Unmarshal([]byte(d), &attachment.Data); err != nil {
-			return err
-		}
-	} else {
-		attachment.Data = hypertemplates.TemplateData{}
-	}
-	return nil
 }
 
 // ============================================================================
