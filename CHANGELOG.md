@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.36.0 (2026-07-03)
+
 * **BREAKING:** Reworked content type composer configuration around declarative `spec.prompts` (`prompt.Prompts`) and `spec.patches` (`patch.Patches`), replacing top-level content type prompt/patch fields and generic map aliases with typed prompt and patch packages. Individual patches are now `patch.Patch` values with `patch.Operation` operations, validated against non-protected `page.*` template data paths.
 * **BREAKING:** Added explicit composer runtime state with non-serialized `ContentType.State.UserData`; prompt patch values are supplied from that state instead of persisted content type definitions.
 * **BREAKING:** Changed content type application to an overlay contract: `spec.template` and prompt patches produce a non-mutating candidate overlay for composer previews, while only `FinalizePage` materializes that overlay into persisted page data.
