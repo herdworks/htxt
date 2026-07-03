@@ -150,7 +150,7 @@ func (page *Page) ApplyComputedProperties(website *Website) {
 	if canonicalURL, err := page.CanonicalURL(website); err == nil {
 		page.TemplateData.Set("canonical_url", canonicalURL.String())
 	}
-	if len(page.Redirect) > 0 {
+	if len(page.Redirect) > 0 && website != nil {
 		page.TemplateData.Set("refresh", fmt.Sprintf("%d; url=%s", website.Config.RefreshInterval, page.Redirect))
 	}
 	if len(page.Assets) > 0 {
@@ -608,6 +608,36 @@ type PageCache struct {
 	URI *url.URL
 }
 
+func (page *Page) Clone() *Page {
+	if page == nil {
+		return nil
+	}
+	clone := *page
+	clone.URI = cloneURL(page.URI)
+	clone.Cache = page.Cache.Clone()
+	clone.Byline = page.Byline.Clone()
+	clone.Contributors = page.Contributors.Clone()
+	clone.Attachments = page.Attachments.Clone()
+	clone.Metadata = append([]HTMLMeta(nil), page.Metadata...)
+	clone.Links = append([]HTMLLink(nil), page.Links...)
+	clone.Tags = append([]string(nil), page.Tags...)
+	clone.Feed = page.Feed.Clone()
+	clone.Assets = append([]string(nil), page.Assets...)
+	if page.TemplateData != nil {
+		clone.TemplateData = page.TemplateData.Clone()
+	}
+	return &clone
+}
+
+func (cache *PageCache) Clone() *PageCache {
+	if cache == nil {
+		return nil
+	}
+	clone := *cache
+	clone.URI = cloneURL(cache.URI)
+	return &clone
+}
+
 // CreatePage(website *Website, page *Page, contenttype *ContentType)
 //
 // Persists the page content file to disk according to specifications provided
@@ -636,15 +666,13 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType, w io.Wri
 	if err = contenttype.Spec.Validate(); err != nil {
 		return err
 	}
+	applyContentTypePageDefaults(page, contenttype)
 	if !page.Draft {
-		if err = contenttype.Validate(page); err != nil {
+		if err = contenttype.Ready(page); err != nil {
 			return err
 		}
 	}
-	if err = contenttype.Apply(website, page); err != nil {
-		return err
-	}
-	if page.URI, err = ResolvePageURI(website, page, contenttype, nil); err != nil {
+	if page.URI, err = contenttype.ResolvePageURI(website, page, nil); err != nil {
 		return err
 	}
 	page.ResolvePath(website)
@@ -713,15 +741,13 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType, w io.Wri
 	if err = contenttype.Spec.Validate(); err != nil {
 		return err
 	}
+	applyContentTypePageDefaults(page, contenttype)
 	if !page.Draft {
-		if err = contenttype.Validate(page); err != nil {
+		if err = contenttype.Ready(page); err != nil {
 			return err
 		}
 	}
-	if err = contenttype.Apply(website, page); err != nil {
-		return err
-	}
-	if page.URI, err = ResolvePageURI(website, page, contenttype, &sourceURI); err != nil {
+	if page.URI, err = contenttype.ResolvePageURI(website, page, &sourceURI); err != nil {
 		return err
 	}
 	page.ResolvePath(website)
@@ -762,9 +788,147 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType, w io.Wri
 	return nil
 }
 
+func FinalizePage(website *Website, page *Page, contenttype *ContentType, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+	if page == nil {
+		return fmt.Errorf("page.finalize requires page")
+	}
+	if page.URI == nil || page.URI.Path == "" {
+		return fmt.Errorf("page.finalize requires page.uri")
+	}
+
+	sourceURI := *page.URI
+	sourcePath := sourceURI.Path
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("page.finalize source does not exist: %s", sourcePath)
+		}
+		return err
+	}
+	if sourceInfo.IsDir() || !sourceInfo.Mode().IsRegular() {
+		return fmt.Errorf("page.finalize source must be a regular file: %s", sourcePath)
+	}
+
+	timestamp := time.Now().Format(time.RFC3339)
+	freeform := contenttype.IsEmpty()
+	if len(page.CreatedAt) == 0 || (freeform && len(page.LayoutRef) == 0) {
+		existing := &Page{URI: &sourceURI}
+		if err = LoadPage(website, existing, false, w); err == nil {
+			if len(page.CreatedAt) == 0 {
+				page.CreatedAt = existing.CreatedAt
+			}
+			if freeform && len(page.LayoutRef) == 0 {
+				page.LayoutRef = existing.LayoutRef
+			}
+		}
+	}
+	if len(page.CreatedAt) == 0 {
+		page.CreatedAt = timestamp
+	}
+	page.UpdatedAt = timestamp
+	finalizePageDraftState(page)
+
+	if freeform {
+		format, err := pageUpdateSourceFormat(sourcePath)
+		if err != nil {
+			return err
+		}
+		page.URI = &sourceURI
+		page.ResolvePath(website)
+		if err = page.Validate(); err != nil {
+			return err
+		}
+		return WritePage(website, page, format, w)
+	}
+
+	contenttype = pageContentType(contenttype)
+	if err = contenttype.Spec.Validate(); err != nil {
+		return err
+	}
+	finalPage, err := contenttype.OverlayPage(page)
+	if err != nil {
+		return err
+	}
+	if contenttype.Spec.Unlisted {
+		finalPage.Unlisted = true
+	}
+	finalizePageDraftState(finalPage)
+	if err = contenttype.Ready(finalPage); err != nil {
+		return err
+	}
+	if finalPage.URI, err = contenttype.ResolvePageURI(website, finalPage, &sourceURI); err != nil {
+		return err
+	}
+	finalPage.ResolvePath(website)
+	if finalPage.URI == nil || finalPage.URI.Path == "" {
+		return fmt.Errorf("page.finalize failed to resolve destination page.uri")
+	}
+	if err = finalPage.Validate(); err != nil {
+		return err
+	}
+	destinationPath := finalPage.URI.Path
+
+	if err = assertPageUpdateDestinationAvailable(sourcePath, destinationPath); err != nil {
+		return err
+	}
+	moves, err := pageRegularFileMoves(sourcePath, destinationPath)
+	if err != nil {
+		return err
+	}
+	if len(moves) > 0 {
+		if err = os.MkdirAll(filepath.Dir(destinationPath), 0755); err != nil {
+			return err
+		}
+		for _, move := range moves {
+			if err = os.Rename(move.sourcePath, move.destinationPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	*page = *finalPage
+	if err = WritePage(website, page, contenttype.Spec.Format, w); err != nil {
+		return err
+	}
+	if !sameCleanPath(sourcePath, destinationPath) {
+		if err = os.Remove(sourcePath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err = removeDirectoryIfEmpty(filepath.Dir(sourcePath)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type pageFileMove struct {
 	sourcePath      string
 	destinationPath string
+}
+
+func applyContentTypePageDefaults(page *Page, contenttype *ContentType) {
+	if page == nil || contenttype == nil {
+		return
+	}
+	if page.LayoutRef == "" {
+		page.LayoutRef = contenttype.Spec.Layout
+	}
+	if contenttype.Spec.Unlisted {
+		page.Unlisted = true
+	}
+}
+
+func finalizePageDraftState(page *Page) {
+	if page == nil {
+		return
+	}
+	page.Draft = false
+	if page.TemplateData != nil {
+		page.TemplateData.Delete("draft")
+	}
 }
 
 func pageContentType(contenttype *ContentType) *ContentType {

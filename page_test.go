@@ -10,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"github.com/herdworks/hypertexting-go/href"
+	htpatch "github.com/herdworks/hypertexting-go/patch"
+	htprompt "github.com/herdworks/hypertexting-go/prompt"
 )
 
 func assertTimestampDraftSegment(t *testing.T, draftSegment string) {
@@ -52,7 +55,7 @@ func TestPagesFilterDraft(t *testing.T) {
 	}
 }
 
-func TestResolvePageURIUsesContentDirForDraftPages(t *testing.T) {
+func TestContentTypeResolvePageURIUsesContentDirForDraftPages(t *testing.T) {
 	website, _ := testWebsite(t)
 	contenttype := &ContentType{Metadata: ContentTypeMetadata{Name: "Test"}, Spec: ContentTypeSpecification{
 		Layout:      "default",
@@ -62,14 +65,14 @@ func TestResolvePageURIUsesContentDirForDraftPages(t *testing.T) {
 	}}
 	page := &Page{Draft: true, Slug: "draft-post"}
 
-	uri, err := ResolvePageURI(website, page, contenttype, nil)
+	uri, err := contenttype.ResolvePageURI(website, page, nil)
 	if err != nil {
-		t.Fatalf("ResolvePageURI() error = %v", err)
+		t.Fatalf("ContentType.ResolvePageURI() error = %v", err)
 	}
 	got := uri.Path
 	want := filepath.Join(website.ContentDirPath(), "posts", "draft-post", "index.md")
 	if got != want {
-		t.Fatalf("ResolvePageURI() = %q, want %q", got, want)
+		t.Fatalf("ContentType.ResolvePageURI() = %q, want %q", got, want)
 	}
 }
 
@@ -466,6 +469,27 @@ func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
 	}
 }
 
+func TestCreatePageAppliesContentTypeUnlistedDefault(t *testing.T) {
+	website, _ := testWebsite(t)
+	contenttype := testPageContentType("markdown", "posts")
+	contenttype.Spec.Unlisted = true
+	page := &Page{Draft: true, Content: "draft content"}
+
+	if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("CreatePage() error = %v", err)
+	}
+	if !page.Unlisted {
+		t.Fatal("page.Unlisted = false, want content type unlisted default")
+	}
+	bytes, err := os.ReadFile(page.URI.Path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(bytes), "unlisted: true") {
+		t.Fatalf("created page missing unlisted frontmatter:\n%s", bytes)
+	}
+}
+
 func TestUpdatePageWithTemplatedContentTypePathUsesExistingCreatedAt(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "drafts", "working", "index.md")
@@ -496,6 +520,29 @@ func TestUpdatePageWithTemplatedContentTypePathUsesExistingCreatedAt(t *testing.
 	}
 	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
 		t.Fatalf("source page still exists or unexpected error = %v", err)
+	}
+}
+
+func TestUpdatePageAppliesContentTypeUnlistedDefault(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := testPageContentType("markdown", "posts")
+	contenttype.Spec.Unlisted = true
+	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Content: "updated draft"}
+
+	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	if !page.Unlisted {
+		t.Fatal("page.Unlisted = false, want content type unlisted default")
+	}
+	bytes, err := os.ReadFile(page.URI.Path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(bytes), "unlisted: true") {
+		t.Fatalf("updated page missing unlisted frontmatter:\n%s", bytes)
 	}
 }
 
@@ -1074,6 +1121,215 @@ func TestUpdatePageFormatChangeRemovesOldPageFile(t *testing.T) {
 	}
 	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
 		t.Fatalf("source markdown page still exists or unexpected error = %v", err)
+	}
+}
+
+func TestCreatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) {
+	website, _ := testWebsite(t)
+	contenttype := &ContentType{
+		Metadata: ContentTypeMetadata{Name: "Draft"},
+		Spec: ContentTypeSpecification{
+			Layout:      "default",
+			Path:        "posts",
+			URIResolver: TitleKabobURIResolver,
+			Format:      "markdown",
+			TemplateData: hypertemplates.TemplateData{
+				"summary": "Spec summary",
+			},
+			Prompts: htprompt.Prompts{
+				{ID: "title", Type: htprompt.TypeText},
+				{ID: "featured", Type: htprompt.TypeBoolean},
+			},
+			Patches: htpatch.Patches{
+				{Op: "add", Path: "page.title", ValueRef: "title"},
+				{Op: "add", Path: "page.featured", ValueRef: "featured"},
+			},
+		},
+		State: ContentTypeState{UserData: map[string]any{"title": "Patched Title", "featured": true}},
+	}
+	page := &Page{Draft: true, Content: "draft content"}
+
+	if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("CreatePage() error = %v", err)
+	}
+	if page.URI == nil {
+		t.Fatal("page.URI is nil")
+	}
+	pageDir := filepath.Dir(page.URI.Path)
+	draftSegment := filepath.Base(pageDir)
+	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "posts") {
+		t.Fatalf("page.URI = %s, want autosave under posts", page.URI.Path)
+	}
+	assertTimestampDraftSegment(t, draftSegment)
+	bytes, err := os.ReadFile(page.URI.Path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	contents := string(bytes)
+	for _, unexpected := range []string{"Patched Title", "Spec summary", "featured: true"} {
+		if strings.Contains(contents, unexpected) {
+			t.Fatalf("autosave materialized %q:\n%s", unexpected, contents)
+		}
+	}
+	if !strings.Contains(contents, "draft content") {
+		t.Fatalf("page file missing draft content:\n%s", contents)
+	}
+}
+
+func TestUpdatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := &ContentType{
+		Metadata: ContentTypeMetadata{Name: "Draft"},
+		Spec: ContentTypeSpecification{
+			Layout:      "default",
+			Path:        "notes",
+			URIResolver: TitleKabobURIResolver,
+			Format:      "json",
+			TemplateData: hypertemplates.TemplateData{
+				"summary": "Spec summary",
+			},
+			Prompts: htprompt.Prompts{
+				{ID: "title", Type: htprompt.TypeText},
+				{ID: "featured", Type: htprompt.TypeBoolean},
+			},
+			Patches: htpatch.Patches{
+				{Op: "add", Path: "page.title", ValueRef: "title"},
+				{Op: "add", Path: "page.featured", ValueRef: "featured"},
+			},
+		},
+		State: ContentTypeState{UserData: map[string]any{"title": "Patched Title", "featured": true}},
+	}
+	page := &Page{URI: &url.URL{Path: sourcePath}, Draft: true, Content: "updated draft"}
+
+	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("UpdatePage() error = %v", err)
+	}
+	wantPath := filepath.Join(website.ContentDirPath(), "notes", "draft-fixed", "index.json")
+	if page.URI == nil || page.URI.Path != wantPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+	}
+	bytes, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	contents := string(bytes)
+	for _, unexpected := range []string{"Patched Title", "Spec summary", "featured"} {
+		if strings.Contains(contents, unexpected) {
+			t.Fatalf("update materialized %q:\n%s", unexpected, contents)
+		}
+	}
+	if !strings.Contains(contents, "updated draft") {
+		t.Fatalf("page file missing updated draft content:\n%s", contents)
+	}
+}
+
+func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	contenttype := &ContentType{
+		Metadata: ContentTypeMetadata{Name: "Post"},
+		Spec: ContentTypeSpecification{
+			Layout:      "default",
+			Path:        "posts",
+			URIResolver: TitleKabobURIResolver,
+			Format:      "markdown",
+			Unlisted:    true,
+			TemplateData: hypertemplates.TemplateData{
+				"summary": "Spec summary",
+				"tags":    []string{"spec"},
+			},
+			Prompts: htprompt.Prompts{
+				{ID: "title", Type: htprompt.TypeText},
+				{ID: "tag", Type: htprompt.TypeText},
+				{ID: "featured", Type: htprompt.TypeBoolean},
+			},
+			Patches: htpatch.Patches{
+				{Op: "add", Path: "page.title", ValueRef: "title"},
+				{Op: "append", Path: "page.tags", ValueRef: "tag"},
+				{Op: "add", Path: "page.featured", ValueRef: "featured"},
+			},
+		},
+		State: ContentTypeState{UserData: map[string]any{
+			"title":    "Final Title",
+			"tag":      "prompt-tag",
+			"featured": true,
+		}},
+	}
+	page := &Page{
+		URI:          &url.URL{Path: sourcePath},
+		Draft:        true,
+		Content:      "final content",
+		TemplateData: hypertemplates.TemplateData{"draft": true},
+	}
+
+	if err := FinalizePage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("FinalizePage() error = %v", err)
+	}
+	wantPath := filepath.Join(website.ContentDirPath(), "posts", "final-title", "index.md")
+	if page.URI == nil || page.URI.Path != wantPath {
+		t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+	}
+	if page.Draft {
+		t.Fatal("page.Draft = true, want finalized false")
+	}
+	if !page.Unlisted {
+		t.Fatal("page.Unlisted = false, want content type unlisted default")
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("source page still exists or unexpected error = %v", err)
+	}
+	bytes, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	contents := string(bytes)
+	for _, want := range []string{"title: Final Title", "summary: Spec summary", "featured: true", "unlisted: true", "prompt-tag", "final content"} {
+		if !strings.Contains(contents, want) {
+			t.Fatalf("final page missing %q:\n%s", want, contents)
+		}
+	}
+	if strings.Contains(contents, "draft: true") || strings.Contains(contents, "content_type") {
+		t.Fatalf("final page retained composer-only state:\n%s", contents)
+	}
+}
+
+func TestFinalizePageWithoutContentTypeFinalizesInPlaceAndClearsDraft(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "freeform", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\ndraft: true\n---\n\nold")
+	page := &Page{
+		URI:          &url.URL{Path: sourcePath},
+		Draft:        true,
+		LayoutRef:    "default",
+		Title:        "Freeform",
+		Content:      "freeform content",
+		TemplateData: hypertemplates.TemplateData{"draft": true, "title": "Freeform"},
+	}
+
+	if err := FinalizePage(website, page, nil, io.Discard); err != nil {
+		t.Fatalf("FinalizePage() error = %v", err)
+	}
+	if page.URI == nil || page.URI.Path != sourcePath {
+		t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+	}
+	if page.Draft {
+		t.Fatal("page.Draft = true, want finalized false")
+	}
+	bytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	contents := string(bytes)
+	if strings.Contains(contents, "draft: true") {
+		t.Fatalf("finalized freeform page retained draft state:\n%s", contents)
+	}
+	for _, want := range []string{"title: Freeform", "freeform content"} {
+		if !strings.Contains(contents, want) {
+			t.Fatalf("finalized freeform page missing %q:\n%s", want, contents)
+		}
 	}
 }
 

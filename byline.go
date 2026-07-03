@@ -19,6 +19,25 @@ type Byline struct {
 }
 type Bylines []*Byline
 
+func (byline *Byline) Clone() *Byline {
+	if byline == nil {
+		return nil
+	}
+	clone := *byline
+	return &clone
+}
+
+func (bylines Bylines) Clone() Bylines {
+	if bylines == nil {
+		return nil
+	}
+	clones := make(Bylines, len(bylines))
+	for i, byline := range bylines {
+		clones[i] = byline.Clone()
+	}
+	return clones
+}
+
 func (byline *Byline) Ready() bool {
 	return len(strings.TrimSpace(byline.Name)) > 0
 }

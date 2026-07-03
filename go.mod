@@ -7,7 +7,7 @@ go 1.25.0
 
 // first-party dependencies
 require (
-	github.com/herdworks/hyperfeed-go v0.22.0
+	github.com/herdworks/hyperfeed-go v0.26.5
 	github.com/herdworks/hyperproviders-go v0.23.0
 	github.com/herdworks/hypertemplates-go v0.31.0
 )

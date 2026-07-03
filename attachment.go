@@ -20,6 +20,32 @@ type Attachment struct {
 }
 type Attachments []*Attachment
 
+func (attachments Attachments) Clone() Attachments {
+	if attachments == nil {
+		return nil
+	}
+	clones := make(Attachments, len(attachments))
+	for i, attachment := range attachments {
+		clones[i] = attachment.Clone()
+	}
+	return clones
+}
+
+func (attachment *Attachment) Clone() *Attachment {
+	if attachment == nil {
+		return nil
+	}
+	clone := *attachment
+	if attachment.Href != nil {
+		hrefClone := *attachment.Href
+		clone.Href = &hrefClone
+	}
+	if attachment.Data != nil {
+		clone.Data = attachment.Data.Clone()
+	}
+	return &clone
+}
+
 func (attachments Attachments) TemplateData() hypertemplates.TemplateDataSet {
 	data := []hypertemplates.TemplateData{}
 	for _, attachment := range attachments {

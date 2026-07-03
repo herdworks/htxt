@@ -26,6 +26,18 @@ type HyperFeed struct {
 	Pages Pages `json:"-" yaml:"-"`
 }
 
+func (feed *HyperFeed) Clone() *HyperFeed {
+	if feed == nil {
+		return nil
+	}
+	clone := *feed
+	clone.Byline = feed.Byline.Clone()
+	clone.Tags = append([]string(nil), feed.Tags...)
+	clone.Paths = append([]string(nil), feed.Paths...)
+	clone.Pages = append(Pages(nil), feed.Pages...)
+	return &clone
+}
+
 func (feed HyperFeed) TemplateData() (data hypertemplates.TemplateData) {
 	data = hypertemplates.TemplateData{}
 	data["title"] = feed.Title

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** Reworked content type composer configuration around declarative `spec.prompts` (`prompt.Prompts`) and `spec.patches` (`patch.Patches`), replacing top-level content type prompt/patch fields and generic map aliases with typed prompt and patch packages. Individual patches are now `patch.Patch` values with `patch.Operation` operations, validated against non-protected `page.*` template data paths.
+* **BREAKING:** Added explicit composer runtime state with non-serialized `ContentType.State.UserData`; prompt patch values are supplied from that state instead of persisted content type definitions.
+* **BREAKING:** Changed content type application to an overlay contract: `spec.template` and prompt patches produce a non-mutating candidate overlay for composer previews, while only `FinalizePage` materializes that overlay into persisted page data.
+* **BREAKING:** Changed page URI resolution from package function `ResolvePageURI(website, page, contenttype, sourceURI)` to `ContentType.ResolvePageURI(website, page, sourceURI)`.
+* **BREAKING:** Removed unused content type helpers `ContentType.Valid`, `ContentTypeRequirements.Validate`, `CustomContentType`, `CustomContentTypeMetadata`, `CustomContentTypeSpecification`, `DefaultContentTypeMetadata`, and `DefaultContentTypeSpecification`.
+* Added content type overlay APIs with `ContentType.TemplateData()`, `ContentType.OverlayPage(page)`, and `ContentType.CandidateReady(page)`, applying prompt patches from non-serialized `ContentType.State.UserData` to cloned `spec.template` data for non-mutating composer previews.
+* Added `ContentTypeState`, `ContentTypeState.SeedDefaults`, `prompt.Prompts.Defaults`, `prompt.Prompts.ValidateUserData`, and `prompt.Prompts.RefSet` helpers for composer session state initialization and validation.
+* Added `FinalizePage` as the publish/finalize path for all composer pages, with an optional content type argument that materializes content type overlays once while freeform pages finalize without overlays.
+* Changed `CreatePage` and `UpdatePage` so content type templates and prompt patches are not materialized during autosave/update writes.
+* Added the `patch` package for applying `add`, `replace`, and array `append` operations to `page.*` template data paths.
+* Added clone helpers for pages, page caches, bylines, attachments, and feeds to support non-mutating overlay candidates.
+* Changed drop-down prompt defaults, user data, and options to allow only JSON-like scalar values.
+* Fixed `Page.ApplyComputedProperties(nil)` to skip redirect refresh metadata instead of dereferencing a nil website.
+* Updated `github.com/herdworks/hyperfeed-go` to `v0.26.5`.
+
 ## v0.35.0 (2026-06-06)
 
 * Updated github.com/herdworks/hyperfeed-go to v0.22.0

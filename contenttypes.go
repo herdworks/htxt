@@ -17,28 +17,69 @@ import (
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	href "github.com/herdworks/hypertexting-go/href"
+	htpatch "github.com/herdworks/hypertexting-go/patch"
+	htprompt "github.com/herdworks/hypertexting-go/prompt"
 )
 
-var (
-	DefaultContentTypeMetadata      = ContentTypeMetadata{Name: "default", Description: "Default content type."}
-	DefaultContentTypeSpecification = ContentTypeSpecification{Layout: "default", Path: "-", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
-	DefaultContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: DefaultContentTypeMetadata, Spec: DefaultContentTypeSpecification}
-
-	CustomContentTypeMetadata      = ContentTypeMetadata{Name: "custom", Description: "Custom content type."}
-	CustomContentTypeSpecification = ContentTypeSpecification{Layout: "default", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}}
-	CustomContentType              = ContentType{URI: &href.Href{URL: url.URL{Path: "/dev/null"}}, Metadata: CustomContentTypeMetadata, Spec: CustomContentTypeSpecification}
-
-	draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
-)
+// =============================================================================
+// Types
+// =============================================================================
 
 type ContentType struct {
 	URI      *href.Href               `json:"uri" yaml:"-"`
 	Metadata ContentTypeMetadata      `json:"metadata" yaml:"metadata"`
 	Spec     ContentTypeSpecification `json:"spec" yaml:"spec"`
-	Prompts  ContentTypePrompts       `json:"prompts" yaml:"prompts"`
-	Patches  ContentTypePatches       `json:"patches" yaml:"patches"`
+	State    ContentTypeState         `json:"-" yaml:"-"`
 }
 type ContentTypes []*ContentType
+
+type ContentTypeMetadata struct {
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	Icon        string `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Action      string `json:"action,omitempty" yaml:"action,omitempty"`
+}
+
+type ContentTypeSpecification struct {
+	Layout       string                      `json:"layout" yaml:"layout"`
+	Path         string                      `json:"path" yaml:"path"`
+	URIResolver  PageURIResolverName         `json:"uri_resolver" yaml:"uri_resolver"`
+	Format       string                      `json:"format" yaml:"format"`
+	Requires     ContentTypeRequirements     `json:"requires,omitempty" yaml:"requires,omitempty"`
+	Unlisted     bool                        `json:"unlisted" yaml:"unlisted"`
+	TemplateData hypertemplates.TemplateData `json:"template" yaml:"template"`
+	Prompts      htprompt.Prompts            `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+	Patches      htpatch.Patches             `json:"patches,omitempty" yaml:"patches,omitempty"`
+}
+
+type ContentTypeState struct {
+	UserData map[string]any `json:"user_data,omitempty" yaml:"user_data,omitempty"`
+}
+
+type ContentTypeRequirements struct {
+	Title      bool           `json:"title,omitempty" yaml:"title,omitempty"`
+	Content    bool           `json:"content,omitempty" yaml:"content,omitempty"`
+	Redirect   bool           `json:"redirect,omitempty" yaml:"redirect,omitempty"`
+	Attachment AttachmentKind `json:"attachment,omitempty" yaml:"attachment,omitempty"`
+}
+
+// =============================================================================
+// Variables
+// =============================================================================
+
+var (
+	DefaultContentType = ContentType{
+		URI:      &href.Href{URL: url.URL{Path: "/dev/null"}},
+		Metadata: ContentTypeMetadata{Name: "default", Description: "Default content type."},
+		Spec:     ContentTypeSpecification{Layout: "default", Path: "-", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}},
+	}
+
+	draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
+)
+
+// =============================================================================
+// Methods
+// =============================================================================
 
 func (types ContentTypes) ColumnValues(field string) []string {
 	values := []string{}
@@ -55,14 +96,14 @@ func (types ContentTypes) ColumnValues(field string) []string {
 
 func (contenttype ContentType) Validate(page *Page) error {
 	// skip validation for draft pages
-	if page.Draft {
+	if page != nil && page.Draft {
 		return nil
 	}
 	return contenttype.Ready(page)
 }
 
 func (contenttype ContentType) Ready(page *Page) error {
-	if err := contenttype.Spec.Validate(); err != nil {
+	if err := contenttype.ValidateDefinition(); err != nil {
 		return err
 	}
 	if page == nil {
@@ -125,16 +166,57 @@ func (contenttype ContentType) Ready(page *Page) error {
 	// success!
 	return nil
 }
-func (contenttype ContentType) Valid(page *Page, w io.Writer) bool {
-	if w == nil {
-		w = os.Stdout
-	}
 
-	err := contenttype.Validate(page)
-	if err != nil {
-		fmt.Fprintln(w, err)
+func (contenttype ContentType) TemplateData() (hypertemplates.TemplateData, error) {
+	if err := contenttype.ValidateDefinition(); err != nil {
+		return nil, err
 	}
-	return err == nil
+	if err := contenttype.State.Validate(contenttype.Spec.Prompts); err != nil {
+		return nil, err
+	}
+	resolved := hypertemplates.TemplateData{}
+	if contenttype.Spec.TemplateData != nil {
+		resolved = contenttype.Spec.TemplateData.Clone()
+	}
+	if len(contenttype.Spec.Patches) == 0 {
+		return resolved, nil
+	}
+	if err := htpatch.Apply(resolved, contenttype.Spec.Patches, htpatch.Values(contenttype.State.UserData)); err != nil {
+		return nil, err
+	}
+	return resolved, nil
+}
+
+func (contenttype ContentType) OverlayPage(page *Page) (*Page, error) {
+	if page == nil {
+		return nil, fmt.Errorf("content-type requires page")
+	}
+	resolved, err := contenttype.TemplateData()
+	if err != nil {
+		return nil, err
+	}
+	candidate := page.Clone()
+	if candidate.LayoutRef == "" {
+		candidate.LayoutRef = contenttype.Spec.Layout
+	}
+	candidate.ResolveTemplateData(nil)
+	pageData := candidate.TemplateData
+	if pageData == nil {
+		pageData = hypertemplates.TemplateData{}
+	}
+	candidate.TemplateData = pageData.Merge(resolved)
+	if err := candidate.Parse(candidate.TemplateData); err != nil {
+		return nil, err
+	}
+	return candidate, nil
+}
+
+func (contenttype ContentType) CandidateReady(page *Page) error {
+	candidate, err := contenttype.OverlayPage(page)
+	if err != nil {
+		return err
+	}
+	return contenttype.Ready(candidate)
 }
 
 func (contenttype *ContentType) Create(website *Website, format string, w io.Writer) (err error) {
@@ -168,7 +250,7 @@ func (contenttype *ContentType) Save(website *Website, w io.Writer) (err error) 
 	var fileExt string = filepath.Ext(contenttype.URI.Path)
 	var fileBytes []byte
 	var fileBytesWritten int
-	if err = contenttype.Spec.Validate(); err != nil {
+	if err = contenttype.ValidateDefinition(); err != nil {
 		return err
 	}
 	switch fileExt {
@@ -225,10 +307,25 @@ func (contenttype *ContentType) Load() (err error) {
 	default:
 		return fmt.Errorf("unsupported file type: %s", fileExt)
 	}
-	if err = contenttype.Spec.Validate(); err != nil {
+	if err = contenttype.ValidateDefinition(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (contenttype ContentType) ValidateDefinition() error {
+	return contenttype.Spec.Validate()
+}
+
+func (state ContentTypeState) Validate(prompts htprompt.Prompts) error {
+	return prompts.ValidateUserData(state.UserData)
+}
+
+func (state *ContentTypeState) SeedDefaults(prompts htprompt.Prompts) {
+	if state == nil {
+		return
+	}
+	state.UserData = prompts.Defaults()
 }
 
 func (contenttype *ContentType) IsEmpty() bool {
@@ -247,28 +344,7 @@ func (contenttype *ContentType) IsEmpty() bool {
 	return false
 }
 
-func (contenttype *ContentType) Apply(website *Website, page *Page) (err error) {
-	op := *page // copy original page
-	page.TemplateData = contenttype.Spec.TemplateData.MergeAppend(page.TemplateData)
-	if err = page.Parse(page.TemplateData); err != nil {
-		return err
-	}
-	page.LayoutRef = contenttype.Spec.Layout
-	if len(op.LayoutRef) > 0 {
-		page.LayoutRef = op.LayoutRef
-	}
-	if len(op.Title) > 0 {
-		page.Title = op.Title
-	}
-	if len(op.Description) > 0 {
-		page.Description = op.Description
-	}
-	if len(op.Content) > 0 {
-		page.Content = op.Content
-	}
-	return nil
-}
-func ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (contenttype *ContentType) ResolvePageURI(website *Website, page *Page, sourceURI *url.URL) (*url.URL, error) {
 	if website == nil {
 		return nil, fmt.Errorf("page.uri resolution requires website")
 	}
@@ -281,25 +357,6 @@ func ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sour
 		return nil, err
 	}
 	return resolver.ResolvePageURI(website, page, contenttype, sourceURI)
-}
-
-type ContentTypeMetadata struct {
-	Name        string `json:"name" yaml:"name"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	Icon        string `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Action      string `json:"action,omitempty" yaml:"action,omitempty"`
-}
-
-type ContentTypeSpecification struct {
-	Layout       string                      `json:"layout" yaml:"layout"`
-	Path         string                      `json:"path" yaml:"path"`
-	URIResolver  PageURIResolverName         `json:"uri_resolver" yaml:"uri_resolver"`
-	Format       string                      `json:"format" yaml:"format"`
-	Requires     ContentTypeRequirements     `json:"requires,omitempty" yaml:"requires,omitempty"`
-	Unlisted     bool                        `json:"unlisted" yaml:"unlisted"`
-	TemplateData hypertemplates.TemplateData `json:"template" yaml:"template"`
-	Prompts      ContentTypePrompts          `json:"prompts,omitempty" yaml:"prompts,omitempty"`
-	Patches      ContentTypePatches          `json:"patches,omitempty" yaml:"patches,omitempty"`
 }
 
 func (spec ContentTypeSpecification) Validate() error {
@@ -321,6 +378,19 @@ func (spec ContentTypeSpecification) Validate() error {
 	}
 	if _, err := cleanRelativeURIPath(renderedPath); err != nil {
 		return fmt.Errorf("content-type spec.path invalid: %w", err)
+	}
+	if err := spec.Prompts.Validate(); err != nil {
+		return err
+	}
+	if err := spec.Patches.Validate(spec.TemplateData); err != nil {
+		return err
+	}
+	prompts, err := spec.Prompts.Map()
+	if err != nil {
+		return err
+	}
+	if err := spec.Patches.ValidateReferences(prompts); err != nil {
+		return err
 	}
 	return nil
 }
@@ -452,6 +522,10 @@ func (noURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *C
 	return contentTypePageURI(website, page, contenttype, "")
 }
 
+// =============================================================================
+// Functions
+// =============================================================================
+
 func explicitPageURISuffix(page *Page) (string, bool, error) {
 	if page == nil || page.Slug == "" {
 		return "", false, nil
@@ -469,15 +543,11 @@ func stableDraftURISuffix(page *Page, sourceURI *url.URL) string {
 	}
 	if uri != nil && uri.Path != "" {
 		dir := filepath.Base(filepath.Dir(uri.Path))
-		if isStableDraftURISuffix(dir) {
+		if strings.HasPrefix(dir, "draft-") || draftTimestampURISuffixPattern.MatchString(dir) {
 			return dir
 		}
 	}
 	return timestampDraftURISuffix(time.Now())
-}
-
-func isStableDraftURISuffix(suffix string) bool {
-	return strings.HasPrefix(suffix, "draft-") || draftTimestampURISuffixPattern.MatchString(suffix)
 }
 
 func timestampDraftURISuffix(t time.Time) string {
@@ -533,15 +603,11 @@ func renderContentTypePath(path string, page *Page) (string, error) {
 }
 
 func renderContentTypePathTemplate(path string, date time.Time) (string, error) {
-	return renderTemplate(path, contentTypePathFuncMap(date))
-}
-
-func contentTypePathFuncMap(date time.Time) template.FuncMap {
-	return template.FuncMap{
+	return renderTemplate(path, template.FuncMap{
 		"year":  func() string { return date.Format("2006") },
 		"month": func() string { return date.Format("01") },
 		"day":   func() string { return date.Format("02") },
-	}
+	})
 }
 
 func contentTypePathDate(page *Page) (time.Time, error) {
@@ -570,20 +636,6 @@ func contentTypeIndexFilename(format string) (string, error) {
 	}
 }
 
-func cleanRelativeURIPath(value string) (string, error) {
-	if value == "" {
-		return "", nil
-	}
-	cleaned := filepath.Clean(filepath.FromSlash(strings.Trim(value, "/")))
-	if cleaned == "." {
-		return "", nil
-	}
-	if filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("unsafe relative path %q", value)
-	}
-	return cleaned, nil
-}
-
 func normalizeURISuffix(s string) string {
 	s = strings.ToLower(s)
 	s = strings.TrimSpace(s)
@@ -597,55 +649,4 @@ func kabobURISuffix(s string) string {
 
 func snakeURISuffix(s string) string {
 	return strings.ReplaceAll(normalizeURISuffix(s), " ", "_")
-}
-
-type ContentTypeRequirements struct {
-	Title      bool           `json:"title,omitempty" yaml:"title,omitempty"`
-	Content    bool           `json:"content,omitempty" yaml:"content,omitempty"`
-	Redirect   bool           `json:"redirect,omitempty" yaml:"redirect,omitempty"`
-	Attachment AttachmentKind `json:"attachment,omitempty" yaml:"attachment,omitempty"`
-}
-
-func (requirements ContentTypeRequirements) Validate(page *Page) (err error) {
-	// TODO: should we hang requirement validators off of the ContentTypeRequirements type?
-	return nil
-}
-
-// ============================================================================
-// Content Type Prompts and Patches
-// ============================================================================
-type ContentTypePrompt map[string]any
-type ContentTypePrompts []ContentTypePrompt
-
-func (prompts *ContentTypePrompts) JSON() (string, error) {
-	bytes, err := json.Marshal(prompts)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
-}
-func (prompt *ContentTypePrompt) JSON() (string, error) {
-	bytes, err := json.Marshal(prompt)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
-}
-
-type ContentTypePatch map[string]any
-type ContentTypePatches []ContentTypePatch
-
-func (patch *ContentTypePatch) JSON() (string, error) {
-	bytes, err := json.Marshal(patch)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
-}
-func (patches *ContentTypePatches) JSON() (string, error) {
-	bytes, err := json.Marshal(patches)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
 }
