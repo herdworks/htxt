@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.36.1 (2026-07-05)
+
 * Added non-writing page data preview support with `Page.RenderData` and `ContentType.PreviewPageData`, allowing composer clients to inspect content type overlays and prompt patches without autosaving or publishing.
 
 ## v0.36.0 (2026-07-03)
