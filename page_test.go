@@ -337,6 +337,110 @@ func TestWritePageTruncatesExistingFile(t *testing.T) {
 	}
 }
 
+func TestPageRenderDataRendersMarkdownFromClonedPage(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "preview", "index.md")
+	page := &Page{
+		URI:       &url.URL{Path: sourcePath},
+		CreatedAt: "2026-07-03T00:00:00Z",
+		LayoutRef: "default",
+		Title:     "Preview Page",
+		Content:   "Preview body.",
+		Draft:     true,
+		TemplateData: hypertemplates.TemplateData{
+			"custom": "value",
+		},
+	}
+
+	bytes, err := page.Clone().RenderData(website, "markdown")
+	if err != nil {
+		t.Fatalf("RenderData() error = %v", err)
+	}
+	contents := string(bytes)
+	for _, want := range []string{"title: Preview Page", "draft: true", "custom: value", "Preview body."} {
+		if !strings.Contains(contents, want) {
+			t.Fatalf("rendered page missing %q:\n%s", want, contents)
+		}
+	}
+	if got := page.TemplateData.Get("title"); got != nil {
+		t.Fatalf("source template title = %v, want unset", got)
+	}
+	if got := page.TemplateData.Get("draft"); got != nil {
+		t.Fatalf("source template draft = %v, want unset", got)
+	}
+	if got := page.TemplateData.Get("custom"); got != "value" {
+		t.Fatalf("source template custom = %v, want value", got)
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("RenderData wrote source path or unexpected stat error = %v", err)
+	}
+}
+
+func TestContentTypePreviewPageDataAppliesOverlayWithoutWriting(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "drafts", "working", "index.md")
+	contenttype := ContentType{
+		Metadata: ContentTypeMetadata{Name: "Neighborhood Post"},
+		Spec: ContentTypeSpecification{
+			Layout:      "post.html",
+			URIResolver: TitleKabobURIResolver,
+			Format:      "markdown",
+			Unlisted:    true,
+			TemplateData: hypertemplates.TemplateData{
+				"neighborhood": "",
+			},
+			Prompts: htprompt.Prompts{
+				{
+					ID:   "neighborhood",
+					Type: htprompt.TypeDropDown,
+					Options: htprompt.Options{
+						{Label: "Downtown", Value: "downtown"},
+						{Label: "North Beach", Value: "north-beach"},
+					},
+				},
+			},
+			Patches: htpatch.Patches{
+				{Op: htpatch.OperationReplace, Path: "page.neighborhood", ValueRef: "neighborhood"},
+			},
+		},
+		State: ContentTypeState{UserData: map[string]any{"neighborhood": "north-beach"}},
+	}
+	page := &Page{
+		URI:       &url.URL{Path: sourcePath},
+		CreatedAt: "2026-07-03T00:00:00Z",
+		Title:     "Neighborhood Notes",
+		Content:   "A few notes from the neighborhood.",
+		Draft:     true,
+	}
+
+	bytes, err := contenttype.PreviewPageData(website, page)
+	if err != nil {
+		t.Fatalf("PreviewPageData() error = %v", err)
+	}
+	contents := string(bytes)
+	for _, want := range []string{
+		"layout: post.html",
+		"title: Neighborhood Notes",
+		"draft: true",
+		"unlisted: true",
+		"neighborhood: north-beach",
+		"A few notes from the neighborhood.",
+	} {
+		if !strings.Contains(contents, want) {
+			t.Fatalf("preview page data missing %q:\n%s", want, contents)
+		}
+	}
+	if page.LayoutRef != "" {
+		t.Fatalf("source LayoutRef = %q, want unchanged empty layout", page.LayoutRef)
+	}
+	if got := page.TemplateData.Get("neighborhood"); got != nil {
+		t.Fatalf("source template neighborhood = %v, want unset", got)
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("PreviewPageData wrote source path or unexpected stat error = %v", err)
+	}
+}
+
 func testPageContentType(format string, contentPath string) *ContentType {
 	return &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Test"},

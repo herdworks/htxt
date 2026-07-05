@@ -1060,7 +1060,41 @@ func removeDirectoryIfEmpty(path string) error {
 	return os.Remove(path)
 }
 
-// persist page index file to disk
+// RenderData serializes page data using the requested format.
+//
+// RenderData mutates page by resolving struct fields into TemplateData, and by
+// setting TemplateData["content"] for JSON and YAML output. Clone the page first
+// when the original TemplateData must be preserved.
+func (page *Page) RenderData(website *Website, format string) (fileBytes []byte, err error) {
+	if page == nil {
+		return nil, fmt.Errorf("page.render requires page")
+	}
+
+	var frontmatter []byte // YAML frontmatter (for markdown format only)
+	page.ResolveTemplateData(website)
+	switch format {
+	case "json":
+		page.TemplateData.Set("content", page.Content) // add content to template data
+		if fileBytes, err = json.Marshal(page.TemplateData); err != nil {
+			return nil, err
+		}
+	case "yaml", "yml":
+		page.TemplateData.Set("content", page.Content) // add content to template data
+		if fileBytes, err = yaml.Marshal(page.TemplateData); err != nil {
+			return nil, err
+		}
+	case "markdown", "md":
+		fallthrough
+	default:
+		if frontmatter, err = yaml.Marshal(OrderedTemplateData(page.TemplateData)); err != nil {
+			return nil, err
+		}
+		fileBytes = fmt.Appendf([]byte{}, "---\n%s---\n\n%s", frontmatter, page.Content)
+	}
+	return fileBytes, nil
+}
+
+// persist page data file to disk
 func WritePage(website *Website, page *Page, format string, w io.Writer) (err error) {
 	if w == nil {
 		w = os.Stdout
@@ -1069,26 +1103,8 @@ func WritePage(website *Website, page *Page, format string, w io.Writer) (err er
 	var file *os.File
 	var fileBytes []byte
 	var fileBytesWritten int
-	var frontmatter []byte // YAML frontmatter (for markdown format only)
-	page.ResolveTemplateData(website)
-	switch format {
-	case "json":
-		page.TemplateData.Set("content", page.Content) // add content to template data
-		if fileBytes, err = json.Marshal(page.TemplateData); err != nil {
-			return err
-		}
-	case "yaml", "yml":
-		page.TemplateData.Set("content", page.Content) // add content to template data
-		if fileBytes, err = yaml.Marshal(page.TemplateData); err != nil {
-			return err
-		}
-	case "markdown", "md":
-		fallthrough
-	default:
-		if frontmatter, err = yaml.Marshal(OrderedTemplateData(page.TemplateData)); err != nil {
-			return err
-		}
-		fileBytes = fmt.Appendf([]byte{}, "---\n%s---\n\n%s", frontmatter, page.Content)
+	if fileBytes, err = page.RenderData(website, format); err != nil {
+		return err
 	}
 	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), website.RelativePath(page.URI.Path))
 	if err = os.MkdirAll(filepath.Dir(page.URI.Path), 0755); err != nil {

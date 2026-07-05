@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added non-writing page data preview support with `Page.RenderData` and `ContentType.PreviewPageData`, allowing composer clients to inspect content type overlays and prompt patches without autosaving or publishing.
+
 ## v0.36.0 (2026-07-03)
 
 * **BREAKING:** Reworked content type composer configuration around declarative `spec.prompts` (`prompt.Prompts`) and `spec.patches` (`patch.Patches`), replacing top-level content type prompt/patch fields and generic map aliases with typed prompt and patch packages. Individual patches are now `patch.Patch` values with `patch.Operation` operations, validated against non-protected `page.*` template data paths.

@@ -211,6 +211,20 @@ func (contenttype ContentType) OverlayPage(page *Page) (*Page, error) {
 	return candidate, nil
 }
 
+// PreviewPageData returns serialized page data after applying the content type
+// overlay without mutating page or writing to disk.
+func (contenttype ContentType) PreviewPageData(website *Website, page *Page) ([]byte, error) {
+	ct := pageContentType(&contenttype)
+	candidate, err := ct.OverlayPage(page)
+	if err != nil {
+		return nil, err
+	}
+	if ct.Spec.Unlisted {
+		candidate.Unlisted = true
+	}
+	return candidate.RenderData(website, ct.Spec.Format)
+}
+
 func (contenttype ContentType) CandidateReady(page *Page) error {
 	candidate, err := contenttype.OverlayPage(page)
 	if err != nil {
