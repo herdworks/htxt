@@ -373,6 +373,19 @@ func (contenttype *ContentType) ResolvePageURI(website *Website, page *Page, sou
 	return resolver.ResolvePageURI(website, page, contenttype, sourceURI)
 }
 
+func (spec ContentTypeSpecification) MIMEType() string {
+	switch strings.ToLower(spec.Format) {
+	case "", "markdown", "md":
+		return "text/markdown; charset=utf-8"
+	case "json":
+		return "application/json"
+	case "yaml", "yml":
+		return "application/yaml"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 func (spec ContentTypeSpecification) Validate() error {
 	if spec.Format == "" {
 		return fmt.Errorf("content-type spec.format is required")

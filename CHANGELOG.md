@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `ContentTypeSpecification.MIMEType()` for deriving file MIME types from content type formats.
+
 ## v0.36.1 (2026-07-05)
 
 * Added non-writing page data preview support with `Page.RenderData` and `ContentType.PreviewPageData`, allowing composer clients to inspect content type overlays and prompt patches without autosaving or publishing.

@@ -347,6 +347,30 @@ func TestContentTypeValidateDefinitionChecksPatchPromptRefs(t *testing.T) {
 	}
 }
 
+func TestContentTypeSpecificationMIMEType(t *testing.T) {
+	tests := []struct {
+		format string
+		want   string
+	}{
+		{format: "", want: "text/markdown; charset=utf-8"},
+		{format: "markdown", want: "text/markdown; charset=utf-8"},
+		{format: "md", want: "text/markdown; charset=utf-8"},
+		{format: "json", want: "application/json"},
+		{format: "yaml", want: "application/yaml"},
+		{format: "yml", want: "application/yaml"},
+		{format: "binary", want: "application/octet-stream"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.format, func(t *testing.T) {
+			got := (ContentTypeSpecification{Format: tc.format}).MIMEType()
+			if got != tc.want {
+				t.Fatalf("MIMEType() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestContentTypeTemplateDataAppliesPatchesToSpecTemplateClone(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
