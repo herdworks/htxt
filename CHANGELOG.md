@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.36.2 (2026-07-06)
+
 * Added `ContentTypeSpecification.MIMEType()` for deriving file MIME types from content type formats.
 
 ## v0.36.1 (2026-07-05)
