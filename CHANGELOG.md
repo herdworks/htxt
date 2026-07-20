@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `.csv` discovery in site and theme static data directories.
+* Updated `github.com/herdworks/hypertemplates-go` to `v0.32.0`.
+
 ## v0.36.2 (2026-07-06)
 
 * Added `ContentTypeSpecification.MIMEType()` for deriving file MIME types from content type formats.

@@ -94,10 +94,11 @@ var dataFileExts = map[string]struct{}{
 	".yml":  {},
 	".json": {},
 	".opml": {},
+	".csv":  {},
 }
 
 // dataExtRegexp matches the file extensions ParseTemplateDataFile handles.
-var dataExtRegexp = `.*\.(yaml|yml|json|opml)$`
+var dataExtRegexp = `.*\.(yaml|yml|json|opml|csv)$`
 
 // computedExtRegexp matches computed-data script files.
 var computedExtRegexp = `.*\.js$`

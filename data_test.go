@@ -39,6 +39,26 @@ func TestLoadStaticDataFlatNamespaces(t *testing.T) {
 	}
 }
 
+func TestLoadStaticDataCSV(t *testing.T) {
+	root := t.TempDir()
+	writeDataFile(t, root, "addresses.csv", "Name,Address\nAda,123 Example St\nBob,456 Sample Ave\n")
+
+	got, err := loadStaticData(nil, root, nil, false, io.Discard)
+	if err != nil {
+		t.Fatalf("loadStaticData: %v", err)
+	}
+
+	if v := got.Len("addresses.rows"); v != 2 {
+		t.Errorf("addresses.rows length = %v, want 2", v)
+	}
+	if v := got.Get("addresses.rows.1.Name"); v != "Ada" {
+		t.Errorf("addresses.rows.1.Name = %v, want Ada", v)
+	}
+	if v := got.Get("addresses.rows.2.Address"); v != "456 Sample Ave" {
+		t.Errorf("addresses.rows.2.Address = %v, want 456 Sample Ave", v)
+	}
+}
+
 func TestLoadStaticDataSubdirsNest(t *testing.T) {
 	root := t.TempDir()
 	writeDataFile(t, root, "social/twitter.yaml", "handle: htmarkdown\n")
@@ -95,6 +115,22 @@ func TestLoadStaticDataCrossFormatCollisionErrors(t *testing.T) {
 	}
 }
 
+func TestLoadStaticDataCSVCrossFormatCollisionErrors(t *testing.T) {
+	root := t.TempDir()
+	writeDataFile(t, root, "foo.yaml", "x: 1\n")
+	writeDataFile(t, root, "foo.csv", "Name\nAda\n")
+
+	_, err := loadStaticData(nil, root, nil, false, io.Discard)
+	if err == nil {
+		t.Fatal("loadStaticData: want collision error, got nil")
+	}
+	for _, want := range []string{`"foo"`, "foo.yaml", "foo.csv"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("loadStaticData error = %v; want substring %q", err, want)
+		}
+	}
+}
+
 func TestLoadStaticDataDirVsFileCollisionErrors(t *testing.T) {
 	root := t.TempDir()
 	writeDataFile(t, root, "foo.yaml", "x: 1\n")
@@ -132,6 +168,7 @@ func TestNamespaceSegmentsFromRelPath(t *testing.T) {
 		wantError bool
 	}{
 		{"site.yaml", []string{"site"}, false},
+		{"addresses.csv", []string{"addresses"}, false},
 		{"social/twitter.yaml", []string{"social", "twitter"}, false},
 		{"a/b/c/d.json", []string{"a", "b", "c", "d"}, false},
 		{"2digits.yaml", []string{"2digits"}, false},
