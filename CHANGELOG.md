@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.36.3 (2026-07-20)
+
 * Added `.csv` discovery in site and theme static data directories.
 * Updated `github.com/herdworks/hypertemplates-go` to `v0.32.0`.
 
