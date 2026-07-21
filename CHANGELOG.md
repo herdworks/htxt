@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.37.0 (2026-07-20)
+
 * **BREAKING:** Updated template-variable integration for the HyperTemplates package rename from `value` to `variable`; `Website.Plugins` and `Build.Plugins` now use `variable.Plugins`.
 * **BREAKING:** Migrated public theme types to the focused HyperTemplates package: `Website.Theme`, `AssetPublicPaths`, `AssetCandidates`, `AssetEntries`, and `Website.ListThemes` now use `theme.Theme`.
 * **BREAKING:** Renamed `NewTemplate` to `NewTemplateDocument`; it now returns `*document.Document` instead of `*hypertemplates.Template`.
