@@ -16,7 +16,10 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	htvalue "github.com/herdworks/hypertemplates-go/value"
+	"github.com/herdworks/hypertemplates-go/directives"
+	"github.com/herdworks/hypertemplates-go/document"
+	htfiles "github.com/herdworks/hypertemplates-go/files"
+	htvariable "github.com/herdworks/hypertemplates-go/variable"
 )
 
 type Build struct {
@@ -27,7 +30,7 @@ type Build struct {
 	Environment   Environment
 	Incremental   bool
 	IncludeDrafts bool
-	Plugins       htvalue.Plugins
+	Plugins       htvariable.Plugins
 
 	Pages  *Pages
 	Status BuildStatus
@@ -93,7 +96,7 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	}
 
 	// load plugins
-	build.Plugins = htvalue.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
+	build.Plugins = htvariable.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
 
 	// validate build
 	if err = build.Validate(); err != nil {
@@ -540,7 +543,7 @@ func (build *Build) AbsolutePath(relPath string) (string, error) {
 	if filepath.IsAbs(relPath) {
 		return "", fmt.Errorf("build path must be relative: %s", relPath)
 	}
-	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
+	relPath, err := htfiles.CleanRelativePath(relPath)
 	if err != nil {
 		return "", err
 	}
@@ -763,12 +766,12 @@ func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig,
 	return loadStaticData(website, website.Theme.DataDirPath(), config, verbose, w)
 }
 
-func NewTemplate(website *Website, page *Page) (template *hypertemplates.Template, err error) {
+func NewTemplateDocument(website *Website, page *Page) (doc *document.Document, err error) {
 	var layout *html.Node
 	if layout, err = website.Theme.LayoutHTML(page.LayoutRef); err != nil {
 		return nil, err
 	}
-	return &hypertemplates.Template{
+	return &document.Document{
 		Theme:          &website.Theme,
 		Layout:         layout,
 		TidyMode:       website.Config.TidyMode,
@@ -799,18 +802,18 @@ func RenderPage(build *Build, website *Website, page *Page, w io.Writer) (pageBy
 		w = os.Stdout
 	}
 
-	var template *hypertemplates.Template
+	var doc *document.Document
 	if err = page.Validate(); err != nil {
 		return nil, err
 	}
 	if page.Static {
 		return os.ReadFile(page.URI.Path) // return static HTML file bytes without processing template
 	}
-	if template, err = NewTemplate(website, page); err != nil {
+	if doc, err = NewTemplateDocument(website, page); err != nil {
 		return nil, err
 	}
-	template.Plugins = build.Plugins
-	if pageBytes, err = template.Process(TemplateData(build, website, page), &hypertemplates.TemplateData{"page": page.TemplateData}, w); err != nil {
+	doc.Plugins = build.Plugins
+	if pageBytes, err = directives.Process(doc, TemplateData(build, website, page), &hypertemplates.TemplateData{"page": page.TemplateData}, w); err != nil {
 		return nil, err
 	}
 	// page.Output = gohtml.Format(page.Output) // TODO: restore HTML formatting 🤌🏽

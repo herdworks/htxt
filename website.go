@@ -17,7 +17,9 @@ import (
 
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
-	htvalue "github.com/herdworks/hypertemplates-go/value"
+	htfiles "github.com/herdworks/hypertemplates-go/files"
+	httheme "github.com/herdworks/hypertemplates-go/theme"
+	htvariable "github.com/herdworks/hypertemplates-go/variable"
 	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"
 	href "github.com/herdworks/hypertexting-go/href"
 )
@@ -44,11 +46,11 @@ type Website struct {
 	Providers    hyperproviders.HostingProviders               `json:"providers,omitempty" yaml:"providers,omitempty"`
 	Environments map[string]*hyperproviders.HostingEnvironment `json:"environments,omitempty" yaml:"environments,omitempty"`
 
-	Theme        hypertemplates.Theme         `json:"-" yaml:"-"`
+	Theme        httheme.Theme                `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
 	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
 	Pages        Pages                        `json:"-" yaml:"-"`
-	Plugins      htvalue.Plugins              `json:"-" yaml:"-"`
+	Plugins      htvariable.Plugins           `json:"-" yaml:"-"`
 	Assets       []string                     `json:"-" yaml:"-"` // paths relative to StaticDirName()
 }
 
@@ -239,7 +241,7 @@ func (website *Website) RootDir() string {
 }
 
 func (website *Website) StaticDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.StaticDirectory, "static")
+	return htfiles.ResourceDirectoryName(website.Config.StaticDirectory, "static")
 }
 
 func (website *Website) StaticDirPath() string {
@@ -247,7 +249,7 @@ func (website *Website) StaticDirPath() string {
 }
 
 func (website *Website) DataDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.DataDirectory, "data")
+	return htfiles.ResourceDirectoryName(website.Config.DataDirectory, "data")
 }
 
 func (website *Website) DataDirPath() string {
@@ -255,7 +257,7 @@ func (website *Website) DataDirPath() string {
 }
 
 func (website *Website) ContentDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.ContentDirectory, "content")
+	return htfiles.ResourceDirectoryName(website.Config.ContentDirectory, "content")
 }
 
 func (website *Website) ContentDirPath() string {
@@ -263,7 +265,7 @@ func (website *Website) ContentDirPath() string {
 }
 
 func (website *Website) ThemesDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.ThemesDirectory, "themes")
+	return htfiles.ResourceDirectoryName(website.Config.ThemesDirectory, "themes")
 }
 
 func (website *Website) ThemesDirPath() string {
@@ -275,7 +277,7 @@ func (website *Website) ThemeURI() (uri *url.URL) {
 	themePath := website.Config.ThemePath
 	if themePath == "" {
 		themePath = "theme.json"
-	} else if themePath, err = hypertemplates.CleanRelativeFilePath(themePath); err != nil {
+	} else if themePath, err = htfiles.CleanRelativePath(themePath); err != nil {
 		return nil
 	}
 	path := filepath.Join(website.RootDir(), themePath)
@@ -286,7 +288,7 @@ func (website *Website) ThemeURI() (uri *url.URL) {
 }
 
 func (website *Website) BuildsDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.BuildsDirectory, "builds")
+	return htfiles.ResourceDirectoryName(website.Config.BuildsDirectory, "builds")
 }
 
 func (website *Website) BuildsDirPath() string {
@@ -294,7 +296,7 @@ func (website *Website) BuildsDirPath() string {
 }
 
 func (website *Website) DeploymentsDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.DeploymentsDirectory, "deployments")
+	return htfiles.ResourceDirectoryName(website.Config.DeploymentsDirectory, "deployments")
 }
 
 func (website *Website) DeploymentsDirPath() string {
@@ -302,7 +304,7 @@ func (website *Website) DeploymentsDirPath() string {
 }
 
 func (website *Website) PluginsDirName() string {
-	return hypertemplates.ResourceDirectoryName(website.Config.PluginsDirectory, "plugins")
+	return htfiles.ResourceDirectoryName(website.Config.PluginsDirectory, "plugins")
 }
 
 func (website *Website) PluginsDirPath() string {
@@ -324,11 +326,11 @@ func (website *Website) RelativePath(path string) (relPath string) {
 }
 
 func (website *Website) ResourcePath(root string, relPath string) (string, error) {
-	return hypertemplates.LocalFilePath(root, relPath)
+	return htfiles.LocalPath(root, relPath)
 }
 
 func (website *Website) AssetPublicPath(relPath string) (string, error) {
-	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
+	relPath, err := htfiles.CleanRelativePath(relPath)
 	if err != nil {
 		return "", err
 	}
@@ -476,7 +478,7 @@ func (website *Website) DiscoverAssets(verbose bool, w io.Writer) error {
 		return err
 	}
 	if website.StaticDirPath() != website.Theme.StaticDirPath() {
-		assets, err := hypertemplates.ListFiles(website.StaticDirPath(), true)
+		assets, err := htfiles.List(website.StaticDirPath(), true)
 		if err != nil {
 			return err
 		}
@@ -509,20 +511,20 @@ func (website *Website) DiscoverPlugins(verbose bool, w io.Writer) error {
 		return err
 	}
 	if website.PluginsDirPath() != website.Theme.PluginsDirPath() {
-		pluginPaths, err := hypertemplates.ListFiles(website.PluginsDirPath(), true)
+		pluginPaths, err := htfiles.List(website.PluginsDirPath(), true)
 		if err != nil {
 			return err
 		}
-		paths, err := hypertemplates.LocalFilePaths(website.PluginsDirPath(), pluginPaths)
+		paths, err := htfiles.LocalPaths(website.PluginsDirPath(), pluginPaths)
 		if err != nil {
 			return err
 		}
-		website.Plugins, err = htvalue.LoadPlugins(paths)
+		website.Plugins, err = htvariable.LoadPlugins(paths)
 		if err != nil {
 			return err
 		}
 	} else {
-		website.Plugins = htvalue.Plugins{}
+		website.Plugins = htvariable.Plugins{}
 	}
 	if !verbose {
 		return nil
@@ -593,12 +595,12 @@ func (website *Website) GetAssetURI(assetPath string, w io.Writer) *url.URL {
 
 func (website *Website) ContentTypes() (types ContentTypes, err error) {
 	types = ContentTypes{}
-	contentTypePaths, err := hypertemplates.ListFiles(website.Theme.ContentTypesDirPath(), false)
+	contentTypePaths, err := htfiles.List(website.Theme.ContentTypesDirPath(), false)
 	if err != nil {
 		return nil, err
 	}
 	for _, path := range contentTypePaths {
-		absPath, err := hypertemplates.LocalFilePath(website.Theme.ContentTypesDirPath(), path)
+		absPath, err := htfiles.LocalPath(website.Theme.ContentTypesDirPath(), path)
 		if err != nil {
 			return nil, err
 		}
@@ -641,15 +643,15 @@ func (website *Website) ListPages() (Pages, error) {
 
 // Recursively walk website.ThemesDirPath() looking for theme.json config files;
 // for each config, marshal the file into a Theme and return []Theme.
-func (website *Website) ListThemes(w io.Writer) (themes []hypertemplates.Theme, err error) {
+func (website *Website) ListThemes(w io.Writer) (themes []httheme.Theme, err error) {
 	if w == nil {
 		w = os.Stdout
 	}
 
-	var discovered []hypertemplates.Theme
+	var discovered []httheme.Theme
 	// include the current theme, which could be a "local" theme (installed outside of the themes directory)
 	if website.ThemeURI() != nil {
-		discovered = append(discovered, hypertemplates.Theme{
+		discovered = append(discovered, httheme.Theme{
 			URI:    &url.URL{Path: website.ThemeURI().Path},
 			Config: website.Theme.Config,
 		})
@@ -667,7 +669,7 @@ func (website *Website) ListThemes(w io.Writer) (themes []hypertemplates.Theme, 
 		if website.ThemeURI() != nil && filepath.Clean(website.ThemeURI().Path) == filepath.Clean(themePath) {
 			return nil // already included above
 		}
-		theme := hypertemplates.Theme{URI: &url.URL{Path: themePath}}
+		theme := httheme.Theme{URI: &url.URL{Path: themePath}}
 		discovered = append(discovered, theme)
 		return nil
 	})
@@ -770,7 +772,7 @@ func (config *WebsiteConfig) Validate() error {
 		{name: "site.config.theme", path: config.ThemePath},
 	}
 	for _, field := range fields {
-		if err := hypertemplates.ValidateRelativeFilePath(field.name, field.path); err != nil {
+		if err := htfiles.ValidateRelativePath(field.name, field.path); err != nil {
 			return err
 		}
 	}

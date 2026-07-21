@@ -3,12 +3,12 @@ package hypertexting
 import (
 	"embed"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	httheme "github.com/herdworks/hypertemplates-go/theme"
 )
 
 //go:embed embedded
 var embeddedFS embed.FS
 
 func init() {
-	hypertemplates.BuiltinsFS = hypertemplates.MustSubFS(embeddedFS, "embedded")
+	httheme.BuiltinsFS = httheme.MustSubFS(embeddedFS, "embedded")
 }

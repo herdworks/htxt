@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** Updated template-variable integration for the HyperTemplates package rename from `value` to `variable`; `Website.Plugins` and `Build.Plugins` now use `variable.Plugins`.
+* **BREAKING:** Migrated public theme types to the focused HyperTemplates package: `Website.Theme`, `AssetPublicPaths`, `AssetCandidates`, `AssetEntries`, and `Website.ListThemes` now use `theme.Theme`.
+* **BREAKING:** Renamed `NewTemplate` to `NewTemplateDocument`; it now returns `*document.Document` instead of `*hypertemplates.Template`.
+* Changed page rendering to use `directives.Process` and migrated file discovery, path validation, and local path resolution to the `files` package.
+* Changed builtins registration to set `theme.BuiltinsFS` through the new HyperTemplates `theme` package.
+* Updated `github.com/herdworks/hypertemplates-go` to `v0.33.0`.
+
 ## v0.36.3 (2026-07-20)
 
 * Added `.csv` discovery in site and theme static data directories.

@@ -14,6 +14,7 @@ import (
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"github.com/herdworks/hypertemplates-go/data"
+	htfiles "github.com/herdworks/hypertemplates-go/files"
 	"gopkg.in/yaml.v3"
 )
 
@@ -257,7 +258,7 @@ func loadStaticData(website *Website, dataDir string, config *hypertemplates.Hyp
 		return nil, err
 	}
 
-	paths, err := hypertemplates.ListFilesByPattern(dataDir, true, dataExtRegexp, "")
+	paths, err := htfiles.ListByPattern(dataDir, true, dataExtRegexp, "")
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +269,7 @@ func loadStaticData(website *Website, dataDir string, config *hypertemplates.Hyp
 	claimants := map[string]string{}
 
 	for _, p := range paths {
-		absPath, err := hypertemplates.LocalFilePath(dataDir, p)
+		absPath, err := htfiles.LocalPath(dataDir, p)
 		if err != nil {
 			return nil, err
 		}
@@ -324,7 +325,7 @@ func generateComputedData(build *Build, verbose bool, w io.Writer) error {
 		return fmt.Errorf("data root %q is not a directory", dataAbs)
 	}
 
-	paths, err := hypertemplates.ListFilesByPattern(dataDir, true, computedExtRegexp, "")
+	paths, err := htfiles.ListByPattern(dataDir, true, computedExtRegexp, "")
 	if err != nil {
 		return err
 	}
@@ -338,7 +339,7 @@ func generateComputedData(build *Build, verbose bool, w io.Writer) error {
 	bindings := map[string]any(build.Context())
 
 	for _, p := range paths {
-		absPath, err := hypertemplates.LocalFilePath(dataDir, p)
+		absPath, err := htfiles.LocalPath(dataDir, p)
 		if err != nil {
 			return err
 		}

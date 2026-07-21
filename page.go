@@ -20,6 +20,7 @@ import (
 
 	atom "github.com/herdworks/hyperfeed-go/types/atom"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
+	htfiles "github.com/herdworks/hypertemplates-go/files"
 )
 
 // Page
@@ -405,7 +406,7 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool, w io.Writer) er
 	exclude += "|(site)\\.(yaml|json)$"
 	exclude += "|theme\\.json$"
 	pageDir := filepath.Dir(page.URI.Path)
-	files, err := hypertemplates.ListFilesByPattern(pageDir, false, "", exclude)
+	files, err := htfiles.ListByPattern(pageDir, false, "", exclude)
 	if err != nil {
 		return err
 	}
@@ -415,7 +416,7 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool, w io.Writer) er
 	} else if contentDirAbs, err := filepath.Abs(website.ContentDirPath()); err != nil {
 		return err
 	} else if pageDirAbs != contentDirAbs {
-		pageDirRel, err = hypertemplates.RelativeFilePath(website.ContentDirPath(), pageDir)
+		pageDirRel, err = htfiles.RelativePath(website.ContentDirPath(), pageDir)
 		if err != nil {
 			return err
 		}
@@ -424,7 +425,7 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool, w io.Writer) er
 	assets := []string{}
 	for _, file := range files {
 		relPath := filepath.ToSlash(filepath.Join(pageDirRel, file))
-		if _, err = hypertemplates.CleanRelativeFilePath(relPath); err != nil {
+		if _, err = htfiles.CleanRelativePath(relPath); err != nil {
 			return err
 		}
 		assets = append(assets, relPath)
@@ -1281,13 +1282,13 @@ func LoadTagPages(build *Build, w io.Writer) (err error) {
 
 func GetPages(website *Website, directory string) (pages Pages, err error) {
 	pages = Pages{} // "discovered pages"
-	paths, err := hypertemplates.ListFilesByPattern(directory, true, "(index|page)\\.(md|yaml|json|html)$", fmt.Sprintf("^%s/*", website.BuildsDirName()))
+	paths, err := htfiles.ListByPattern(directory, true, "(index|page)\\.(md|yaml|json|html)$", fmt.Sprintf("^%s/*", website.BuildsDirName()))
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range paths {
 		var uri *url.URL
-		absPath, err := hypertemplates.LocalFilePath(directory, p)
+		absPath, err := htfiles.LocalPath(directory, p)
 		if err != nil {
 			return nil, err
 		}
@@ -1304,7 +1305,7 @@ func GetPages(website *Website, directory string) (pages Pages, err error) {
 }
 
 func PagePath(website *Website, uri *url.URL) string {
-	subPath, err := hypertemplates.RelativeFilePath(website.ContentDirPath(), uri.Path)
+	subPath, err := htfiles.RelativePath(website.ContentDirPath(), uri.Path)
 	if err != nil {
 		return ""
 	}

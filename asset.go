@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	htfiles "github.com/herdworks/hypertemplates-go/files"
+	httheme "github.com/herdworks/hypertemplates-go/theme"
 )
 
 // Asset describes one discovered asset and its resolved source and public paths.
@@ -50,7 +51,7 @@ func (asset Asset) BuildPath(build *Build) (string, error) {
 }
 
 // AssetPublicPaths returns public URL paths for discovered theme, website, and page assets.
-func AssetPublicPaths(theme *hypertemplates.Theme, website *Website, pages Pages) ([]string, error) {
+func AssetPublicPaths(theme *httheme.Theme, website *Website, pages Pages) ([]string, error) {
 	assets, err := AssetEntries(theme, website, pages)
 	if err != nil {
 		return nil, err
@@ -62,14 +63,14 @@ func AssetPublicPaths(theme *hypertemplates.Theme, website *Website, pages Pages
 // page asset entries in iteration order (theme first, then website, then
 // page-by-page). Entries that share a public path are preserved so callers can
 // inspect every contributor; use AssetEntries for the collapsed view.
-func AssetCandidates(theme *hypertemplates.Theme, website *Website, pages Pages) (Assets, error) {
+func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Assets, error) {
 	if website == nil {
 		return nil, fmt.Errorf("website is required")
 	}
 	candidates := Assets{}
 	if theme != nil {
 		themeAssetSourcePath := func(relPath string) (string, error) {
-			return hypertemplates.LocalFilePath(theme.StaticDirPath(), relPath)
+			return htfiles.LocalPath(theme.StaticDirPath(), relPath)
 		}
 		for _, relPath := range theme.Assets {
 			asset, err := buildAssetEntry(website, AssetSourceTheme, relPath, themeAssetSourcePath)
@@ -109,7 +110,7 @@ func AssetCandidates(theme *hypertemplates.Theme, website *Website, pages Pages)
 
 // AssetEntries combines theme, website, and page assets into resolved asset entries.
 // Later sources replace earlier entries with the same public path.
-func AssetEntries(theme *hypertemplates.Theme, website *Website, pages Pages) (Assets, error) {
+func AssetEntries(theme *httheme.Theme, website *Website, pages Pages) (Assets, error) {
 	candidates, err := AssetCandidates(theme, website, pages)
 	if err != nil {
 		return nil, err
@@ -128,7 +129,7 @@ func AssetEntries(theme *hypertemplates.Theme, website *Website, pages Pages) (A
 }
 
 func buildAssetEntry(website *Website, source AssetSource, relPath string, sourcePath func(string) (string, error)) (Asset, error) {
-	relPath, err := hypertemplates.CleanRelativeFilePath(relPath)
+	relPath, err := htfiles.CleanRelativePath(relPath)
 	if err != nil {
 		return Asset{}, err
 	}

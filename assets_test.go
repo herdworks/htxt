@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/herdworks/hypertemplates-go"
-	htvalue "github.com/herdworks/hypertemplates-go/value"
+	httheme "github.com/herdworks/hypertemplates-go/theme"
+	htvariable "github.com/herdworks/hypertemplates-go/variable"
 	"github.com/herdworks/hypertexting-go/href"
 )
 
@@ -39,7 +39,7 @@ func testWebsite(t *testing.T) (*Website, *Build) {
 	website := &Website{
 		URI:     &href.Href{URL: url.URL{Path: filepath.Join(root, "site.yaml")}},
 		BaseURL: "https://example.com/",
-		Theme: hypertemplates.Theme{
+		Theme: httheme.Theme{
 			URI: &url.URL{Path: filepath.Join(root, "theme", "theme.json")},
 		},
 	}
@@ -191,8 +191,8 @@ func TestWebsiteDiscoverAssetsReplacesExistingAssets(t *testing.T) {
 
 func TestWebsiteDiscoverPluginsReplacesExistingPlugins(t *testing.T) {
 	website, _ := testWebsite(t)
-	website.Theme.Plugins = htvalue.Plugins{"stale-theme": {Name: "stale-theme"}}
-	website.Plugins = htvalue.Plugins{"stale-plugin": {Name: "stale-plugin"}}
+	website.Theme.Plugins = htvariable.Plugins{"stale-theme": {Name: "stale-theme"}}
+	website.Plugins = htvariable.Plugins{"stale-plugin": {Name: "stale-plugin"}}
 	writeAssetTestScript(t, filepath.Join(website.Theme.PluginsDirPath(), "theme.js"), "export default function(input) { return input }")
 	writeAssetTestScript(t, filepath.Join(website.PluginsDirPath(), "site.js"), "export default function(input) { return input }")
 
@@ -234,7 +234,7 @@ func TestWebsitePluginsUsesWebsitePrecedence(t *testing.T) {
 	if err := website.DiscoverPlugins(false, io.Discard); err != nil {
 		t.Fatalf("DiscoverPlugins returned error: %v", err)
 	}
-	plugins := htvalue.Merge(website.Theme.Plugins, website.Plugins)
+	plugins := htvariable.Merge(website.Theme.Plugins, website.Plugins)
 	fn := plugins["label"].Func
 	got, err := fn(nil)
 	if err != nil {
