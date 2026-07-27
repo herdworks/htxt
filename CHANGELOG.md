@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.37.0 (2026-07-27)
+
 Adopt next generation HT templating directives from `hypertemplates-go` v0.33.x, including new JavaScript style plugin syntax. Updated the HyperTexting CMS built-in head_start.html fragment to use new templating directives.
 
 * **BREAKING:** Migrated to HyperTemplates' focused `files`, `theme`, `document`, and `directives` packages. `Website.Theme` and asset APIs now use `theme.Theme`; `NewTemplate` is now `NewTemplateDocument`; page rendering uses `directives.Process`; and plugin composition uses `variable.MergePlugins`.
