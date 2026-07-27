@@ -1,18 +1,16 @@
 <header>
-    <style ht-pipe='css:style#components'>
+    <style ht-pipe='to "style#components" as css'>
         header { background-color: rgba(246,237,228); }
         header content-row { align-items: center; }
         header nav a { margin-left: var(--gutter-1x); }
     </style>
     <content-container>
         <content-row flex spread>
-            <h1>
-                <param ht-param='site.title' default='Welcome to HyperTemplates!' />
-            </h1>
+            <h1 ht-apply>${ site.title, "Welcome to HyperTemplates" }</h1>
             <nav>
                 <menu>
-                    <a ht-template='link:data.nav.main' ht-attrs='href:link.href' href='#'>
-                        <param ht-param='link.title,link.label,link.name,link.text' />
+                    <a ht-each='link in ${ data.nav.main }' href='${ link.href, "#" }'>
+                        ${ link.title, link.label, link.name, link.text, "" }
                     </a>
                 </menu>
             </nav>

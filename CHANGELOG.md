@@ -6,14 +6,13 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
-## v0.37.0 (2026-07-20)
+Adopt next generation HT templating directives from `hypertemplates-go` v0.33.x, including new JavaScript style plugin syntax. Updated the HyperTexting CMS built-in head_start.html fragment to use new templating directives.
 
-* **BREAKING:** Updated template-variable integration for the HyperTemplates package rename from `value` to `variable`; `Website.Plugins` and `Build.Plugins` now use `variable.Plugins`.
-* **BREAKING:** Migrated public theme types to the focused HyperTemplates package: `Website.Theme`, `AssetPublicPaths`, `AssetCandidates`, `AssetEntries`, and `Website.ListThemes` now use `theme.Theme`.
-* **BREAKING:** Renamed `NewTemplate` to `NewTemplateDocument`; it now returns `*document.Document` instead of `*hypertemplates.Template`.
-* Changed page rendering to use `directives.Process` and migrated file discovery, path validation, and local path resolution to the `files` package.
-* Changed builtins registration to set `theme.BuiltinsFS` through the new HyperTemplates `theme` package.
-* Updated `github.com/herdworks/hypertemplates-go` to `v0.33.0`.
+* **BREAKING:** Migrated to HyperTemplates' focused `files`, `theme`, `document`, and `directives` packages. `Website.Theme` and asset APIs now use `theme.Theme`; `NewTemplate` is now `NewTemplateDocument`; page rendering uses `directives.Process`; and plugin composition uses `variable.MergePlugins`.
+* **BREAKING:** Updated template-variable integration for HyperTemplates' function-call DSL; variable plugins now use `${ plugin(arguments...) }` syntax with resolved arguments in source order, and pipe expressions are rejected.
+* **BREAKING:** Updated shipped `ht-if` directives to require explicit typed `${ ... }` presence expressions; binary comparisons require whitespace-token operators, support quoted literals and case-sensitive matching, plus lazy uppercase `OR`, repeated-attribute `AND`, and slice membership through `in` / `not in`.
+* **BREAKING:** Removed runtime support for `ht-not` and `data-ht-not`; existing templates must be migrated to `ht-if`. Conditional migration converts deprecated `ht-not` alternatives, comparisons, regex spelling, and alias families; active `ht-if` values are not rewritten.
+* **BREAKING:** Migrated the shipped bootstrap theme and embedded builtins to Phase 2 directive syntax. Bootstrap fragments now use `fragments/` includes, typed `ht-each` and `ht-if`, map-valued `ht-attrs`, explicit `ht-apply` output, parser-only `ht-base`, and quoted `ht-pipe` destinations; removed runtime directives no longer appear in shipped sources.
 
 ## v0.36.3 (2026-07-20)
 

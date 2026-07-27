@@ -78,6 +78,39 @@ func writeBuildSelectionFile(t *testing.T, path string, content string) {
 	}
 }
 
+func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
+	root := t.TempDir()
+	website := &Website{
+		URI:         &href.Href{URL: url.URL{Path: filepath.Join(root, "site.yaml")}},
+		BaseURL:     "https://example.com/",
+		Title:       "Bootstrap Site",
+		Description: "Bootstrap description",
+		Byline:      Byline{Name: "Bootstrap Author"},
+	}
+	if err := website.CreatePackage(io.Discard); err != nil {
+		t.Fatalf("CreatePackage() error = %v", err)
+	}
+
+	build := &Build{
+		URI:     &url.URL{Path: filepath.Join(root, "builds", "test")},
+		ID:      "test",
+		Website: website,
+	}
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	output, err := os.ReadFile(filepath.Join(build.URI.Path, "index.html"))
+	if err != nil {
+		t.Fatalf("ReadFile(index.html) error = %v", err)
+	}
+	for _, stale := range []string{"ht-template", "ht-content", "ht-param", "ht-attr=", "ht-not"} {
+		if bytes.Contains(output, []byte(stale)) {
+			t.Errorf("rendered bootstrap output contains stale directive %q:\n%s", stale, output)
+		}
+	}
+}
+
 func (fixture buildSelectionFixture) build(pages *Pages, incremental bool) *Build {
 	return &Build{
 		URI:         &url.URL{Path: filepath.Join(fixture.root, "builds", "test")},

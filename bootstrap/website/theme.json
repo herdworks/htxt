@@ -4,6 +4,7 @@
     "version": "0.1.0",
     "config": {
         "layouts_dir": "layouts",
+        "fragments_dir": "fragments",
         "static_dir": "static",
         "blocks_dir": "blocks",
         "contenttypes_dir": "types"

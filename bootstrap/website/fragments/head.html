@@ -1,0 +1,21 @@
+<!-- Default Metadata -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*; img-src 'self' https://*; media-src 'self' https://*;">
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes'>
+<title ht-apply>${ page.title, site.title }</title>
+<meta ht-apply name='description' content='${ page.description, site.description }' />
+<meta ht-apply name='author' content='${ page.byline.name, site.byline.name }' />
+<meta ht-each='meta in ${ site.metadata }' name='${ meta.name }' property='${ meta.property }' content='${ meta.content }' />
+
+<!-- Default Links -->
+<link ht-each='favicon in ${ site.favicon, site.favicons }' rel='${ favicon.rel, "icon" }' href='${ favicon.href, "/favicon.png" }' sizes='${ favicon.sizes, "32x32" }' type='${ favicon.type, "image/png" }'>
+<link ht-apply rel='canonical' href='${ page.canonical_url }'>
+<link ht-each='link in ${ site.links }' rel='${ link.rel }' href='${ link.href }' sizes='${ link.sizes }' type='${ link.type }'>
+
+<!-- Default Styles -->
+<link rel='stylesheet' href='/css/reset.css' />
+<link rel='stylesheet' href='/css/style.css' />
+<link rel='stylesheet' href='/css/chroma-base16-snazzy.css' />
+
+<!-- Default Scripts -->
+<script src='/js/main.js' defer></script>

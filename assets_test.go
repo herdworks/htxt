@@ -234,7 +234,7 @@ func TestWebsitePluginsUsesWebsitePrecedence(t *testing.T) {
 	if err := website.DiscoverPlugins(false, io.Discard); err != nil {
 		t.Fatalf("DiscoverPlugins returned error: %v", err)
 	}
-	plugins := htvariable.Merge(website.Theme.Plugins, website.Plugins)
+	plugins := htvariable.MergePlugins(website.Theme.Plugins, website.Plugins)
 	fn := plugins["label"].Func
 	got, err := fn(nil)
 	if err != nil {

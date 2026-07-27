@@ -9,7 +9,7 @@ go 1.25.0
 require (
 	github.com/herdworks/hyperfeed-go v0.26.5
 	github.com/herdworks/hyperproviders-go v0.23.0
-	github.com/herdworks/hypertemplates-go v0.33.0
+	github.com/herdworks/hypertemplates-go v0.33.1
 )
 
 // direct dependencies

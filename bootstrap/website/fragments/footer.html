@@ -1,5 +1,5 @@
 <footer>
-    <style ht-pipe='css:style#components'>
+    <style ht-pipe='to "style#components" as css'>
         footer { --icon-size: 36px; }
         footer { background-color: rgba(0,0,0,1.0); }
         footer { color: rgba(255,255,255,0.75); }
@@ -9,19 +9,19 @@
     <content-container>
         <nav>
             <menu>
-                <a ht-if='data.nav' ht-template='link:data.nav.links' ht-attrs='link.href,layout' href='#'>
-                    <param ht-param='link.title,link.label,link.name,link.text' />
+                <a ht-each='link in ${ data.nav.links }' ht-if='${ data.nav }' href='${ link.href, "#" }'>
+                    ${ link.title, link.label, link.name, link.text, "" }
                 </a>
             </menu>
         </nav>
         <content-row grid spread>
             <span>
                 &copy; 2025
-                <a ht-attrs='href:site.author.href' ht-content='site.author.name,site.author.username' target='_blank'></a>
+                <a ht-apply href='${ site.byline.href, "/" }' target='_blank'>${ site.byline.name, site.byline.username, "Placeholder" }</a>
             </span>
 
             <a href='/blog/atom.xml'>
-                <svg ht-include='partials/icons/feed.svg'></svg>
+                <svg ht-include='fragments/icons/feed.svg'></svg>
             </a>
 
             <span>

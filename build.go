@@ -96,7 +96,7 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	}
 
 	// load plugins
-	build.Plugins = htvariable.Merge(build.Website.Theme.Plugins, build.Website.Plugins)
+	build.Plugins = htvariable.MergePlugins(build.Website.Theme.Plugins, build.Website.Plugins)
 
 	// validate build
 	if err = build.Validate(); err != nil {

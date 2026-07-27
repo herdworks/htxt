@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en-US">
     <head>
-        <meta ht-include='partials/head' />
+        <meta ht-include='fragments/head' />
 
         <!-- Layout Metadata -->
         <meta name='layout:name' content='default' />
@@ -18,14 +18,14 @@
         </style>
     </head>
     <body>
-        <header ht-include='partials/header'></header>
+        <header ht-include='fragments/header'></header>
         <main>
             <section>
-                <content-container>
-                    <h2 ht-if='page.title'>
-                        <param ht-param='page.title' default='Welcome to HyperTemplates!' />
+                <content-container ht-apply>
+                    <h2 ht-apply ht-if='${ page.title }'>
+                        ${ page.title, "Welcome to HyperTemplates" }
                     </h2>
-                    <param ht-param='markdown:page.content' />
+                    ${ markdown(page.content) }
                     <example-component>
                         <!-- this is an example web component -->
                     </example-component>
@@ -33,6 +33,6 @@
             </section>
         </main>
         <content-whitespace></content-whitespace>
-        <footer ht-include='partials/footer'></footer>
+        <footer ht-include='fragments/footer'></footer>
     </body>
 </html>
