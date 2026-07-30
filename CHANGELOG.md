@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.38.0 (2026-07-30)
+
 * **BREAKING:** Updated the shipped bootstrap layouts and fragments for
   pull-based `ht-pipe`: component styles are marked with `class="component"`,
   while each layout head pulls and deduplicates them into its component style
