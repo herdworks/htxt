@@ -10,7 +10,7 @@
         <script src='/js/components/example-component.js' defer></script>
 
         <!-- Layout Styles -->
-        <style id='components'></style>
+        <style id='components' ht-pipe='from "style.component" as css'></style>
         <style id='layout'>
             :is(h2,h3,h4,h5,h6):not(:last-child) {
                 margin-bottom: var(--gutter-1x, 15px);

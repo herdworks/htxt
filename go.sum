@@ -27,10 +27,8 @@ github.com/herdworks/hyperfeed-go v0.26.5 h1:baaXebA+6HoewJZuOqyxF7ZWLUVshrj97Hb
 github.com/herdworks/hyperfeed-go v0.26.5/go.mod h1:OtAEqMxJx+Gh3JLboMqBU+WyizTroOF/V0KxK7VOBz4=
 github.com/herdworks/hyperproviders-go v0.23.0 h1:J+lmbmsWuOupc1jAEVlxDcovcTl4r7UstKZcobdmvzA=
 github.com/herdworks/hyperproviders-go v0.23.0/go.mod h1:VzS5fdkCJw1EnJVGwuOu7nfZ25WJPKOpmcQR9H543lo=
-github.com/herdworks/hypertemplates-go v0.33.0 h1:+3oTruDuhkOFBwhB6wncZgoYKHIcNVOZBvdeppwFynE=
-github.com/herdworks/hypertemplates-go v0.33.0/go.mod h1:53uJOg3/phwHuYqxhRU+VzRF2HevoBOiaUs2LRdnZBU=
-github.com/herdworks/hypertemplates-go v0.33.1 h1:SIECEsYJewhfUQvXUYP8PLAW5jw0q9bfczkBLyw33hc=
-github.com/herdworks/hypertemplates-go v0.33.1/go.mod h1:53uJOg3/phwHuYqxhRU+VzRF2HevoBOiaUs2LRdnZBU=
+github.com/herdworks/hypertemplates-go v0.35.0 h1:yYL324MSi6aXRNKkSaKd4s85m0U7X3TKw5FTC4auFmw=
+github.com/herdworks/hypertemplates-go v0.35.0/go.mod h1:53uJOg3/phwHuYqxhRU+VzRF2HevoBOiaUs2LRdnZBU=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
