@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.39.0 (2026-08-03)
+
+HyperTexting deployments are now hsync enabled.
+
 * **Added:** Declarative `site.sync` configuration through
   `*hsync.SyncConfig`; hsync-enabled deployments own synchronization
   preparation, provider coordination, and post-success finalization.
