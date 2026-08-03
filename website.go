@@ -15,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	hsync "github.com/herdworks/hsync"
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	htfiles "github.com/herdworks/hypertemplates-go/files"
@@ -33,18 +34,19 @@ var (
 type Website struct {
 	URI *href.Href `json:"uri,omitempty" yaml:"-"` // path to website config file
 
-	CreatedAt    string                                        `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
-	UpdatedAt    string                                        `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
-	BaseURL      string                                        `json:"base_url" yaml:"base_url"`
-	Title        string                                        `json:"title" yaml:"title"`
-	Description  string                                        `json:"description" yaml:"description"`
-	Byline       Byline                                        `json:"byline,omitempty" yaml:"byline,omitempty"`
-	Favicon      WebsiteFavicon                                `json:"favicon,omitempty" yaml:"favicon,omitempty"`
-	Links        []HTMLLink                                    `json:"links,omitempty" yaml:"links,omitempty"`
-	Metadata     []HTMLMeta                                    `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Config       WebsiteConfig                                 `json:"config" yaml:"config"`
-	Providers    hyperproviders.HostingProviders               `json:"providers,omitempty" yaml:"providers,omitempty"`
-	Environments map[string]*hyperproviders.HostingEnvironment `json:"environments,omitempty" yaml:"environments,omitempty"`
+	CreatedAt    string                                 `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
+	UpdatedAt    string                                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
+	BaseURL      string                                 `json:"base_url" yaml:"base_url"`
+	Title        string                                 `json:"title" yaml:"title"`
+	Description  string                                 `json:"description" yaml:"description"`
+	Byline       Byline                                 `json:"byline,omitempty" yaml:"byline,omitempty"`
+	Favicon      WebsiteFavicon                         `json:"favicon,omitempty" yaml:"favicon,omitempty"`
+	Links        []HTMLLink                             `json:"links,omitempty" yaml:"links,omitempty"`
+	Metadata     []HTMLMeta                             `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Config       WebsiteConfig                          `json:"config" yaml:"config"`
+	Sync         *hsync.SyncConfig                      `json:"sync,omitempty" yaml:"sync,omitempty"`
+	Providers    hyperproviders.HostingProviders        `json:"providers,omitempty" yaml:"providers,omitempty"`
+	Environments map[string]*hyperproviders.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
 
 	Theme        httheme.Theme                `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
@@ -162,6 +164,11 @@ func (website *Website) Validate() error {
 	if err := website.ValidateConfig(); err != nil {
 		return err
 	}
+	if website.Sync != nil {
+		if err := website.Sync.Validate(); err != nil {
+			return err
+		}
+	}
 	if err := website.Theme.Validate(); err != nil {
 		return err
 	}
@@ -185,14 +192,14 @@ func (website *Website) URL() *url.URL {
 
 func (website *Website) ResolveEnvironments() {
 	if len(website.Environments) == 0 {
-		defaultEnvironment := hyperproviders.HostingEnvironment{"default"}
-		website.Environments = map[string]*hyperproviders.HostingEnvironment{
+		defaultEnvironment := hyperproviders.Environment{"default"}
+		website.Environments = map[string]*hyperproviders.Environment{
 			"default": &defaultEnvironment,
 		}
 	}
 }
 
-func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.HostingEnvironment, error) {
+func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Environment, error) {
 	if name == "" {
 		return nil, fmt.Errorf("deployment environment name is required")
 	}
@@ -209,8 +216,8 @@ func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Host
 	return env, nil
 }
 
-func (website *Website) DeploymentProviders(names []string) (hyperproviders.HostingEnvironment, error) {
-	env := hyperproviders.HostingEnvironment(names)
+func (website *Website) DeploymentProviders(names []string) (hyperproviders.Environment, error) {
+	env := hyperproviders.Environment(names)
 	if err := website.validateProviderNames(names); err != nil {
 		return nil, err
 	}

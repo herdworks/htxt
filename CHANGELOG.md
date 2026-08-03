@@ -6,13 +6,19 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** Declarative `site.sync` configuration through
+  `*hsync.SyncConfig`; hsync-enabled deployments own synchronization
+  preparation, provider coordination, and post-success finalization.
+* **Changed:** Updated HyperProviders integration to v0.25.1. Go callers now
+  use `hyperproviders.Environment` in `Website.Environments`,
+  `Website.DeploymentEnvironment`, and `Website.DeploymentProviders`.
+
 ## v0.38.0 (2026-07-30)
 
 * **BREAKING:** Updated the shipped bootstrap layouts and fragments for
   pull-based `ht-pipe`: component styles are marked with `class="component"`,
   while each layout head pulls and deduplicates them into its component style
   destination. Requires `hypertemplates-go` v0.35.0.
-
 ## v0.37.0 (2026-07-27)
 
 Adopt next generation HT templating directives from `hypertemplates-go` v0.33.x, including new JavaScript style plugin syntax. Updated the HyperTexting CMS built-in head_start.html fragment to use new templating directives.

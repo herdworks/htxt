@@ -20,3 +20,16 @@ Where HyperTemplates is concerned with the lower-level building blocks of templa
 * Content Types
 * Builds
 * Providers
+
+## hsync initialization
+
+Sites opt into hsync with the canonical public URL of its mutable index. hsync
+always stores the local manifest at `.hsync/manifest.json`:
+
+```yaml
+sync:
+  remote: https://example.com/.hsync/latest.json
+```
+
+HyperTexting declares this configuration; `hsync.Deployment` owns adoption,
+reconciliation, provider coordination, and finalization.

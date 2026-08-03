@@ -1,12 +1,14 @@
 package hypertexting
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	hsync "github.com/herdworks/hsync"
 	hyperproviders "github.com/herdworks/hyperproviders-go"
 )
 
@@ -25,12 +27,12 @@ func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
 }
 
 func TestWebsite_DeploymentEnvironment(t *testing.T) {
-	production := hyperproviders.HostingEnvironment{"pages"}
+	production := hyperproviders.Environment{"pages"}
 	website := &Website{
 		Providers: hyperproviders.HostingProviders{
 			"pages": {Kind: "git", Endpoint: "https://example.com"},
 		},
-		Environments: map[string]*hyperproviders.HostingEnvironment{
+		Environments: map[string]*hyperproviders.Environment{
 			"production": &production,
 		},
 	}
@@ -55,7 +57,7 @@ func TestWebsite_DeploymentEnvironment(t *testing.T) {
 		t.Fatal("DeploymentEnvironment empty error = nil, want error")
 	}
 
-	missing := hyperproviders.HostingEnvironment{"missing"}
+	missing := hyperproviders.Environment{"missing"}
 	website.Environments["broken"] = &missing
 	if _, err := website.DeploymentEnvironment("broken"); err == nil {
 		t.Fatal("DeploymentEnvironment missing provider error = nil, want error")
@@ -145,6 +147,7 @@ func TestWebsiteDirectoryGettersUseConfiguredDirs(t *testing.T) {
 		ThemesDirectory:      "designs",
 		ThemePath:            "themes/main/theme.json",
 	}
+	website.Sync = &hsync.SyncConfig{Remote: "https://example.com/.sync/latest.json"}
 	wantConfig := website.Config
 	root := website.RootDir()
 
@@ -193,6 +196,45 @@ func TestWebsiteConfigValidateRejectsUnsafePaths(t *testing.T) {
 				t.Fatal("WebsiteConfig.Validate() error = nil")
 			}
 		})
+	}
+}
+
+func TestWebsiteValidateRejectsInvalidSyncConfig(t *testing.T) {
+	tests := []hsync.SyncConfig{
+		{},
+		{Remote: "/.sync/latest.json"},
+		{Remote: "https://example.com/.sync/latest.json?preview=1"},
+		{Remote: "https://example.com/.sync/latest.json#head"},
+	}
+	for _, sync := range tests {
+		website := &Website{
+			URI:         mustHref(t, "site.yaml"),
+			BaseURL:     "https://example.com",
+			Title:       "Example",
+			Description: "Example website",
+			Byline:      Byline{Name: "Example"},
+			Sync:        &sync,
+		}
+		if err := website.Validate(); err == nil {
+			t.Fatalf("Website.Validate() error = nil for sync %#v", sync)
+		}
+	}
+}
+
+func TestWebsiteSyncIsOptionalAndDecodesConfiguration(t *testing.T) {
+	encoded, err := json.Marshal(Website{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"sync"`) {
+		t.Fatalf("empty website unexpectedly encoded sync: %s", encoded)
+	}
+	var website Website
+	if err := json.Unmarshal([]byte(`{"sync":{"remote":"https://example.com/.sync/latest.json"}}`), &website); err != nil {
+		t.Fatal(err)
+	}
+	if website.Sync == nil || website.Sync.Remote != "https://example.com/.sync/latest.json" {
+		t.Fatalf("decoded sync = %#v", website.Sync)
 	}
 }
 
