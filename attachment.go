@@ -2,23 +2,36 @@ package hypertexting
 
 import (
 	"errors"
+	"mime"
+	"net/url"
+	"path"
 
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"github.com/herdworks/hypertexting-go/href"
 )
+
+type Attachment struct {
+	Kind AttachmentKind              `json:"kind,omitempty" yaml:"kind,omitempty" jsonschema:"required"`
+	Href *href.Href                  `json:"href,omitempty" yaml:"href,omitempty" jsonschema:"required,type=string,format=uri-reference,description=A URI reference. It may be absolute or relative."`
+	Data hypertemplates.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
+}
+type Attachments []*Attachment
+
+func (Attachment) JSONSchemaTitle() string {
+	return "HyperTexting attachment"
+}
+func (Attachment) JSONSchemaName() string    { return "attachment" }
+func (Attachment) JSONSchemaSummary() string { return "A linked or embedded page resource." }
+
+func (Attachment) JSONSchemaDescription() string {
+	return "A linked or embedded resource associated with a page."
+}
 
 const (
 	// Attachment errors
 	AttachmentErrorMissingKind = "attachment.kind is required"
 	AttachmentErrorMissingHref = "attachment.href is required"
 )
-
-type Attachment struct {
-	Kind AttachmentKind              `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Href *href.Href                  `json:"href,omitempty" yaml:"href,omitempty"`
-	Data hypertemplates.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
-}
-type Attachments []*Attachment
 
 func (attachments Attachments) Clone() Attachments {
 	if attachments == nil {
@@ -95,6 +108,28 @@ func (attachments Attachments) FilteredBy(kind AttachmentKind) Attachments {
 		}
 	}
 	return filtered
+}
+
+func (attachment *Attachment) AtomMIMEType(u *url.URL) string {
+	if attachment != nil && attachment.Data != nil {
+		for _, key := range []string{"mimetype", "mime_type", "type"} {
+			if mimetype, ok := attachment.Data.Get(key).(string); ok && mimetype != "" {
+				return mimetype
+			}
+		}
+	}
+	if u == nil || u.Path == "" {
+		return ""
+	}
+	mimetype := mime.TypeByExtension(path.Ext(u.Path))
+	if mimetype == "" {
+		return ""
+	}
+	mediatype, _, err := mime.ParseMediaType(mimetype)
+	if err != nil || mediatype == "" {
+		return mimetype
+	}
+	return mediatype
 }
 
 // ============================================================================

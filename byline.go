@@ -11,7 +11,7 @@ import (
 // Page objects do the heavy lifting to parse content data files
 // and convert them into rendered pages.
 type Byline struct {
-	Name     string `json:"name" yaml:"name"`
+	Name     string `json:"name" yaml:"name" jsonschema:"required,description=The byline display name."`
 	Username string `json:"username,omitempty" yaml:"username,omitempty"`
 	Favicon  string `json:"favicon,omitempty" yaml:"favicon,omitempty"`
 	Href     string `json:"href,omitempty" yaml:"href,omitempty"`
@@ -50,6 +50,16 @@ func (byline *Byline) TemplateData() (data hypertemplates.TemplateData) {
 	data["href"] = byline.Href
 	data["email"] = byline.Email
 	return data
+}
+
+func (byline Byline) JSONSchemaTitle() string {
+	return "HyperTexting byline"
+}
+func (Byline) JSONSchemaName() string    { return "byline" }
+func (Byline) JSONSchemaSummary() string { return "Attribution details." }
+
+func (byline Byline) JSONSchemaDescription() string {
+	return "Attribution details for a website, page, or feed."
 }
 
 func (bylines Bylines) TemplateData() (data []map[string]any) {

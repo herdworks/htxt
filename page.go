@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime"
 	"net/url"
 	"os"
 	"path"
@@ -35,12 +34,12 @@ type Page struct {
 	Loaded bool       `json:"-" yaml:"-"`
 
 	// Template data properties
-	CreatedAt    string      `json:"created_at" yaml:"created_at"`
-	UpdatedAt    string      `json:"updated_at" yaml:"updated_at"`
-	LayoutRef    string      `json:"layout" yaml:"layout"`
+	CreatedAt    string      `json:"created_at" yaml:"created_at" jsonschema:"format=date-time,description=Defaults to 'site.created_at'."`
+	UpdatedAt    string      `json:"updated_at" yaml:"updated_at" jsonschema:"format=date-time"`
+	LayoutRef    string      `json:"layout" yaml:"layout" jsonschema:"default=default,description=Defaults to 'default'."`
 	Title        string      `json:"title,omitempty" yaml:"title,omitempty"`
 	Description  string      `json:"description,omitempty" yaml:"description,omitempty"`
-	Content      string      `json:"content,omitempty" yaml:"content,omitempty"`
+	Content      string      `json:"content,omitempty" yaml:"content,omitempty" jsonschema:"description=In Markdown files this is the Markdown body not a YAML front-matter property."`
 	Summary      string      `json:"summary,omitempty" yaml:"summary,omitempty"`
 	More         string      `json:"more,omitempty" yaml:"more,omitempty"`
 	Byline       *Byline     `json:"byline,omitempty" yaml:"byline,omitempty"`
@@ -52,7 +51,7 @@ type Page struct {
 	Draft        bool        `json:"draft,omitempty" yaml:"draft,omitempty"`
 	Unlisted     bool        `json:"unlisted,omitempty" yaml:"unlisted,omitempty"`
 	UglyURL      bool        `json:"ugly_url,omitempty" yaml:"ugly_url,omitempty"`
-	Redirect     string      `json:"redirect,omitempty" yaml:"redirect,omitempty"`
+	Redirect     string      `json:"redirect,omitempty" yaml:"redirect,omitempty" jsonschema:"format=uri-reference,description=The URI reference written into the page refresh redirect target."`
 	Feed         *HyperFeed  `json:"feed,omitempty" yaml:"feed,omitempty"`
 
 	// Computed properties
@@ -505,26 +504,14 @@ func (page *Page) AtomEntryLinks(website *Website) (atomLinks []atom.Link, err e
 	return atomLinks, nil
 }
 
-func (attachment *Attachment) AtomMIMEType(u *url.URL) string {
-	if attachment != nil && attachment.Data != nil {
-		for _, key := range []string{"mimetype", "mime_type", "type"} {
-			if mimetype, ok := attachment.Data.Get(key).(string); ok && mimetype != "" {
-				return mimetype
-			}
-		}
-	}
-	if u == nil || u.Path == "" {
-		return ""
-	}
-	mimetype := mime.TypeByExtension(path.Ext(u.Path))
-	if mimetype == "" {
-		return ""
-	}
-	mediatype, _, err := mime.ParseMediaType(mimetype)
-	if err != nil || mediatype == "" {
-		return mimetype
-	}
-	return mediatype
+func (Page) JSONSchemaTitle() string {
+	return "HyperTexting page"
+}
+func (Page) JSONSchemaName() string    { return "page" }
+func (Page) JSONSchemaSummary() string { return "Page source data file." }
+
+func (Page) JSONSchemaDescription() string {
+	return "A page source file may use Markdown, YAML, or JSON. For Markdown files, object properties form YAML front matter and the Markdown body is the 'content' field."
 }
 
 func (page *Page) AtomAttachmentLength(attachment *Attachment) uint {

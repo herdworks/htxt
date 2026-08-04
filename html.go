@@ -20,6 +20,16 @@ type HTMLLink struct {
 	Type           string `json:"type,omitempty" yaml:"type,omitempty"`
 }
 
+func (HTMLLink) JSONSchemaTitle() string {
+	return "HTML link"
+}
+func (HTMLLink) JSONSchemaName() string    { return "html-link" }
+func (HTMLLink) JSONSchemaSummary() string { return "An HTML link element." }
+
+func (HTMLLink) JSONSchemaDescription() string {
+	return "An HTML link element represented as source data."
+}
+
 type HTMLMeta struct {
 	Charset   string `json:"charset,omitempty" yaml:"charset,omitempty"`
 	Content   string `json:"content,omitempty" yaml:"content,omitempty"`
@@ -27,4 +37,14 @@ type HTMLMeta struct {
 	Media     string `json:"media,omitempty" yaml:"media,omitempty"`
 	Name      string `json:"name,omitempty" yaml:"name,omitempty"`
 	Property  string `json:"property,omitempty" yaml:"property,omitempty"`
+}
+
+func (HTMLMeta) JSONSchemaTitle() string {
+	return "HTML meta element"
+}
+func (HTMLMeta) JSONSchemaName() string    { return "html-meta" }
+func (HTMLMeta) JSONSchemaSummary() string { return "An HTML meta element." }
+
+func (HTMLMeta) JSONSchemaDescription() string {
+	return "An HTML meta element represented as source data."
 }

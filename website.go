@@ -32,14 +32,14 @@ var (
 // TYPES =======================================================================
 
 type Website struct {
-	URI *href.Href `json:"uri,omitempty" yaml:"-"` // path to website config file
+	URI *href.Href `json:"uri,omitempty" yaml:"-" jsonschema:"-"` // path to website config file
 
-	CreatedAt    string                                 `json:"created_at,omitempty" yaml:"created_at,omitempty"` // ISO 8601 timestamp
-	UpdatedAt    string                                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty"` // ISO 8601 timestamp
-	BaseURL      string                                 `json:"base_url" yaml:"base_url"`
-	Title        string                                 `json:"title" yaml:"title"`
-	Description  string                                 `json:"description" yaml:"description"`
-	Byline       Byline                                 `json:"byline,omitempty" yaml:"byline,omitempty"`
+	CreatedAt    string                                 `json:"created_at,omitempty" yaml:"created_at,omitempty" jsonschema:"format=date-time"` // RFC3339 timestamp
+	UpdatedAt    string                                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty" jsonschema:"format=date-time"` // RFC3339 timestamp
+	BaseURL      string                                 `json:"base_url" yaml:"base_url" jsonschema:"required,format=uri,pattern=^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]+,description=An absolute URL with a scheme and host."`
+	Title        string                                 `json:"title" yaml:"title" jsonschema:"required"`
+	Description  string                                 `json:"description" yaml:"description" jsonschema:"required"`
+	Byline       Byline                                 `json:"byline,omitempty" yaml:"byline,omitempty" jsonschema:"required"`
 	Favicon      WebsiteFavicon                         `json:"favicon,omitempty" yaml:"favicon,omitempty"`
 	Links        []HTMLLink                             `json:"links,omitempty" yaml:"links,omitempty"`
 	Metadata     []HTMLMeta                             `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -56,29 +56,64 @@ type Website struct {
 	Assets       []string                     `json:"-" yaml:"-"` // paths relative to StaticDirName()
 }
 
+func (Website) JSONSchemaTitle() string {
+	return "HyperTexting website"
+}
+func (Website) JSONSchemaName() string    { return "website" }
+func (Website) JSONSchemaSummary() string { return "site.yaml website configuration." }
+
+func (Website) JSONSchemaDescription() string {
+	return "A website source configuration file. Use site.yaml, site.yml, or site.json."
+}
+
 type WebsiteFavicon struct {
-	Href string `json:"href" yaml:"href"`
+	Href string `json:"href" yaml:"href" jsonschema:"format=uri-reference,description=A URI reference for the favicon. It may be absolute or relative."`
 	Rel  string `json:"rel,omitempty" yaml:"rel,omitempty"`
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 }
+
+func (WebsiteFavicon) JSONSchemaTitle() string {
+	return "Website favicon"
+}
+func (WebsiteFavicon) JSONSchemaName() string { return "website-favicon" }
+func (WebsiteFavicon) JSONSchemaSummary() string {
+	return "A favicon link included in the website HTML head."
+}
+
+func (WebsiteFavicon) JSONSchemaDescription() string {
+	return "A favicon link included in the website HTML head."
+}
+
 type WebsiteFavicons []WebsiteFavicon
 
 type WebsiteConfig struct {
-	BuildsDirectory      string `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty"`
-	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty"`
-	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty"`
-	DeploymentsDirectory string `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty"`
-	PluginsDirectory     string `json:"plugins_dir,omitempty" yaml:"plugins_dir,omitempty"`
-	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty"`
-	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty"`
-	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty"`
+	BuildsDirectory      string `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty" jsonschema:"default=builds"`
+	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty" jsonschema:"default=content"`
+	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty" jsonschema:"default=data"`
+	DeploymentsDirectory string `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty" jsonschema:"default=deployments"`
+	PluginsDirectory     string `json:"plugins_dir,omitempty" yaml:"plugins_dir,omitempty" jsonschema:"default=plugins"`
+	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty" jsonschema:"default=static"`
+	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
+	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
 
-	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty"`
-	TagPath         string `json:"tag_path,omitempty" yaml:"tag_path,omitempty"` // path prefix for tag pages, e.g. "/tags/"
+	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
+	TagPath         string `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
 	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty"`
 
 	TidyMode bool                            `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
 	Markdown *hypertemplates.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
+}
+
+func (WebsiteConfig) JSONSchemaTitle() string {
+	return "Website configuration"
+}
+func (WebsiteConfig) JSONSchemaName() string { return "website-config" }
+func (WebsiteConfig) JSONSchemaSummary() string {
+	return "Optional website paths and rendering settings."
+}
+
+func (WebsiteConfig) JSONSchemaDescription() string {
+	return "Optional website paths and rendering settings."
 }
 
 // METHODS =====================================================================
@@ -149,8 +184,9 @@ func (website *Website) Validate() error {
 	if len(website.BaseURL) == 0 {
 		return fmt.Errorf("site.base_url is required")
 	}
-	if _, err := url.Parse(website.BaseURL); err != nil {
-		return fmt.Errorf("site.base_url is not a valid URL")
+	baseURL, err := url.Parse(website.BaseURL)
+	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" {
+		return fmt.Errorf("site.base_url must be an absolute URL with a scheme and host")
 	}
 	if len(website.Title) == 0 {
 		return fmt.Errorf("site.title is required")

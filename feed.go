@@ -26,6 +26,16 @@ type HyperFeed struct {
 	Pages Pages `json:"-" yaml:"-"`
 }
 
+func (HyperFeed) JSONSchemaTitle() string {
+	return "HyperTexting feed"
+}
+func (HyperFeed) JSONSchemaName() string    { return "feed" }
+func (HyperFeed) JSONSchemaSummary() string { return "Configuration for a page feed." }
+
+func (HyperFeed) JSONSchemaDescription() string {
+	return "Configuration for a page feed."
+}
+
 func (feed *HyperFeed) Clone() *HyperFeed {
 	if feed == nil {
 		return nil

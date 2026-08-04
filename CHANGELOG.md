@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added the `jsonschema` package for generating JSON Schema Draft 2020-12
+  documents from tagged Go structs, plus named schemas for website, page,
+  configuration, attribution, feed, attachment, and HTML metadata sources.
+* Changed website validation to require `site.base_url` to be an absolute URL
+  with a scheme and host.
+* Updated dependencies to `hsync` v0.3.1, `hyperproviders-go` v0.26.0, and
+  `hypertemplates-go` v0.36.0.
+
 ## v0.39.0 (2026-08-03)
 
 HyperTexting deployments are now hsync enabled.

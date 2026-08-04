@@ -107,6 +107,13 @@ func TestWebsiteResolveHrefUsesURLReferenceSemantics(t *testing.T) {
 	}
 }
 
+func TestWebsiteValidateRequiresAbsoluteBaseURL(t *testing.T) {
+	website := &Website{URI: mustHref(t, "site.yaml"), BaseURL: "/relative", Title: "Example", Description: "Example", Byline: Byline{Name: "Example"}}
+	if err := website.Validate(); err == nil {
+		t.Fatal("Validate accepted a relative base_url")
+	}
+}
+
 func TestWebsiteDirectoryGettersDoNotMutateConfig(t *testing.T) {
 	website, _ := testWebsite(t)
 	root := website.RootDir()
