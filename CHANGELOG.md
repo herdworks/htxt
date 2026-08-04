@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.40.0 (2026-08-03)
+
 * Added the `jsonschema` package for generating JSON Schema Draft 2020-12
   documents from tagged Go structs, plus named schemas for website, page,
   configuration, attribution, feed, attachment, and HTML metadata sources.
