@@ -1,9 +1,9 @@
 <!-- fragments/builtin/head_start.html begin -->
-<meta ht-apply ht-if='${ page.redirect }' http-equiv="refresh" content='0; url=${page.refresh}' />
 <link ht-apply rel='canonical' href='${ page.canonical_url }'>
 <link ht-apply rel='icon' type='image/jpeg' href='${ site.favicon.href, "/favicon.ico" }' sizes='${ site.favicon.size, "32x32"}'>
 <link ht-each='link in ${ site.links }' ht-attrs='${ link }' ht-if='${ link.rel }' ht-if='${ link.href }'>
 <link ht-each='link in ${ page.links }' ht-attrs='${ link }' ht-if='${ link.rel }' ht-if='${ link.href }'>
+<meta ht-apply ht-if='${ page.redirect }' http-equiv="refresh" content='0; url=${ page.redirect }' />
 <meta ht-apply name='generator' content='${ site.generator, "hypertexting" }'>
 <meta ht-each='property in ${ site.metadata }' ht-attrs='${ property }' ht-if='${ property.name,property.property }' ht-if='${ property.content }'>
 <meta ht-each='property in ${ page.metadata }' ht-attrs='${ property }' ht-if='${ property.name,property.property }' ht-if='${ property.content }'>

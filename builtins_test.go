@@ -20,3 +20,13 @@ func TestBuiltinsOverride(t *testing.T) {
 		t.Errorf("expected hypertexting-go override content (with generator default \"hypertexting\"), got:\n%s", data)
 	}
 }
+
+func TestBuiltinsIncludeStatusLayout(t *testing.T) {
+	data, err := fs.ReadFile(httheme.BuiltinsFS, "builtins/layouts/builtin/status.html")
+	if err != nil {
+		t.Fatalf("status layout is not embedded: %v", err)
+	}
+	if !strings.Contains(string(data), "site.config.status_redirect") {
+		t.Fatalf("status layout does not use status redirect:\n%s", data)
+	}
+}

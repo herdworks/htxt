@@ -46,7 +46,8 @@ type ContentTypeSpecification struct {
 	URIResolver  PageURIResolverName         `json:"uri_resolver" yaml:"uri_resolver"`
 	Format       string                      `json:"format" yaml:"format"`
 	Requires     ContentTypeRequirements     `json:"requires,omitempty" yaml:"requires,omitempty"`
-	Unlisted     bool                        `json:"unlisted" yaml:"unlisted"`
+	Visibility   PageVisibilityKind          `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"description=Default visibility for pages of this content type."`
+	Unlisted     bool                        `json:"-" yaml:"-"`
 	TemplateData hypertemplates.TemplateData `json:"template" yaml:"template"`
 	Prompts      htprompt.Prompts            `json:"prompts,omitempty" yaml:"prompts,omitempty"`
 	Patches      htpatch.Patches             `json:"patches,omitempty" yaml:"patches,omitempty"`
@@ -96,7 +97,7 @@ func (types ContentTypes) ColumnValues(field string) []string {
 
 func (contenttype ContentType) Validate(page *Page) error {
 	// skip validation for draft pages
-	if page != nil && page.Draft {
+	if page != nil && page.Visibility.IsDraft() {
 		return nil
 	}
 	return contenttype.Ready(page)
@@ -219,8 +220,8 @@ func (contenttype ContentType) PreviewPageData(website *Website, page *Page) ([]
 	if err != nil {
 		return nil, err
 	}
-	if ct.Spec.Unlisted {
-		candidate.Unlisted = true
+	if ct.Spec.Visibility != "" {
+		candidate.Visibility = ct.Spec.Visibility
 	}
 	return candidate.RenderData(website, ct.Spec.Format)
 }
@@ -308,6 +309,15 @@ func (contenttype *ContentType) Load() (err error) {
 	}
 	if fileBytes, err = os.ReadFile(contenttype.URI.Path); err != nil {
 		return err
+	}
+	var legacy struct {
+		Spec map[string]any `yaml:"spec"`
+	}
+	if err = yaml.Unmarshal(fileBytes, &legacy); err != nil {
+		return err
+	}
+	if _, exists := legacy.Spec["unlisted"]; exists {
+		return fmt.Errorf("content-type spec.unlisted is no longer supported; use spec.visibility")
 	}
 	switch fileExt {
 	case ".json":
@@ -465,7 +475,7 @@ func (manualURIResolver) ResolvePageURI(website *Website, page *Page, contenttyp
 		}
 		return contentTypePageURI(website, page, contenttype, suffix)
 	}
-	if page.Draft {
+	if page.Visibility.IsDraft() {
 		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
 	}
 	return nil, fmt.Errorf("content-type requires page.slug property")
@@ -483,7 +493,7 @@ func (titleKabobURIResolver) ResolvePageURI(website *Website, page *Page, conten
 	if page.Title != "" {
 		return contentTypePageURI(website, page, contenttype, kabobURISuffix(page.Title))
 	}
-	if page.Draft {
+	if page.Visibility.IsDraft() {
 		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
 	}
 	return nil, fmt.Errorf("content-type requires page.title property")
@@ -501,7 +511,7 @@ func (titleSnakeURIResolver) ResolvePageURI(website *Website, page *Page, conten
 	if page.Title != "" {
 		return contentTypePageURI(website, page, contenttype, snakeURISuffix(page.Title))
 	}
-	if page.Draft {
+	if page.Visibility.IsDraft() {
 		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
 	}
 	return nil, fmt.Errorf("content-type requires page.title property")
@@ -516,7 +526,7 @@ func (timestampURIResolver) ResolvePageURI(website *Website, page *Page, content
 		}
 		return contentTypePageURI(website, page, contenttype, suffix)
 	}
-	if page.Draft {
+	if page.Visibility.IsDraft() {
 		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
 	}
 	return contentTypePageURI(website, page, contenttype, fmt.Sprintf("%v", page.LastModified().UnixMilli()))
@@ -531,7 +541,7 @@ func (uuidURIResolver) ResolvePageURI(website *Website, page *Page, contenttype 
 		}
 		return contentTypePageURI(website, page, contenttype, suffix)
 	}
-	if page.Draft {
+	if page.Visibility.IsDraft() {
 		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
 	}
 	return contentTypePageURI(website, page, contenttype, strings.ToLower(uuid.New().String()))

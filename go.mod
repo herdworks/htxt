@@ -7,7 +7,7 @@ go 1.26
 
 // first-party dependencies
 require (
-	github.com/herdworks/hsync v0.3.1
+	github.com/herdworks/hsync v0.3.2
 	github.com/herdworks/hyperfeed-go v0.26.5
 	github.com/herdworks/hyperproviders-go v0.26.0
 	github.com/herdworks/hypertemplates-go v0.36.0

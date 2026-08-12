@@ -124,7 +124,6 @@ func ProtectedPath(path string) bool {
 		"page.path",
 		"page.assets",
 		"page.canonical_url",
-		"page.refresh",
 		"page.feed",
 	}
 	for _, prefix := range protected {

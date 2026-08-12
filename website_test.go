@@ -10,6 +10,7 @@ import (
 
 	hsync "github.com/herdworks/hsync"
 	hyperproviders "github.com/herdworks/hyperproviders-go"
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
 func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
@@ -249,6 +250,38 @@ func TestWebsiteConfigValidateAllowsEmptyDefaults(t *testing.T) {
 	var config WebsiteConfig
 	if err := config.Validate(); err != nil {
 		t.Fatalf("WebsiteConfig.Validate() error = %v", err)
+	}
+}
+
+func TestWebsiteConfigResolveStatusDefaultsAndOverrides(t *testing.T) {
+	config := WebsiteConfig{}
+	config.Resolve(nil)
+	if config.StatusLayout != "builtin/status.html" || config.StatusRedirect != "/" {
+		t.Fatalf("status config = %#v, want builtin layout and root redirect", config)
+	}
+	config.Resolve(&WebsiteConfig{StatusLayout: "custom-status", StatusRedirect: "https://example.com/follow"})
+	if config.StatusLayout != "custom-status" || config.StatusRedirect != "https://example.com/follow" {
+		t.Fatalf("status overrides = %#v", config)
+	}
+}
+
+func TestWebsiteConfigTemplateDataPreservesCustomProperties(t *testing.T) {
+	website := &Website{
+		Config: WebsiteConfig{ThemePath: "resolved-theme.json", StatusRedirect: "/following/"},
+		TemplateData: &hypertemplates.TemplateData{
+			"config": hypertemplates.TemplateData{"custom": "retained", "theme": "source-theme.json"},
+		},
+	}
+
+	data := website.configTemplateData()
+	if got := data.Get("custom"); got != "retained" {
+		t.Fatalf("custom config = %#v, want retained", got)
+	}
+	if got := data.Get("theme"); got != "resolved-theme.json" {
+		t.Fatalf("config.theme = %#v, want resolved value", got)
+	}
+	if got := data.Get("status_redirect"); got != "/following/" {
+		t.Fatalf("config.status_redirect = %#v, want resolved value", got)
 	}
 }
 

@@ -246,7 +246,7 @@ func TestContentTypeReadyValidatesDraftPageRequirements(t *testing.T) {
 			Requires:    ContentTypeRequirements{Content: true},
 		},
 	}
-	page := &Page{Draft: true}
+	page := &Page{Visibility: DraftVisibility}
 
 	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires page.content property") {
 		t.Fatalf("Ready() error = %v, want content requirement", err)
@@ -303,7 +303,7 @@ func TestContentTypeReadyValidatesAttachmentKind(t *testing.T) {
 		},
 	}
 	page := &Page{
-		Draft:       true,
+		Visibility:  DraftVisibility,
 		Attachments: Attachments{{Kind: AttachmentKindLink, Href: mustHref(t, "https://example.com")}},
 	}
 

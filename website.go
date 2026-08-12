@@ -1,6 +1,7 @@
 package hypertexting
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +46,7 @@ type Website struct {
 	Links        []HTMLLink                             `json:"links,omitempty" yaml:"links,omitempty"`
 	Metadata     []HTMLMeta                             `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Config       WebsiteConfig                          `json:"config" yaml:"config"`
+	Feeds        FeedConfigs                            `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named Atom feed definitions."`
 	Sync         *hsync.SyncConfig                      `json:"sync,omitempty" yaml:"sync,omitempty"`
 	Providers    hyperproviders.HostingProviders        `json:"providers,omitempty" yaml:"providers,omitempty"`
 	Environments map[string]*hyperproviders.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
@@ -51,9 +54,11 @@ type Website struct {
 	Theme        httheme.Theme                `json:"-" yaml:"-"`
 	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
 	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
-	Pages        Pages                        `json:"-" yaml:"-"`
 	Plugins      htvariable.Plugins           `json:"-" yaml:"-"`
 	Assets       []string                     `json:"-" yaml:"-"` // paths relative to StaticDirName()
+
+	pages Pages
+	feeds Feeds
 }
 
 func (Website) JSONSchemaTitle() string {
@@ -96,9 +101,12 @@ type WebsiteConfig struct {
 	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
 	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
 
-	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
+	FeedPath        string `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
 	TagPath         string `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
-	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty"`
+	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
+	StatusLayout    string `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
+	StatusRedirect  string `json:"status_redirect,omitempty" yaml:"status_redirect,omitempty" jsonschema:"default=/,format=uri-reference"`
+	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty" jsonschema:"description=Refresh interval in seconds."`
 
 	TidyMode bool                            `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
 	Markdown *hypertemplates.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
@@ -149,6 +157,7 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig, w io.
 	}
 	website.TemplateData = &fileTemplateData
 	website.ResolveConfig(configOverrides)
+	website.TemplateData.Set("config", website.configTemplateData())
 	if err = website.ValidateConfig(); err != nil {
 		return err
 	}
@@ -208,7 +217,7 @@ func (website *Website) Validate() error {
 	if err := website.Theme.Validate(); err != nil {
 		return err
 	}
-	return nil
+	return website.Feeds.Validate(website)
 }
 
 func (website *Website) ValidateConfig() error {
@@ -386,6 +395,10 @@ func (website *Website) AssetBuildPath(build *Build, relPath string) (string, er
 
 func (website *Website) ResolveConfig(overrides *WebsiteConfig) {
 	website.Config.Resolve(overrides)
+	if website.Config.FeedPath == "" {
+		website.Config.FeedPath = "/feeds"
+	}
+	website.Config.FeedPath = "/" + strings.Trim(website.Config.FeedPath, "/")
 	website.Theme.ResolveConfig()
 }
 
@@ -431,9 +444,12 @@ func (website *Website) CreatePackage(w io.Writer) (err error) {
 
 	var embedded fs.FS = bootstrap.Website
 
+	website.Config.ThemePath = "themes/default/theme.json"
+	website.Config.TidyMode = true // always enable tidy mode when creating new websites
 	website.Theme.URI = website.ThemeURI()
-	website.Config.ThemePath = "theme.json" // always configure theme_dir when creating new websites
-	website.Config.TidyMode = true          // always enable tidy mode when creating new websites
+	if website.Feeds == nil {
+		website.Feeds = FeedConfigs{"blog": {Include: []FeedSelector{{Path: "/blog/*/**"}}}}
+	}
 
 	// ensure website directory
 	dirpath := filepath.Dir(website.URI.Path)
@@ -677,11 +693,54 @@ func (website *Website) GetContentTypeByName(name string, verbose bool, w io.Wri
 }
 
 func (website *Website) ListPages() (Pages, error) {
-	var err error
-	if website.Pages, err = GetPages(website, website.ContentDirPath()); err != nil {
-		return nil, err
+	return GetPages(website, website.ContentDirPath())
+}
+
+func (website *Website) LoadPages(ctx context.Context, verbose bool, w io.Writer) error {
+	pages, err := website.ListPages()
+	if err != nil {
+		return err
 	}
-	return website.Pages, nil
+	if err := LoadPages(ctx, website, pages, nil, verbose, w); err != nil {
+		return err
+	}
+	for _, page := range pages {
+		if err := page.Feeds.Validate(website); err != nil {
+			return fmt.Errorf("page %q: %w", page.URI.Path, err)
+		}
+	}
+	pages.ResolveTemplateData(website)
+	website.pages = pages
+	if err := website.HydrateFeeds(); err != nil {
+		return err
+	}
+	return website.LoadTagPages()
+}
+
+func (website *Website) LoadTagPages() error {
+	tags := make([]string, 0, len(website.feeds[TagFeed]))
+	for tag := range website.feeds[TagFeed] {
+		tags = append(tags, tag)
+	}
+	slices.Sort(tags)
+	for _, tag := range tags {
+		path := "/" + strings.Trim(website.Config.TagPath, "/") + "/" + tag + "/"
+		if website.pages.PageByPath(path) != nil {
+			continue
+		}
+		page := &Page{
+			URI:          &url.URL{Path: filepath.Join(website.ContentDirPath(), strings.Trim(path, "/"), "index.md")},
+			CreatedAt:    website.CreatedAt,
+			LayoutRef:    website.Config.TagLayout,
+			Path:         path,
+			Title:        "#" + tag,
+			Description:  "Everything tagged with #" + tag,
+			Feeds:        FeedDataset{TagFeed: {"tag": {Tag: tag}}},
+			TemplateData: hypertemplates.TemplateData{},
+		}
+		website.pages = append(website.pages, page)
+	}
+	return nil
 }
 
 // Recursively walk website.ThemesDirPath() looking for theme.json config files;
@@ -730,6 +789,27 @@ func (website *Website) ListThemes(w io.Writer) (themes []httheme.Theme, err err
 	return themes, nil
 }
 
+func (website *Website) configTemplateData() hypertemplates.TemplateData {
+	data, _ := website.TemplateData.Get("config").(hypertemplates.TemplateData)
+	return data.Merge(hypertemplates.TemplateData{
+		"builds_dir":      website.Config.BuildsDirectory,
+		"content_dir":     website.Config.ContentDirectory,
+		"data_dir":        website.Config.DataDirectory,
+		"deployments_dir": website.Config.DeploymentsDirectory,
+		"plugins_dir":     website.Config.PluginsDirectory,
+		"static_dir":      website.Config.StaticDirectory,
+		"themes_dir":      website.Config.ThemesDirectory,
+		"theme":           website.Config.ThemePath,
+		"feed_path":       website.Config.FeedPath,
+		"tag_path":        website.Config.TagPath,
+		"tag_layout":      website.Config.TagLayout,
+		"status_layout":   website.Config.StatusLayout,
+		"status_redirect": website.Config.StatusRedirect,
+		"tidy_mode":       website.Config.TidyMode,
+		"markdown":        website.Config.Markdown,
+	})
+}
+
 // ============================================================================
 // Helper types, methods, and functions
 // ============================================================================
@@ -766,6 +846,15 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 		if len(overrides.TagPath) > 0 {
 			config.TagPath = overrides.TagPath
 		}
+		if len(overrides.FeedPath) > 0 {
+			config.FeedPath = overrides.FeedPath
+		}
+		if len(overrides.StatusLayout) > 0 {
+			config.StatusLayout = overrides.StatusLayout
+		}
+		if len(overrides.StatusRedirect) > 0 {
+			config.StatusRedirect = overrides.StatusRedirect
+		}
 	}
 	if len(config.BuildsDirectory) == 0 {
 		config.BuildsDirectory = "builds"
@@ -797,6 +886,15 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 	if len(config.TagPath) == 0 {
 		config.TagPath = "/tags"
 	}
+	if len(config.FeedPath) == 0 {
+		config.FeedPath = "/feeds"
+	}
+	if len(config.StatusLayout) == 0 {
+		config.StatusLayout = "builtin/status.html"
+	}
+	if len(config.StatusRedirect) == 0 {
+		config.StatusRedirect = "/"
+	}
 	config.Markdown.Resolve()
 }
 
@@ -817,6 +915,17 @@ func (config *WebsiteConfig) Validate() error {
 	for _, field := range fields {
 		if err := htfiles.ValidateRelativePath(field.name, field.path); err != nil {
 			return err
+		}
+	}
+	for _, field := range []struct {
+		name string
+		path string
+	}{{name: "site.config.tag_path", path: config.TagPath}, {name: "site.config.feed_path", path: config.FeedPath}} {
+		if field.path == "" {
+			continue
+		}
+		if _, err := htfiles.CleanRelativePath(strings.Trim(field.path, "/")); err != nil {
+			return fmt.Errorf("%s: %w", field.name, err)
 		}
 	}
 	return nil

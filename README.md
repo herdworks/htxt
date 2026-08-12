@@ -15,7 +15,12 @@ Where HyperTemplates is concerned with the lower-level building blocks of templa
 * Assets
 * Attachments
 * Tags
-* Feeds
+* Feeds 2.0: declarative `site.feeds` definitions, page-local `page.feeds`
+  views, Atom output, and automatic tag feeds.
+* Status pages: feed-only `page.visibility: status` content (including
+  `feed`, `story`, `chat`, `message`, `response`, and `reply` aliases) renders
+  a redirect landing page configured by `site.config.status_layout` and
+  `site.config.status_redirect`.
 * Namespaces
 * Content Types
 * Builds

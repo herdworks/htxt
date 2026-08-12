@@ -173,6 +173,8 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			}
 			for name, want := range map[string]string{
 				"github.com/herdworks/hypertexting-go.Byline":         "Attribution details for a website, page, or feed.",
+				"github.com/herdworks/hypertexting-go.FeedConfig":     "Defines the selectors, ordering, and HTML alternate URL for a site feed.",
+				"github.com/herdworks/hypertexting-go.FeedSelector":   "Matches pages by path expression or tag for a site feed.",
 				"github.com/herdworks/hypertexting-go.HTMLLink":       "An HTML link element represented as source data.",
 				"github.com/herdworks/hypertexting-go.HTMLMeta":       "An HTML meta element represented as source data.",
 				"github.com/herdworks/hypertexting-go.WebsiteConfig":  "Optional website paths and rendering settings.",
@@ -210,7 +212,7 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			}
 			for name, want := range map[string]string{
 				"github.com/herdworks/hypertexting-go.Attachment": "A linked or embedded resource associated with a page.",
-				"github.com/herdworks/hypertexting-go.HyperFeed":  "Configuration for a page feed.",
+				"github.com/herdworks/hypertexting-go.FeedData":   "References exactly one configured site feed or automatic tag feed for page template data.",
 			} {
 				definition := schema["$defs"].(map[string]any)[name].(map[string]any)
 				if definition["description"] != want {

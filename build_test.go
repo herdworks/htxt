@@ -8,9 +8,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	hypertemplates "github.com/herdworks/hypertemplates-go"
 	"github.com/herdworks/hypertexting-go/href"
 )
 
@@ -90,6 +92,15 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 	if err := website.CreatePackage(io.Discard); err != nil {
 		t.Fatalf("CreatePackage() error = %v", err)
 	}
+	if got, want := website.Config.ThemePath, "themes/default/theme.json"; got != want {
+		t.Fatalf("created website theme = %q, want %q", got, want)
+	}
+	if got, want := website.Theme.URI.Path, filepath.Join(root, "themes", "default", "theme.json"); got != want {
+		t.Fatalf("created website theme URI = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(website.Theme.URI.Path); err != nil {
+		t.Fatalf("created website theme file: %v", err)
+	}
 
 	build := &Build{
 		URI:     &url.URL{Path: filepath.Join(root, "builds", "test")},
@@ -109,15 +120,24 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 			t.Errorf("rendered bootstrap output contains stale directive %q:\n%s", stale, output)
 		}
 	}
+	feed, err := os.ReadFile(filepath.Join(build.URI.Path, "feeds", "blog.atom.xml"))
+	if err != nil {
+		t.Fatalf("ReadFile(blog Atom feed) error = %v", err)
+	}
+	for _, title := range []string{"Hello world", "Hello again"} {
+		if !bytes.Contains(feed, []byte("<title>"+title+"</title>")) {
+			t.Errorf("blog Atom feed is missing %q:\n%s", title, feed)
+		}
+	}
 }
 
-func (fixture buildSelectionFixture) build(pages *Pages, incremental bool) *Build {
+func (fixture buildSelectionFixture) build(page *Page, incremental bool) *Build {
 	return &Build{
 		URI:         &url.URL{Path: filepath.Join(fixture.root, "builds", "test")},
 		ID:          "test",
 		Website:     &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
 		Incremental: incremental,
-		Pages:       pages,
+		Page:        page,
 	}
 }
 
@@ -131,70 +151,120 @@ func (fixture buildExecutionFixture) build() *Build {
 
 func TestBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	tests := []struct {
-		name  string
-		pages *Pages
-	}{
-		{name: "nil pages"},
-		{name: "empty pages", pages: &Pages{}},
+	build := fixture.build(nil, false)
+	build.Pages = &Pages{{URI: &url.URL{Path: "/stale-output/"}}}
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("LoadContext() error = %v", err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			build := fixture.build(tc.pages, false)
-			if err := build.LoadContext(context.Background(), io.Discard); err != nil {
-				t.Fatalf("LoadContext() error = %v", err)
-			}
-			if build.Pages == nil {
-				t.Fatal("LoadContext() left build.Pages nil")
-			}
-			if got, want := len(*build.Pages), len(fixture.pages); got != want {
-				t.Fatalf("len(build.Pages) = %d, want %d", got, want)
-			}
-		})
+	if build.Pages == nil {
+		t.Fatal("LoadContext() left build.Pages nil")
+	}
+	if got, want := len(*build.Pages), len(fixture.pages); got != want {
+		t.Fatalf("len(build.Pages) = %d, want %d", got, want)
 	}
 }
 
-func TestBuildLoadContextFullBuildRejectsExplicitPages(t *testing.T) {
+func TestBuildGeneratedTagPageUsesTagFeedAlias(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	pages := Pages{&Page{URI: &url.URL{Path: fixture.pages[0]}}}
-	build := fixture.build(&pages, false)
+	writeBuildSelectionFile(t, fixture.pages[0], "---\nlayout: default\ntags:\n  - news\ntitle: One\n---\n\none")
+	build := fixture.build(nil, false)
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("LoadContext() error = %v", err)
+	}
+	page := build.Pages.PageByPath("/tags/news/")
+	if page == nil {
+		t.Fatal("generated tag page is missing")
+	}
+	data, ok := page.Feeds[TagFeed]["tag"]
+	if !ok || data.Tag != "news" {
+		t.Fatalf("generated tag feed = %#v, want alias tag for news", page.Feeds[TagFeed])
+	}
+	if _, exists := page.Feeds[TagFeed]["news"]; exists {
+		t.Fatalf("generated tag feed retained tag-specific alias: %#v", page.Feeds[TagFeed])
+	}
+}
+
+func TestBuildLoadsTagPagesIntoWebsiteCatalogBeforeSelection(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	writeBuildSelectionFile(t, fixture.pages[0], "---\nlayout: default\ntags:\n  - news\ntitle: One\n---\n\none")
+	build := fixture.build(nil, false)
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("LoadContext() error = %v", err)
+	}
+	if got, want := len(build.Website.pages), 3; got != want {
+		t.Fatalf("len(website.pages) = %d, want %d", got, want)
+	}
+	if _, ok := build.Feeds.Feed(TagFeed, "news"); !ok {
+		t.Fatal("Build.Feeds is missing the complete tag catalog")
+	}
+	if feed, _ := build.Feeds.Feed(TagFeed, "news"); len(feed.Pages) != 1 || feed.Pages[0].Path != "/one/" {
+		t.Fatalf("tag feed pages = %#v, want authored source page only", feed.Pages)
+	}
+	if page := build.Website.pages.PageByPath("/tags/news/"); page == nil || page.TemplateData.Get("feeds.tag.items") == nil {
+		t.Fatalf("generated tag page = %#v, want hydrated page.feeds.tag", page)
+	}
+}
+
+func TestIncrementalBuildSelectsGeneratedButNotAuthoredTagRenderers(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	writeBuildSelectionFile(t, fixture.pages[0], "---\nlayout: default\ntags:\n  - news\ntitle: One\n---\n\none")
+	requested := &Page{URI: &url.URL{Path: fixture.pages[0]}}
+	build := fixture.build(requested, true)
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("generated LoadContext() error = %v", err)
+	}
+	if page := build.Pages.PageByPath("/tags/news/"); page == nil {
+		t.Fatal("incremental build did not select generated tag renderer")
+	}
+
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "content", "tags", "news", "index.md"), "---\nlayout: default\ntitle: Authored tag page\n---\n\nauthored")
+	requested = &Page{URI: &url.URL{Path: fixture.pages[0]}}
+	build = fixture.build(requested, true)
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("authored LoadContext() error = %v", err)
+	}
+	if page := build.Pages.PageByPath("/tags/news/"); page != nil {
+		t.Fatalf("incremental build selected authored tag page without binding: %#v", page)
+	}
+}
+
+func TestBuildLoadContextFullBuildRejectsPage(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, false)
 
 	err := build.LoadContext(context.Background(), io.Discard)
 	if err == nil {
 		t.Fatal("LoadContext() error = nil")
 	}
-	if !strings.Contains(err.Error(), "build.pages is only supported for incremental builds") {
-		t.Fatalf("LoadContext() error = %v, want build.pages incremental error", err)
+	if !strings.Contains(err.Error(), "build.page is only supported for incremental builds") {
+		t.Fatalf("LoadContext() error = %v, want build.page incremental error", err)
 	}
 }
 
-func TestBuildLoadContextIncrementalBuildRequiresPages(t *testing.T) {
+func TestBuildLoadContextRejectsInvalidPageVisibility(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	tests := []struct {
-		name  string
-		pages *Pages
-	}{
-		{name: "nil pages"},
-		{name: "empty pages", pages: &Pages{}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			build := fixture.build(tc.pages, true)
-			err := build.LoadContext(context.Background(), io.Discard)
-			if err == nil {
-				t.Fatal("LoadContext() error = nil")
-			}
-			if !strings.Contains(err.Error(), "build.pages is required for incremental builds") {
-				t.Fatalf("LoadContext() error = %v, want required pages error", err)
-			}
-		})
+	writeBuildSelectionFile(t, fixture.pages[0], "---\nvisibility: private\n---\n\ninvalid")
+	build := fixture.build(nil, false)
+	if err := build.LoadContext(context.Background(), io.Discard); err == nil {
+		t.Fatal("LoadContext() accepted invalid page visibility")
 	}
 }
 
-func TestBuildLoadContextIncrementalBuildPreservesRequestedPages(t *testing.T) {
+func TestBuildLoadContextIncrementalBuildRequiresPage(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	pages := Pages{&Page{URI: &url.URL{Path: fixture.pages[0]}}}
-	build := fixture.build(&pages, true)
+	build := fixture.build(nil, true)
+	err := build.LoadContext(context.Background(), io.Discard)
+	if err == nil {
+		t.Fatal("LoadContext() error = nil")
+	}
+	if !strings.Contains(err.Error(), "build.page is required for incremental builds") {
+		t.Fatalf("LoadContext() error = %v, want required page error", err)
+	}
+}
+
+func TestBuildLoadContextIncrementalBuildSelectsRequestedPage(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, true)
 
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("LoadContext() error = %v", err)
@@ -207,7 +277,23 @@ func TestBuildLoadContextIncrementalBuildPreservesRequestedPages(t *testing.T) {
 	}
 }
 
-func TestBuildLoadContextFullBuildCanReloadWebsitePagesAlias(t *testing.T) {
+func TestBuildLoadContextIncrementalBuildValidatesAllPageFeeds(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	for name, source := range map[string]string{
+		"unknown source": "feeds:\n  latest:\n    source: missing\n",
+		"negative limit": "feeds:\n  latest:\n    source: latest\n    limit: -1\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			writeBuildSelectionFile(t, fixture.pages[1], "---\n"+source+"---\n\nunselected")
+			build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, true)
+			if err := build.LoadContext(context.Background(), io.Discard); err == nil {
+				t.Fatal("LoadContext() accepted invalid feeds on an unselected page")
+			}
+		})
+	}
+}
+
+func TestBuildLoadContextCanRebuildFullSelection(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	build := fixture.build(nil, false)
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
@@ -221,6 +307,21 @@ func TestBuildLoadContextFullBuildCanReloadWebsitePagesAlias(t *testing.T) {
 	}
 	if got, want := len(*build.Pages), len(fixture.pages); got != want {
 		t.Fatalf("len(build.Pages) after reload = %d, want %d", got, want)
+	}
+}
+
+func TestBuildLoadContextCanRebuildIncrementalSelection(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, true)
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("first LoadContext() error = %v", err)
+	}
+	build.Page = &Page{URI: &url.URL{Path: fixture.pages[1]}}
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("second LoadContext() error = %v", err)
+	}
+	if got, want := (*build.Pages)[0].URI.Path, fixture.pages[1]; got != want {
+		t.Fatalf("incremental root page after reload = %q, want %q", got, want)
 	}
 }
 
@@ -307,6 +408,98 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 		if !strings.Contains(ignore, want) {
 			t.Fatalf(".deploymentignore = %q, want %q", ignore, want)
 		}
+	}
+}
+
+func TestBuildWritersEnforceVisibilityOnSelectedDependencies(t *testing.T) {
+	root := t.TempDir()
+	page := &Page{
+		URI:          &url.URL{Path: filepath.Join(root, "content", "feed", "index.html")},
+		Path:         "/feed/",
+		Visibility:   NoVisibility,
+		Static:       true,
+		TemplateData: map[string]any{},
+	}
+	pages := Pages{page}
+	build := &Build{
+		URI:         &url.URL{Path: filepath.Join(root, "builds", "test")},
+		Website:     &Website{BaseURL: "https://example.com/"},
+		Pages:       &pages,
+		Incremental: true,
+	}
+	if pages := build.buildPages(pages); len(pages) != 0 {
+		t.Fatalf("buildPages() = %#v, want no hidden dependency", pages)
+	}
+	if err := build.WritePage(page, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(build.URI.Path, "feed", "index.html")); !os.IsNotExist(err) {
+		t.Fatalf("hidden page was written, stat error = %v", err)
+	}
+	if got := build.Result().PageCount; got != 0 {
+		t.Fatalf("BuildResult.PageCount = %d, want 0 emitted pages", got)
+	}
+}
+
+func TestBuildWritesStatusLandingPage(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	writeBuildSelectionFile(t, fixture.sitePath, `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+  status_layout: builtin/status.html
+  status_redirect: /following/
+feeds:
+  updates:
+    include:
+      - path: "**"
+`)
+	statusSource := "---\nlayout: article\nvisibility: feed\ntitle: Feed-only update\n---\n\nstatus"
+	writeBuildSelectionFile(t, fixture.pages[0], statusSource)
+	writeBuildSelectionFile(t, fixture.pages[1], "---\nvisibility: none\n---\n\nhidden")
+	build := fixture.build(nil, false)
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("LoadContext() error = %v", err)
+	}
+	status := build.Website.pages.PageByURI(&url.URL{Path: fixture.pages[0]})
+	if status == nil || status.Visibility != FeedVisibility || status.LayoutRef != "builtin/status.html" {
+		t.Fatalf("loaded status = %#v", status)
+	}
+	if got := build.Website.TemplateData.Get("config.status_redirect"); got != "/following/" {
+		t.Fatalf("site.config.status_redirect = %#v, want /following/", got)
+	}
+	pages, ok := build.Website.TemplateData.Get("pages").([]hypertemplates.TemplateData)
+	if !ok || !slices.ContainsFunc(pages, func(page hypertemplates.TemplateData) bool {
+		return page.Get("title") == status.Title
+	}) {
+		t.Fatal("status page is absent from site.pages")
+	}
+	feed, ok := build.Feeds.Feed(UserFeed, "updates")
+	if !ok || !feed.Pages.Contains(status) {
+		t.Fatalf("status page is absent from updates feed: %#v", feed)
+	}
+	if links, err := status.AtomEntryLinks(build.Website); err != nil || len(links) != 0 {
+		t.Fatalf("status Atom links = %#v, %v; want none", links, err)
+	}
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	output, err := os.ReadFile(filepath.Join(fixture.root, "builds", "test", "one", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(output), "url=/following/") {
+		t.Fatalf("status output missing configured redirect:\n%s", output)
+	}
+	bytes, err := os.ReadFile(fixture.pages[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(bytes) != statusSource {
+		t.Fatalf("status source changed:\n%s", bytes)
 	}
 }
 

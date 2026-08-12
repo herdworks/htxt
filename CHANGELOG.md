@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** Implemented Feeds 2.0, replacing `HyperFeed` and `page.feed`.
+  Define selector-based user feeds in `site.feeds`, then expose their URL and
+  items through named `page.feeds` source or tag aliases. HyperTexting writes
+  user and automatic tag Atom feeds beneath `site.config.feed_path`.
+* **BREAKING:** Replaced legacy `page.draft`, `page.unlisted`, and `page.feed`
+  fields with `page.visibility` and `page.feeds`; content type
+  `spec.unlisted` likewise becomes `spec.visibility`. Visibility now supports
+  public, unlisted, status, draft, and hidden groups with reusable aliases.
+  Status pages render through `site.config.status_layout` and
+  `site.config.status_redirect`, without an HTML alternate link in Atom
+  entries.
+* **BREAKING:** `Build.Preview` replaces `Build.IncludeDrafts`. `Build.Page`
+  is now the sole incremental-build request; `Build.Pages` and `Build.Feeds`
+  are derived output dependencies, while the complete website page/feed
+  catalogs are internal.
+* **BREAKING:** Moved the bootstrap theme into `themes/default`; newly created
+  websites now configure `themes/default/theme.json` as their theme.
+* Updated `github.com/herdworks/hsync` to v0.3.2.
+
 ## v0.40.0 (2026-08-03)
 
 * Added the `jsonschema` package for generating JSON Schema Draft 2020-12

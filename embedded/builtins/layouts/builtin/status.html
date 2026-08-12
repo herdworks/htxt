@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*; img-src 'self' https://*; media-src 'self' https://*;">
+        <meta ht-apply http-equiv="refresh" content="0; url=${ page.redirect, site.config.status_redirect, '/' }" />
+        <title ht-apply>${ page.title, site.title, 'Status Update' }</title>
+    </head>
+    <body>
+        <p>This page is only visible in a feed... <a ht-apply href="${ page.redirect, site.config.status_redirect, '/' }">click here</a> if you are not automatically redirected.</p>
+    </body>
+</html>

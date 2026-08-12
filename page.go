@@ -34,25 +34,24 @@ type Page struct {
 	Loaded bool       `json:"-" yaml:"-"`
 
 	// Template data properties
-	CreatedAt    string      `json:"created_at" yaml:"created_at" jsonschema:"format=date-time,description=Defaults to 'site.created_at'."`
-	UpdatedAt    string      `json:"updated_at" yaml:"updated_at" jsonschema:"format=date-time"`
-	LayoutRef    string      `json:"layout" yaml:"layout" jsonschema:"default=default,description=Defaults to 'default'."`
-	Title        string      `json:"title,omitempty" yaml:"title,omitempty"`
-	Description  string      `json:"description,omitempty" yaml:"description,omitempty"`
-	Content      string      `json:"content,omitempty" yaml:"content,omitempty" jsonschema:"description=In Markdown files this is the Markdown body not a YAML front-matter property."`
-	Summary      string      `json:"summary,omitempty" yaml:"summary,omitempty"`
-	More         string      `json:"more,omitempty" yaml:"more,omitempty"`
-	Byline       *Byline     `json:"byline,omitempty" yaml:"byline,omitempty"`
-	Contributors Bylines     `json:"contributors,omitempty" yaml:"contributors,omitempty"`
-	Attachments  Attachments `json:"attachments,omitempty" yaml:"attachments,omitempty"`
-	Metadata     []HTMLMeta  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Links        []HTMLLink  `json:"links,omitempty" yaml:"links,omitempty"`
-	Tags         []string    `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Draft        bool        `json:"draft,omitempty" yaml:"draft,omitempty"`
-	Unlisted     bool        `json:"unlisted,omitempty" yaml:"unlisted,omitempty"`
-	UglyURL      bool        `json:"ugly_url,omitempty" yaml:"ugly_url,omitempty"`
-	Redirect     string      `json:"redirect,omitempty" yaml:"redirect,omitempty" jsonschema:"format=uri-reference,description=The URI reference written into the page refresh redirect target."`
-	Feed         *HyperFeed  `json:"feed,omitempty" yaml:"feed,omitempty"`
+	CreatedAt    string             `json:"created_at" yaml:"created_at" jsonschema:"format=date-time,description=Defaults to 'site.created_at'."`
+	UpdatedAt    string             `json:"updated_at" yaml:"updated_at" jsonschema:"format=date-time"`
+	LayoutRef    string             `json:"layout" yaml:"layout" jsonschema:"default=default,description=Defaults to 'default'."`
+	Title        string             `json:"title,omitempty" yaml:"title,omitempty"`
+	Description  string             `json:"description,omitempty" yaml:"description,omitempty"`
+	Content      string             `json:"content,omitempty" yaml:"content,omitempty" jsonschema:"description=In Markdown files this is the Markdown body not a YAML front-matter property."`
+	Summary      string             `json:"summary,omitempty" yaml:"summary,omitempty"`
+	More         string             `json:"more,omitempty" yaml:"more,omitempty"`
+	Byline       *Byline            `json:"byline,omitempty" yaml:"byline,omitempty"`
+	Contributors Bylines            `json:"contributors,omitempty" yaml:"contributors,omitempty"`
+	Attachments  Attachments        `json:"attachments,omitempty" yaml:"attachments,omitempty"`
+	Metadata     []HTMLMeta         `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Links        []HTMLLink         `json:"links,omitempty" yaml:"links,omitempty"`
+	Tags         []string           `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Visibility   PageVisibilityKind `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"default=public,description=Controls page visibility."`
+	UglyURL      bool               `json:"ugly_url,omitempty" yaml:"ugly_url,omitempty"`
+	Redirect     string             `json:"redirect,omitempty" yaml:"redirect,omitempty" jsonschema:"format=uri-reference,description=The URI reference written into the page refresh redirect target."`
+	Feeds        FeedDataset        `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named feeds rendered by this page."`
 
 	// Computed properties
 	TemplateData hypertemplates.TemplateData `json:"-" yaml:"-"`
@@ -62,16 +61,76 @@ type Page struct {
 }
 type Pages []*Page
 
+type PageVisibilityKind string
+
+const (
+	AutoVisibility     PageVisibilityKind = ""         // PublicVisibility alias
+	DefaultVisibility  PageVisibilityKind = "default"  // PublicVisibility alias
+	PublicVisibility   PageVisibilityKind = "public"   //
+	UnlistedVisibility PageVisibilityKind = "unlisted" //
+	WebsiteVisibility  PageVisibilityKind = "website"  // UnlistedVisibility alias
+	StatusVisibility   PageVisibilityKind = "status"   //
+	FeedVisibility     PageVisibilityKind = "feed"     // StatusVisibility alias
+	StoryVisibility    PageVisibilityKind = "story"    // StatusVisibility alias
+	ChatVisibility     PageVisibilityKind = "chat"     // StatusVisibility alias
+	MessageVisibility  PageVisibilityKind = "message"  // StatusVisibility alias
+	ResponseVisibility PageVisibilityKind = "response" // StatusVisibility alias
+	ReplyVisibility    PageVisibilityKind = "reply"    // StatusVisibility alias
+	DraftVisibility    PageVisibilityKind = "draft"    //
+	PreviewVisibility  PageVisibilityKind = "preview"  // DraftVisibility alias
+	NoVisibility       PageVisibilityKind = "none"     //
+	HiddenVisibility   PageVisibilityKind = "hidden"   // NoVisibilty alias
+)
+
+var (
+	PublicVisibilityKinds   = []PageVisibilityKind{PublicVisibility, DefaultVisibility, AutoVisibility}
+	UnlistedVisibilityKinds = []PageVisibilityKind{UnlistedVisibility, WebsiteVisibility}
+	StatusVisibilityKinds   = []PageVisibilityKind{StatusVisibility, FeedVisibility, StoryVisibility, ChatVisibility, MessageVisibility, ResponseVisibility, ReplyVisibility}
+	DraftVisibilityKinds    = []PageVisibilityKind{DraftVisibility, PreviewVisibility}
+	NoVisibilityKinds       = []PageVisibilityKind{NoVisibility, HiddenVisibility}
+
+	WebsiteVisible           = slices.Concat(PublicVisibilityKinds, UnlistedVisibilityKinds)
+	FeedVisible              = slices.Concat(PublicVisibilityKinds, StatusVisibilityKinds)
+	FeedPreviewVisible       = slices.Concat(PublicVisibilityKinds, StatusVisibilityKinds, DraftVisibilityKinds)
+	BuildVisible             = slices.Concat(PublicVisibilityKinds, UnlistedVisibilityKinds, StatusVisibilityKinds)
+	BuildPreviewVisible      = slices.Concat(PublicVisibilityKinds, UnlistedVisibilityKinds, StatusVisibilityKinds, DraftVisibilityKinds)
+	SupportedVisibilityKinds = slices.Concat(
+		PublicVisibilityKinds,
+		UnlistedVisibilityKinds,
+		StatusVisibilityKinds,
+		DraftVisibilityKinds,
+		NoVisibilityKinds,
+	)
+)
+
 // Page.Parse(data hypertemplates.TemplateData)
 //
 // Hydrates page properties from template data.
 // Parse first marshals the data to YAML bytes, then unmarshals the YAML to the page.
 func (page *Page) Parse(data hypertemplates.TemplateData) (err error) {
+	if err = page.Screen(data); err != nil {
+		return err
+	}
 	var yamlBytes []byte
-	if yamlBytes, err = yaml.Marshal(page.TemplateData); err != nil {
+	page.TemplateData = data
+	if yamlBytes, err = yaml.Marshal(data); err != nil {
 		return err
 	}
 	return yaml.Unmarshal(yamlBytes, &page)
+}
+
+// Screen page TemplateData for unsupported parameters (e.g. page.draft, page.unlisted, and page.feed)
+func (page *Page) Screen(data hypertemplates.TemplateData) error {
+	if _, ok := data.Get("draft").(bool); ok {
+		return fmt.Errorf("page %q screened: page.draft is no longer supported; use page.visibility = \"draft\"", page.URI.Path)
+	}
+	if _, ok := data.Get("unlisted").(bool); ok {
+		return fmt.Errorf("page %q screened: page.unlisted is no longer supported; use page.visibility = \"unlisted\"", page.URI.Path)
+	}
+	if data.Get("feed") != nil {
+		return fmt.Errorf("page %q screened: page.feed is no longer supported; use page.feeds", page.URI.Path)
+	}
+	return nil
 }
 
 // Page.Validate()
@@ -92,6 +151,21 @@ func (page *Page) Validate() (err error) {
 	}
 	if page.Byline != nil && !page.Byline.Ready() {
 		return fmt.Errorf("page.byline invalid (%s)", page.URI.Path)
+	}
+	if err := page.validateTagNames(); err != nil {
+		return err
+	}
+	if err := page.Visibility.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (page *Page) validateTagNames() error {
+	for _, tag := range page.Tags {
+		if err := ValidateTagName(tag); err != nil {
+			return fmt.Errorf("page.tags: %w", err)
+		}
 	}
 	return nil
 }
@@ -140,39 +214,41 @@ func (page *Page) DeleteFiles(w io.Writer) (err error) {
 	return nil
 }
 
+func (page *Page) CanonicalURL(website *Website) (*url.URL, error) {
+	if page == nil || len(page.Path) == 0 || website == nil {
+		return nil, fmt.Errorf("page canonical URL requires page for page.path and website for website.URL()")
+	}
+	path, err := url.Parse(page.Path)
+	if err != nil {
+		return nil, err
+	}
+	return website.URL().ResolveReference(path), nil
+}
+
 // Page.ApplyComputedProperties()
 //
 // Applies computed properties to the page template data.
 func (page *Page) ApplyComputedProperties(website *Website) {
-	if len(page.Path) > 0 {
-		page.TemplateData.Set("path", page.Path)
-	}
 	if canonicalURL, err := page.CanonicalURL(website); err == nil {
 		page.TemplateData.Set("canonical_url", canonicalURL.String())
 	}
-	if len(page.Redirect) > 0 && website != nil {
-		page.TemplateData.Set("refresh", fmt.Sprintf("%d; url=%s", website.Config.RefreshInterval, page.Redirect))
+	if len(page.Slug) > 0 {
+		page.TemplateData.Set("slug", page.Slug)
+	} else {
+		delete(page.TemplateData, "slug")
 	}
 	if len(page.Assets) > 0 {
 		page.TemplateData.Set("assets", page.AssetNames())
 	}
-	if page.Feed != nil {
-		page.TemplateData.Set("feed", page.Feed.TemplateData())
-	}
-	if page.Feed != nil {
-		page.TemplateData.Set("assets", append(page.AssetNames(), "atom.xml"))
+	if page.Feeds != nil {
+		page.TemplateData.Set("feeds", page.Feeds.TemplateData())
 	}
 }
 
-// Pages.ResolveTemplateData()
+// Page.ResolveTemplateData()
 //
 // Resolves non-empty page struct fields into page.TemplateData.
 // TODO: merge ResolveTemplateData() with ApplyComputedProperties()
-func (pages Pages) ResolveTemplateData(website *Website) {
-	for i := range pages {
-		pages[i].ResolveTemplateData(website)
-	}
-}
 func (page *Page) ResolveTemplateData(website *Website) {
 	if page.TemplateData == nil {
 		page.TemplateData = hypertemplates.TemplateData{}
@@ -183,13 +259,11 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	if len(page.UpdatedAt) > 0 {
 		page.TemplateData.Set("updated_at", page.UpdatedAt)
 	}
-	if len(page.Slug) > 0 {
-		page.TemplateData.Set("slug", page.Slug)
-	} else {
-		delete(page.TemplateData, "slug")
-	}
 	if len(page.LayoutRef) > 0 {
 		page.TemplateData.Set("layout", page.LayoutRef)
+	}
+	if len(page.Visibility) > 0 {
+		page.TemplateData.Set("visibility", page.Visibility)
 	}
 	if len(page.Title) > 0 {
 		page.TemplateData.Set("title", page.Title)
@@ -206,23 +280,11 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	if len(page.Tags) > 0 {
 		page.TemplateData.Set("tags", page.Tags)
 	}
-	if page.Draft {
-		page.TemplateData.Set("draft", page.Draft)
-	}
-	if page.Unlisted {
-		page.TemplateData.Set("unlisted", page.Unlisted)
-	}
-	if page.UglyURL {
-		page.TemplateData.Set("ugly_url", page.UglyURL)
-	}
-	if len(page.Redirect) > 0 {
-		page.TemplateData.Set("redirect", page.Redirect)
+	if len(page.Attachments) > 0 {
+		page.TemplateData.Set("attachments", page.Attachments.TemplateData())
 	}
 	if len(page.Assets) > 0 {
 		page.TemplateData.Set("assets", page.AssetNames())
-	}
-	if len(page.Attachments) > 0 {
-		page.TemplateData.Set("attachments", page.Attachments.TemplateData())
 	}
 	if len(page.Summary) > 0 {
 		page.TemplateData.Set("summary", page.Summary)
@@ -230,18 +292,21 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	if len(page.More) > 0 {
 		page.TemplateData.Set("more", page.More)
 	}
+	if len(page.Path) > 0 {
+		page.TemplateData.Set("path", page.Path)
+	}
+	if page.UglyURL {
+		page.TemplateData.Set("ugly_url", page.UglyURL)
+	}
+	if len(page.Redirect) > 0 {
+		page.TemplateData.Set("redirect", page.Redirect)
+	}
 	page.ApplyComputedProperties(website)
 }
-
-func (page *Page) CanonicalURL(website *Website) (*url.URL, error) {
-	if page == nil || len(page.Path) == 0 || website == nil {
-		return nil, fmt.Errorf("page canonical URL requires page for page.path and website for website.URL()")
+func (pages Pages) ResolveTemplateData(website *Website) {
+	for i := range pages {
+		pages[i].ResolveTemplateData(website)
 	}
-	path, err := url.Parse(page.Path)
-	if err != nil {
-		return nil, err
-	}
-	return website.URL().ResolveReference(path), nil
 }
 
 // Pages.LastModified()
@@ -268,14 +333,26 @@ func (page *Page) LastModified() (ts time.Time) {
 	return ts
 }
 
+func (pages Pages) Add(incoming ...*Page) Pages {
+	for _, page := range incoming {
+		if page != nil && !pages.Contains(page) {
+			pages = append(pages, page)
+		}
+	}
+	return pages
+}
+
 func (pages Pages) Contains(page *Page) bool {
-	return pages.PageByURI(page.URI) != nil
+	return page != nil && pages.PageByURI(page.URI) != nil
 }
 
 // PageByURI returns the page whose source URI path matches uri.Path.
 func (pages Pages) PageByURI(uri *url.URL) *Page {
+	if uri == nil {
+		return nil
+	}
 	index := slices.IndexFunc(pages, func(page *Page) bool {
-		return strings.EqualFold(page.URI.Path, uri.Path)
+		return page != nil && page.URI != nil && strings.EqualFold(page.URI.Path, uri.Path)
 	})
 	if index > -1 {
 		return pages[index]
@@ -286,7 +363,7 @@ func (pages Pages) PageByURI(uri *url.URL) *Page {
 // PageByPath returns the page whose public website path matches path.
 func (pages Pages) PageByPath(path string) *Page {
 	index := slices.IndexFunc(pages, func(page *Page) bool {
-		return strings.EqualFold(page.Path, path)
+		return page != nil && strings.EqualFold(page.Path, path)
 	})
 	if index > -1 {
 		return pages[index]
@@ -339,14 +416,10 @@ func (pages Pages) ColumnValues(field string) []string {
 	return values
 }
 
-func (pages Pages) ContainsPath(href string) bool {
-	return pages.PageByPath(href) != nil
-}
-
 func (pages Pages) FilterDraft(draft bool) Pages {
 	filtered := Pages{}
 	for _, page := range pages {
-		if page != nil && page.Draft == draft {
+		if page != nil && page.Visibility.IsDraft() == draft {
 			filtered = append(filtered, page)
 		}
 	}
@@ -373,10 +446,8 @@ func (pages Pages) TemplateData() (data []hypertemplates.TemplateData) {
 	return data
 }
 
-// TemplateDataWithout returns each page's TemplateData with the named
-// top-level keys omitted. Used by HyperFeed.TemplateData to break the
-// page→feed→pages→page reference cycle that arises when two feed-bearing
-// pages both match each other.
+// TemplateDataWithout returns each page's TemplateData with named top-level
+// keys omitted.
 func (pages Pages) TemplateDataWithout(keys ...string) (data []hypertemplates.TemplateData) {
 	for i := range pages {
 		data = append(data, pages[i].TemplateData.Without(keys...))
@@ -484,7 +555,9 @@ func (page *Page) AtomEntryLinks(website *Website) (atomLinks []atom.Link, err e
 	if atomURL, err = page.CanonicalURL(website); err != nil {
 		return nil, err
 	}
-	atomLinks = append(atomLinks, atom.Link{Rel: "alternate", Type: "text/html", Href: atomURL.String()})
+	if slices.Contains(WebsiteVisible, page.Visibility) {
+		atomLinks = append(atomLinks, atom.Link{Rel: "alternate", Type: "text/html", Href: atomURL.String()})
+	}
 	for _, attachment := range page.Attachments {
 		if attachment == nil || attachment.Href == nil || attachment.Href.String() == "" {
 			continue
@@ -539,11 +612,11 @@ func (page *Page) AtomEntryAuthor(website *Website) (person *atom.Author, err er
 	if page.Byline == nil {
 		page.Byline = &website.Byline
 	}
-	return HyperFeed{}.AtomPerson(website, page.Byline)
+	return atomPerson(website, page.Byline)
 }
 
 func (page *Page) AtomEntryContributors(website *Website) (contributors []*atom.Author, err error) {
-	return HyperFeed{}.AtomPersons(website, page.Contributors)
+	return atomPersons(website, page.Contributors)
 }
 
 func (page *Page) AtomEntryTitle() (title string) {
@@ -585,8 +658,35 @@ func (page *Page) MarshalYAML() (any, error) {
 		Other hypertemplates.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
-		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "preview", "tags", "unlisted", "ugly_url", "redirect", "attachments"),
+		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
 	}, nil
+}
+
+func (visibility PageVisibilityKind) Validate() error {
+	if !slices.Contains(SupportedVisibilityKinds, visibility) {
+		return fmt.Errorf("page.visibility is invalid: %q", visibility)
+	}
+	return nil
+}
+
+func (visibility PageVisibilityKind) IsPublic() bool {
+	return slices.Contains(PublicVisibilityKinds, visibility)
+}
+
+func (visibility PageVisibilityKind) IsUnlisted() bool {
+	return slices.Contains(UnlistedVisibilityKinds, visibility)
+}
+
+func (visibility PageVisibilityKind) IsStatus() bool {
+	return slices.Contains(StatusVisibilityKinds, visibility)
+}
+
+func (visibility PageVisibilityKind) IsDraft() bool {
+	return slices.Contains(DraftVisibilityKinds, visibility)
+}
+
+func (visibility PageVisibilityKind) IsNone() bool {
+	return slices.Contains(NoVisibilityKinds, visibility)
 }
 
 // ============================================================================
@@ -609,7 +709,7 @@ func (page *Page) Clone() *Page {
 	clone.Metadata = append([]HTMLMeta(nil), page.Metadata...)
 	clone.Links = append([]HTMLLink(nil), page.Links...)
 	clone.Tags = append([]string(nil), page.Tags...)
-	clone.Feed = page.Feed.Clone()
+	clone.Feeds = page.Feeds.Clone()
 	clone.Assets = append([]string(nil), page.Assets...)
 	if page.TemplateData != nil {
 		clone.TemplateData = page.TemplateData.Clone()
@@ -655,7 +755,7 @@ func CreatePage(website *Website, page *Page, contenttype *ContentType, w io.Wri
 		return err
 	}
 	applyContentTypePageDefaults(page, contenttype)
-	if !page.Draft {
+	if !page.Visibility.IsDraft() {
 		if err = contenttype.Ready(page); err != nil {
 			return err
 		}
@@ -730,7 +830,7 @@ func UpdatePage(website *Website, page *Page, contenttype *ContentType, w io.Wri
 		return err
 	}
 	applyContentTypePageDefaults(page, contenttype)
-	if !page.Draft {
+	if !page.Visibility.IsDraft() {
 		if err = contenttype.Ready(page); err != nil {
 			return err
 		}
@@ -840,8 +940,8 @@ func FinalizePage(website *Website, page *Page, contenttype *ContentType, w io.W
 	if err != nil {
 		return err
 	}
-	if contenttype.Spec.Unlisted {
-		finalPage.Unlisted = true
+	if contenttype.Spec.Visibility != "" {
+		finalPage.Visibility = contenttype.Spec.Visibility
 	}
 	finalizePageDraftState(finalPage)
 	if err = contenttype.Ready(finalPage); err != nil {
@@ -904,8 +1004,8 @@ func applyContentTypePageDefaults(page *Page, contenttype *ContentType) {
 	if page.LayoutRef == "" {
 		page.LayoutRef = contenttype.Spec.Layout
 	}
-	if contenttype.Spec.Unlisted {
-		page.Unlisted = true
+	if contenttype.Spec.Visibility != "" {
+		page.Visibility = contenttype.Spec.Visibility
 	}
 }
 
@@ -913,9 +1013,11 @@ func finalizePageDraftState(page *Page) {
 	if page == nil {
 		return
 	}
-	page.Draft = false
+	if page.Visibility.IsDraft() {
+		page.Visibility = PublicVisibility
+	}
 	if page.TemplateData != nil {
-		page.TemplateData.Delete("draft")
+		page.TemplateData.Delete("visibility")
 	}
 }
 
@@ -1159,111 +1261,29 @@ func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err erro
 	}
 	page.CreatedAt = website.CreatedAt // default created_at to website created_at
 	page.TemplateData = fileData
-	page.Parse(fileData)
+	if err = page.Parse(fileData); err != nil {
+		return err
+	}
+	if err = page.Visibility.Validate(); err != nil {
+		return err
+	}
+	if err = page.validateTagNames(); err != nil {
+		return err
+	}
 	page.ResolvePath(website)
 	if page.LayoutRef == "" {
 		page.LayoutRef = "default" // TODO: should layout be required?
+	}
+	if page.Visibility.IsStatus() {
+		page.LayoutRef = website.Config.StatusLayout
+		if page.Redirect == "" {
+			page.Redirect = website.Config.StatusRedirect
+		}
 	}
 	if err = page.DiscoverAssets(website, verbose, w); err != nil {
 		return err
 	}
 	page.Loaded = true
-	return nil
-}
-
-// AddFeedPages(context context.Context, build *Build)
-//
-// Adds pages to a build if a build page matches a non-build page feed.
-func AddFeedPages(context context.Context, build *Build, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	taskgroup, _ := errgroup.WithContext(context)
-	for i := range build.Website.Pages {
-		taskgroup.Go(func() error {
-			if build.Website.Pages[i].Feed == nil {
-				return nil // skip page if no page feed is configured
-			}
-			if !build.Website.Pages[i].Feed.MatchesAny(*build.Pages, w) {
-				return nil // check if a build page is in a site page feed
-			}
-			*build.Pages = append(*build.Pages, build.Website.Pages[i]) // add page to build pages
-			return nil
-		})
-	}
-	return taskgroup.Wait()
-}
-
-// LoadPageFeeds(website *Website, pages Pages)
-func LoadPageFeeds(context context.Context, website *Website, pages Pages, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	taskgroup, _ := errgroup.WithContext(context)
-	website.Pages.ResolveTemplateData(website) // resolve template data for source pages
-	for i := range pages {
-		taskgroup.Go(func() error {
-			if pages[i].Feed == nil {
-				return nil // skip page if no page feed is configured
-			}
-			if len(pages[i].Feed.Title) == 0 {
-				pages[i].Feed.Title = website.Title
-			}
-			if len(pages[i].Feed.Description) == 0 {
-				pages[i].Feed.Description = website.Description
-			}
-			if pages[i].Feed.Byline == nil {
-				pages[i].Feed.Byline = &website.Byline
-			}
-			if err = pages[i].Feed.AddPages(w, website.Pages...); err != nil {
-				return err
-			}
-			pages[i].Feed.Pages.Sort() // sort the feed pages in reverse-chron order, as nature intended 🤌🏽
-			return nil
-		})
-	}
-	return taskgroup.Wait()
-}
-
-// LoadTagPages(website *Website, pages Pages) (err error)
-func LoadTagPages(build *Build, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	for i := range *build.Pages {
-		build.Status.Tags.Increment(1, (*build.Pages)[i].Tags...) // count tags
-	}
-	for tag := range build.Status.Tags.Counters {
-		fmt.Fprintf(w, "tag \"%s\" loading\n", tag)
-		tagPath := filepath.Join(build.Website.Config.TagPath, tag)
-		tagPage := build.Pages.PageByPath(tagPath)
-		if tagPage == nil {
-			tagPage = &Page{
-				URI:         &url.URL{Path: filepath.Join(tagPath, "index.md")},
-				CreatedAt:   build.Website.Pages[0].CreatedAt,
-				LayoutRef:   build.Website.Config.TagLayout,
-				Path:        tagPath,
-				Title:       fmt.Sprintf("#%s", tag),
-				Description: fmt.Sprintf("Everything tagged with #%s", tag),
-			}
-		}
-		if tagPage.Feed == nil {
-			tagPage.Feed = &HyperFeed{
-				Title:       fmt.Sprintf("#%s", tag),
-				Description: fmt.Sprintf("Everything tagged with #%s", tag),
-				Byline:      &build.Website.Byline,
-				Tags:        []string{tag},
-				Pages:       Pages{},
-			}
-		}
-		tagPage.Feed.AddPages(w, build.Website.Pages...) // populate tag page feed with pages
-		tagPage.Feed.Pages.Sort()                        // sort the feed pages in reverse-chron order, as nature intended 🤌🏽
-		tagPage.ResolveTemplateData(build.Website)       // resolve template data for tag page so it's ready for
-		*build.Pages = append(*build.Pages, tagPage)     // attach feed to the page
-	}
 	return nil
 }
 
@@ -1289,6 +1309,13 @@ func GetPages(website *Website, directory string) (pages Pages, err error) {
 		pages = append(pages, page)
 	}
 	return pages, nil
+}
+
+func ValidateTagName(name string) error {
+	if _, err := htfiles.CleanRelativePath(name); err != nil {
+		return fmt.Errorf("tag name %q is invalid: %w", name, err)
+	}
+	return nil
 }
 
 func PagePath(website *Website, uri *url.URL) string {

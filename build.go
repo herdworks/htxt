@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,16 +24,18 @@ import (
 )
 
 type Build struct {
-	URI           *url.URL
-	ID            string
-	Website       *Website
-	Config        BuildConfig
-	Environment   Environment
-	Incremental   bool
-	IncludeDrafts bool
-	Plugins       htvariable.Plugins
+	URI         *url.URL
+	ID          string
+	Website     *Website
+	Config      BuildConfig
+	Environment Environment
+	Incremental bool
+	Page        *Page // Incremental-build request input.
+	Preview     bool  // Include draft content in website and build output.
+	Plugins     htvariable.Plugins
 
-	Pages  *Pages
+	Pages  *Pages // Build state
+	Feeds  Feeds  // Build state
 	Status BuildStatus
 }
 
@@ -46,6 +49,8 @@ type BuildConfig struct {
 }
 
 type BuildStatus struct {
+	Pages      Counter `json:"-" yaml:"-"`
+	Feeds      Counter `json:"-" yaml:"-"`
 	Assets     Counter `json:"assets,omitempty" yaml:"assets,omitempty"`
 	Tags       Counter `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Bytes      Counter `json:"bytes,omitempty" yaml:"bytes,omitempty"`
@@ -91,7 +96,7 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	start := time.Now()
 
 	// load the build context
-	if err = build.loadContext(ctx, w); err != nil {
+	if err = build.LoadContext(ctx, w); err != nil {
 		return err
 	}
 
@@ -149,39 +154,28 @@ func (build *Build) logger() (w io.Writer, wc func(), err error) {
 	return &synchronizedWriter{w: w}, wc, nil
 }
 
-// LoadContext populates the build's data context in place: it loads
-// the site config and environment, parses static and theme template
-// data, discovers and resolves pages (including feeds and tag pages),
-// and runs the computed-data scripts. When it returns,
-// build.Website.GlobalData, build.Website.Theme.TemplateData,
-// build.Website.Pages, and each page's resolved template data are
-// ready to read. No assets, feeds, or pages are written.
+// LoadContext loads the complete build context, including:
 //
-// Inspection callers (e.g. `hyperctl cms data ls/inspect`) call
-// LoadContext and then read build.Context() to view the unified
-// template context without producing a build artifact.
+//   - `site.*`:  resolved site config, discovered assets, etc
+//   - `env.*`:   configured HT_* environment variables
+//   - `data.*`:  static namespaced data and computed-data results
+//   - `theme.*`: theme data files
+//   - the complete private page and feed catalogs, including generated tag pages
 //
-// Build.Config.Verbose toggles the per-file "loading" log lines emitted while
-// loading the website, data files, pages, and computed-data scripts.
+// `ht.*` and `build.*` are supplied dynamically when template context is read.
 func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 	if w == nil {
 		w = os.Stdout
 	}
-	return build.loadContext(ctx, w)
-}
-
-func (build *Build) loadContext(ctx context.Context, w io.Writer) (err error) {
 	build.Reset()
-	usesWebsitePages := build.Website != nil && build.Pages == &build.Website.Pages
-	requestedPages := build.Pages != nil && len(*build.Pages) > 0 && !usesWebsitePages
-	if !build.Incremental && requestedPages {
-		return fmt.Errorf("build.pages is only supported for incremental builds")
+	if !build.Incremental && build.Page != nil {
+		return fmt.Errorf("build.page is only supported for incremental builds")
 	}
-	if build.Incremental && (build.Pages == nil || len(*build.Pages) == 0) {
-		return fmt.Errorf("build.pages is required for incremental builds")
+	if build.Incremental && build.Page == nil {
+		return fmt.Errorf("build.page is required for incremental builds")
 	}
-	if build.Pages == nil {
-		build.Pages = &Pages{}
+	if build.Incremental && build.Page.URI == nil {
+		return fmt.Errorf("build.page.uri is required for incremental builds")
 	}
 
 	// load website
@@ -200,43 +194,42 @@ func (build *Build) loadContext(ctx context.Context, w io.Writer) (err error) {
 	if build.Website.Theme.TemplateData, err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, build.Config.Verbose, w); err != nil {
 		return err
 	}
-	if build.Website.Pages, err = GetPages(build.Website, build.Website.ContentDirPath()); err != nil {
+	if err = build.Website.LoadPages(ctx, build.Config.Verbose, w); err != nil {
 		return err
 	}
-	if !build.Incremental {
-		build.Pages = &build.Website.Pages
-	}
-
-	// load build pages first (in case of incremental build)
-	if err = LoadPages(ctx, build.Website, *build.Pages, build.Website.Pages, build.Config.Verbose, w); err != nil {
-		return err
-	}
-	// load website pages second (sitemap)
-	if err = LoadPages(ctx, build.Website, build.Website.Pages, *build.Pages, build.Config.Verbose, w); err != nil {
-		return err
-	}
-	if !build.IncludeDrafts {
-		build.Website.Pages = build.Website.Pages.FilterDraft(false)
-		*build.Pages = build.Pages.FilterDraft(false)
-	}
-	build.Website.TemplateData.Set("pages", build.Website.Pages.TemplateData())
-
-	// check if build pages are in any feeds
-	if build.Incremental {
-		if err = AddFeedPages(ctx, build, w); err != nil {
-			return err
+	for _, page := range build.Website.pages {
+		if slices.Contains(FeedVisible, page.Visibility) {
+			build.Status.Tags.Increment(1, page.Tags...)
 		}
 	}
 
-	// load page feeds
-	if err = LoadPageFeeds(ctx, build.Website, *build.Pages, w); err != nil {
-		return err
+	// init site.pages template data
+	// NOTE: the complete sitemap catalog must always be available, even during incremental builds
+	sitemap := build.buildPages(build.Website.pages)
+	build.Website.TemplateData.Set("pages", sitemap.TemplateData())
+
+	// init build.Pages catalog
+	if !build.Incremental {
+		pages := append(Pages(nil), build.Website.pages...)
+		build.Pages = &pages
+		build.Feeds = build.Website.feeds
+	} else {
+		page := build.Website.pages.PageByURI(build.Page.URI)
+		if page == nil {
+			return fmt.Errorf("build.page %q was not found in the website catalog", build.Page.URI)
+		}
+		selected := Pages{page}
+		build.Feeds = build.Website.PageFeeds(selected...)
+		selected = selected.Add(build.Website.FeedPages(build.Feeds)...)
+		build.Pages = &selected
 	}
-	// load tag pages
-	if err = LoadTagPages(build, w); err != nil {
-		return err
+
+	// hydrate build.Pages page.feeds FeedData
+	for _, page := range *build.Pages {
+		if err := page.HydrateFeeds(build.Website); err != nil {
+			return err
+		}
 	}
-	build.Pages.ResolveTemplateData(build.Website)
 
 	// Run computed-data scripts. Each script observes the full
 	// static-data context (including site.pages) and installs its
@@ -281,6 +274,21 @@ func (build *Build) Context() hypertemplates.TemplateData {
 
 func (build *Build) Reset() {
 	build.Status.Reset()
+	build.Pages = nil
+	build.Feeds = nil
+}
+
+func (build *Build) buildPages(incoming Pages) (pages Pages) {
+	var visibility []PageVisibilityKind = BuildVisible
+	if build.Preview {
+		visibility = BuildPreviewVisible
+	}
+	for _, page := range incoming {
+		if slices.Contains(visibility, page.Visibility) {
+			pages = append(pages, page)
+		}
+	}
+	return pages
 }
 
 func (build *Build) Validate() (err error) {
@@ -326,7 +334,8 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 		w = os.Stdout
 	}
 
-	assets, err := AssetEntries(&build.Website.Theme, build.Website, *build.Pages)
+	assetPages := build.buildPages(*build.Pages)
+	assets, err := AssetEntries(&build.Website.Theme, build.Website, assetPages)
 	if err != nil {
 		return err
 	}
@@ -353,36 +362,12 @@ func (build *Build) CopyAsset(asset Asset, w io.Writer) error {
 	return build.copyAsset(asset.SourcePath, asset.RelPath, w)
 }
 
-func (build *Build) CopyThemeAsset(relPath string, w io.Writer) error {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	srcPath, err := build.Website.ResourcePath(build.Website.Theme.StaticDirPath(), relPath)
-	if err != nil {
-		return err
-	}
-	return build.copyAsset(srcPath, relPath, w)
-}
-
 func (build *Build) CopyWebsiteAsset(relPath string, w io.Writer) error {
 	if w == nil {
 		w = os.Stdout
 	}
 
 	srcPath, err := build.Website.ResourcePath(build.Website.StaticDirPath(), relPath)
-	if err != nil {
-		return err
-	}
-	return build.copyAsset(srcPath, relPath, w)
-}
-
-func (build *Build) CopyPageAsset(relPath string, w io.Writer) error {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	srcPath, err := build.Website.ResourcePath(build.Website.ContentDirPath(), relPath)
 	if err != nil {
 		return err
 	}
@@ -440,14 +425,11 @@ func (build *Build) WriteFeeds(ctx context.Context, w io.Writer) (err error) {
 	}
 
 	taskgroup, _ := errgroup.WithContext(ctx)
-	for _, page := range *build.Pages {
-		taskgroup.Go(func() error {
-			// skip non-feed pages
-			if page.Feed == nil {
-				return nil
-			}
-			return page.Feed.WriteAtom(build, page.Path, w)
-		})
+	for _, catalog := range build.Feeds {
+		for _, feed := range catalog {
+			feed := feed
+			taskgroup.Go(func() error { return feed.WriteAtom(build, w) })
+		}
 	}
 	return taskgroup.Wait()
 }
@@ -460,10 +442,6 @@ func (build *Build) WritePages(ctx context.Context, w io.Writer) (err error) {
 	taskgroup, _ := errgroup.WithContext(ctx)
 	for i := range *build.Pages {
 		taskgroup.Go(func() error {
-			if (*build.Pages)[i].Draft && !build.IncludeDrafts {
-				fmt.Fprintf(w, "draft \"%s\" skipped\n", build.Website.RelativePath((*build.Pages)[i].URI.Path))
-				return nil
-			}
 			return build.WritePage((*build.Pages)[i], w)
 		})
 	}
@@ -474,6 +452,14 @@ func (build *Build) WritePage(page *Page, w io.Writer) (err error) {
 		w = os.Stdout
 	}
 
+	var visibility []PageVisibilityKind = BuildVisible
+	if build.Preview {
+		visibility = BuildPreviewVisible
+	}
+	if !slices.Contains(visibility, page.Visibility) {
+		return nil
+	}
+
 	var filePath string = build.BuildPath(page)
 	var fileBytes []byte
 	if fileBytes, err = RenderPage(build, build.Website, page, w); err != nil {
@@ -482,8 +468,12 @@ func (build *Build) WritePage(page *Page, w io.Writer) (err error) {
 	if err = os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err
 	}
+	if err = build.WriteFile(filePath, fileBytes, w); err != nil {
+		return err
+	}
 	build.Status.Bytes.Increment(len(fileBytes), "pages")
-	return build.WriteFile(filePath, fileBytes, w)
+	build.Status.Pages.Increment(1, "written")
+	return nil
 }
 func (build *Build) WriteFile(fileName string, fileBytes []byte, w io.Writer) (err error) {
 	if w == nil {
@@ -601,14 +591,8 @@ func (build *Build) Result() BuildResult {
 	if build.URI != nil {
 		result.URI = build.URI.String()
 	}
-	if build.Pages != nil {
-		result.PageCount = len(*build.Pages)
-		for _, page := range *build.Pages {
-			if page != nil && page.Feed != nil {
-				result.FeedCount++
-			}
-		}
-	}
+	result.PageCount = build.Status.Pages.Map()["written"]
+	result.FeedCount = build.Status.Feeds.Map()["written"]
 	return result
 }
 
@@ -720,6 +704,8 @@ func (build *Build) deploymentIgnoreArtifactPaths() ([]string, error) {
 }
 
 func (status *BuildStatus) Reset() {
+	status.Pages.Reset()
+	status.Feeds.Reset()
 	status.Assets.Reset()
 	status.Tags.Reset()
 	status.Bytes.Reset()

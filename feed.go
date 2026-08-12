@@ -1,192 +1,284 @@
 package hypertexting
 
 import (
+	"cmp"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/herdworks/hyperfeed-go/types/atom"
+	"gopkg.in/yaml.v3"
+
+	"github.com/herdworks/hsync"
+	atom "github.com/herdworks/hyperfeed-go/types/atom"
 	hypertemplates "github.com/herdworks/hypertemplates-go"
 )
 
-type HyperFeed struct {
-	Title       string   `json:"title" yaml:"title"`
-	Description string   `json:"description" yaml:"description"`
-	Byline      *Byline  `json:"author" yaml:"author"`
-	Tags        []string `json:"tags" yaml:"tags"`
-	Paths       []string `json:"paths" yaml:"paths"`
+// FeedConfig is declarative configuration for site.feeds
+type FeedConfig struct {
+	Include []FeedSelector `json:"include,omitempty" yaml:"include,omitempty" jsonschema:"description=Selectors that include pages in this feed."`
+	Exclude []FeedSelector `json:"exclude,omitempty" yaml:"exclude,omitempty" jsonschema:"description=Selectors that exclude pages from this feed."`
+	Sort    []FeedSort     `json:"sort,omitempty" yaml:"sort,omitempty" jsonschema:"description=Ordered feed entry sort rules."`
+	HTMLURL string         `json:"html_url,omitempty" yaml:"html_url,omitempty" jsonschema:"format=uri-reference,description=HTML alternate URL for this feed."`
+}
+type FeedConfigs map[string]FeedConfig
 
-	Pages Pages `json:"-" yaml:"-"`
+// Feed is the resolved feed catalog containing pages and template data
+type Feed struct {
+	Kind    FeedKind
+	ID      string
+	Pages   Pages
+	Items   []hypertemplates.TemplateData
+	URL     url.URL
+	HTMLURL url.URL
+	config  FeedConfig
 }
 
-func (HyperFeed) JSONSchemaTitle() string {
-	return "HyperTexting feed"
-}
-func (HyperFeed) JSONSchemaName() string    { return "feed" }
-func (HyperFeed) JSONSchemaSummary() string { return "Configuration for a page feed." }
+type Feeds map[FeedKind]map[string]Feed
 
-func (HyperFeed) JSONSchemaDescription() string {
-	return "Configuration for a page feed."
-}
+type FeedData struct {
+	Source string `yaml:"source,omitempty" json:"source,omitempty" jsonschema:"description=Site feed identifier."`
+	Tag    string `yaml:"tag,omitempty" json:"tag,omitempty" jsonschema:"description=Automatic tag feed identifier."`
+	Limit  int    `yaml:"limit,omitempty" json:"limit,omitempty" jsonschema:"description=Maximum number of feed items exposed to this page."`
 
-func (feed *HyperFeed) Clone() *HyperFeed {
-	if feed == nil {
-		return nil
-	}
-	clone := *feed
-	clone.Byline = feed.Byline.Clone()
-	clone.Tags = append([]string(nil), feed.Tags...)
-	clone.Paths = append([]string(nil), feed.Paths...)
-	clone.Pages = append(Pages(nil), feed.Pages...)
-	return &clone
+	URL   url.URL                       `yaml:"-" json:"-"`
+	Items []hypertemplates.TemplateData `yaml:"-" json:"-"`
 }
 
-func (feed HyperFeed) TemplateData() (data hypertemplates.TemplateData) {
-	data = hypertemplates.TemplateData{}
-	data["title"] = feed.Title
-	data["description"] = feed.Description
-	if feed.Byline != nil {
-		data["author"] = feed.Byline.TemplateData()
-	}
-	data["tags"] = feed.Tags
-	data["pages"] = feed.Pages.TemplateDataWithout("feed")
-	return data
+type FeedDataset map[FeedKind]map[string]FeedData
+
+type FeedSelector struct {
+	Path string   `json:"path,omitempty" yaml:"path,omitempty" jsonschema:"description=Path expression matched against page paths."`
+	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty" jsonschema:"description=Tags matched against page tags."`
 }
 
-func (feed *HyperFeed) Atom(website *Website, path string) (atomFeed *atom.Atom, err error) {
-	var htmlURL *url.URL
-	// var author *atom.Author
-	if htmlURL, err = feed.ResolvedLink(website, path); err != nil {
-		return nil, err
-	}
-	// if author,err = feed.AtomPerson(website, feed.Byline); err != nil { return nil,err }
-	atomFeed = &atom.Atom{
-		ID:    htmlURL.String(),
-		Title: feed.Title,
-		// Author: author.Name, // TODO: omit feed author? Should this be configurable?
-		Links: []atom.Link{
-			{Href: htmlURL.String(), Rel: "alternate", Type: "text/html"},
-			{Href: htmlURL.JoinPath("atom.xml").String(), Rel: "self", Type: "application/atom+xml"},
-		},
-		Updated: atom.TimeStamp(feed.Pages.LastModified().Format(time.RFC3339)),
-	}
-	for _, page := range feed.Pages {
-		entry := page.AtomEntry(website)
-		atomFeed.Entries = append(atomFeed.Entries, entry)
-	}
-	return atomFeed, nil
+type FeedSort map[string]string
+
+type FeedKind string
+
+const (
+	UserFeed FeedKind = "user"
+	TagFeed  FeedKind = "tag"
+)
+
+func (FeedConfig) JSONSchemaTitle() string {
+	return "Website feed configuration"
+}
+func (FeedConfig) JSONSchemaName() string    { return "feed-config" }
+func (FeedConfig) JSONSchemaSummary() string { return "Defines an Atom feed in site.feeds." }
+
+func (FeedConfig) JSONSchemaDescription() string {
+	return "Defines the selectors, ordering, and HTML alternate URL for a site feed."
 }
 
-func (feed *HyperFeed) ResolvedLink(website *Website, href string) (*url.URL, error) {
-	target, err := url.Parse(href)
-	if err != nil {
-		return nil, err
-	}
-	if target.IsAbs() {
-		return target, nil
-	}
-	link := website.URL()
-	link.Path = filepath.Join(link.Path, target.Path)
-	return link, nil
-}
-
-// HyperFeeds.Matching()
-//
-// Check if pages match a given feed.
-func (feed *HyperFeed) MatchesAny(pages Pages, w io.Writer) bool {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	for i := range pages {
-		if feed.Matches(pages[i], w) {
-			return true
+func (configs FeedConfigs) Validate(website *Website) error {
+	for id, config := range configs {
+		if strings.TrimSpace(id) == "" || strings.Contains(id, "/") {
+			return fmt.Errorf("site.feeds identifier is invalid: %q", id)
 		}
-	}
-	return false
-}
-func (feed *HyperFeed) Matches(page *Page, w io.Writer) bool {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	if page.Unlisted {
-		return false // never include unlisted pages
-	}
-	if page.Feed == feed {
-		return false // feed pages cannot match themselves
-	}
-	if len(feed.Tags) == 0 && len(feed.Paths) == 0 {
-		return true // no tag or path filters
-	}
-	if matches(feed.Tags, page.Tags...) {
-		return true // feed tags match page tags
-	}
-	if matchesPatterns(feed.Paths, page.Path, w) {
-		return true // feed paths matches prefix of page path
-	}
-	return false
-}
-func matches(a []string, b ...string) bool {
-	for _, as := range a {
-		if slices.ContainsFunc(b, func(bs string) bool {
-			return strings.EqualFold(as, bs)
-		}) {
-			return true
+		if id == strings.Trim(strings.TrimPrefix(website.Config.TagPath, "/"), "/") {
+			return fmt.Errorf("site.feeds identifier %q collides with tag namespace", id)
 		}
-	}
-	return false
-}
-func matchesPrefix(a []string, b ...string) bool {
-	for _, as := range a {
-		if slices.ContainsFunc(b, func(bs string) bool {
-			return strings.HasPrefix(bs, as)
-		}) {
-			return true
+		if len(config.Include) == 1 && len(config.Include[0].Tags) == 1 && config.Include[0].Path == "" && len(config.Exclude) == 0 && len(config.Sort) == 0 && config.HTMLURL == "" {
+			return fmt.Errorf("site.feeds.%s duplicates an automatic tag feed", id)
 		}
-	}
-	return false
-}
-func matchesPatterns(patterns []string, pagePath string, w io.Writer) bool {
-	var pattern *regexp.Regexp
-	var err error
-	for i := range patterns {
-		if pattern, err = regexp.Compile(patterns[i]); err != nil {
-			fmt.Fprintf(w, "ignoring invalid feed pattern: %s\n\n%s\n", patterns[i], err)
-			continue
+		if config.HTMLURL != "" {
+			if _, err := website.ResolveHref(config.HTMLURL); err != nil {
+				return fmt.Errorf("site.feeds.%s html_url: %w", id, err)
+			}
 		}
-		if pattern.MatchString(pagePath) {
-			return true
+		for _, selector := range append(append([]FeedSelector{}, config.Include...), config.Exclude...) {
+			if selector.Path == "" && len(selector.Tags) == 0 {
+				return fmt.Errorf("site.feeds.%s selector is empty", id)
+			}
+			if selector.Path != "" {
+				if _, err := hsync.ParsePathExpression(selector.Path); err != nil {
+					return fmt.Errorf("site.feeds.%s path: %w", id, err)
+				}
+			}
 		}
-	}
-	return false
-}
-
-func (feed *HyperFeed) AddPages(w io.Writer, pages ...*Page) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	for i := range pages {
-		if !feed.Matches(pages[i], w) {
-			continue
+		for _, sort := range config.Sort {
+			if len(sort) != 1 {
+				return fmt.Errorf("site.feeds.%s sort rules must contain exactly one field", id)
+			}
+			for field, direction := range sort {
+				if field == "" || (!strings.EqualFold(direction, "asc") && !strings.EqualFold(direction, "desc")) {
+					return fmt.Errorf("site.feeds.%s sort rule is invalid", id)
+				}
+			}
 		}
-		feed.Pages = append(feed.Pages, pages[i])
 	}
 	return nil
 }
 
-func (feed HyperFeed) AtomPersons(website *Website, bylines []*Byline) (persons []*atom.Author, err error) {
-	persons = []*atom.Author{}
+func (FeedData) JSONSchemaTitle() string {
+	return "Page feed reference"
+}
+func (FeedData) JSONSchemaName() string { return "feed-data" }
+func (FeedData) JSONSchemaSummary() string {
+	return "References a site or automatic tag feed from page.feeds."
+}
+
+func (FeedData) JSONSchemaDescription() string {
+	return "References exactly one configured site feed or automatic tag feed for page template data."
+}
+
+func (data FeedData) Validate(website *Website) (FeedKind, error) {
+	if (data.Source == "") == (data.Tag == "") {
+		return "", fmt.Errorf("page.feeds requires exactly one of source or tag")
+	}
+	if data.Limit < 0 {
+		return "", fmt.Errorf("page.feeds limit must not be negative")
+	}
+	if data.Source != "" {
+		if _, ok := website.Feeds[data.Source]; !ok {
+			return "", fmt.Errorf("page.feeds source %q is not configured", data.Source)
+		}
+		return UserFeed, nil
+	}
+	if err := ValidateTagName(data.Tag); err != nil {
+		return "", fmt.Errorf("page.feeds tag: %w", err)
+	}
+	return TagFeed, nil
+}
+
+func (dataset FeedDataset) Validate(website *Website) error {
+	for kind, entries := range dataset {
+		for alias, data := range entries {
+			if validatedKind, err := data.Validate(website); err != nil {
+				return fmt.Errorf("page.feeds.%s: %w", alias, err)
+			} else if validatedKind != kind {
+				return fmt.Errorf("page.feeds.%s has an invalid kind", alias)
+			}
+		}
+	}
+	return nil
+}
+
+func (FeedSelector) JSONSchemaTitle() string {
+	return "Feed selector"
+}
+func (FeedSelector) JSONSchemaName() string    { return "feed-selector" }
+func (FeedSelector) JSONSchemaSummary() string { return "Matches pages for a site feed." }
+
+func (FeedSelector) JSONSchemaDescription() string {
+	return "Matches pages by path expression or tag for a site feed."
+}
+
+func (dataset *FeedDataset) UnmarshalYAML(value *yaml.Node) error {
+	var flat map[string]FeedData
+	if err := value.Decode(&flat); err != nil {
+		return err
+	}
+	result := FeedDataset{UserFeed: {}, TagFeed: {}}
+	for alias, data := range flat {
+		if (data.Source == "") == (data.Tag == "") {
+			return fmt.Errorf("page.feeds.%s requires exactly one of source or tag", alias)
+		}
+		kind := UserFeed
+		if data.Tag != "" {
+			kind = TagFeed
+		}
+		result[kind][alias] = data
+	}
+	*dataset = result
+	return nil
+}
+
+func (dataset FeedDataset) MarshalYAML() (any, error) {
+	flat := map[string]FeedData{}
+	for _, kind := range []FeedKind{UserFeed, TagFeed} {
+		for alias, data := range dataset[kind] {
+			if _, exists := flat[alias]; exists {
+				return nil, fmt.Errorf("page.feeds alias %q is duplicated", alias)
+			}
+			data.URL = url.URL{}
+			data.Items = nil
+			flat[alias] = data
+		}
+	}
+	return flat, nil
+}
+
+func (dataset FeedDataset) Clone() FeedDataset {
+	clone := FeedDataset{}
+	for kind, entries := range dataset {
+		clone[kind] = map[string]FeedData{}
+		for alias, data := range entries {
+			data.Items = nil
+			data.URL = url.URL{}
+			clone[kind][alias] = data
+		}
+	}
+	return clone
+}
+
+func (dataset FeedDataset) TemplateData() hypertemplates.TemplateData {
+	result := hypertemplates.TemplateData{}
+	for _, kind := range []FeedKind{UserFeed, TagFeed} {
+		for alias, data := range dataset[kind] {
+			feed := hypertemplates.TemplateData{"url": data.URL.String(), "items": data.Items}
+			if data.Tag != "" {
+				feed["tag"] = data.Tag
+			}
+			result[alias] = feed
+		}
+	}
+	return result
+}
+
+func (feeds Feeds) Feed(kind FeedKind, id string) (Feed, bool) {
+	feed, ok := feeds[kind][id]
+	return feed, ok
+}
+
+func (feed Feed) Atom(website *Website) *atom.Atom {
+	result := &atom.Atom{
+		ID: feed.URL.String(), Title: feed.ID,
+		Links:   []atom.Link{{Href: feed.URL.String(), Rel: "self", Type: "application/atom+xml"}},
+		Updated: atom.TimeStamp(feed.Pages.LastModified().Format(time.RFC3339)),
+	}
+	if feed.HTMLURL.String() != "" {
+		result.Links = append(result.Links, atom.Link{Href: feed.HTMLURL.String(), Rel: "alternate", Type: "text/html"})
+	}
+	for _, page := range feed.Pages {
+		result.Entries = append(result.Entries, page.AtomEntry(website))
+	}
+	return result
+}
+
+func (feed Feed) WriteAtom(build *Build, w io.Writer) error {
+	if w == nil {
+		w = os.Stdout
+	}
+	atomPath, err := build.AbsolutePath(strings.TrimPrefix(feed.URL.Path, "/"))
+	if err != nil {
+		return err
+	}
+	bytes, err := xml.MarshalIndent(feed.Atom(build.Website), "", "\t")
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(atomPath), 0755); err != nil {
+		return err
+	}
+	if err = build.WriteFile(atomPath, bytes, w); err != nil {
+		return err
+	}
+	build.Status.Bytes.Increment(len(bytes), "feeds")
+	build.Status.Feeds.Increment(1, "written")
+	return nil
+}
+
+func atomPersons(website *Website, bylines []*Byline) ([]*atom.Author, error) {
+	persons := make([]*atom.Author, 0, len(bylines))
 	for _, byline := range bylines {
-		person, err := feed.AtomPerson(website, byline)
+		person, err := atomPerson(website, byline)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +287,10 @@ func (feed HyperFeed) AtomPersons(website *Website, bylines []*Byline) (persons 
 	return persons, nil
 }
 
-func (feed HyperFeed) AtomPerson(website *Website, byline *Byline) (person *atom.Author, err error) {
+func atomPerson(website *Website, byline *Byline) (*atom.Author, error) {
+	if byline == nil {
+		return nil, nil
+	}
 	uri, err := website.ResolveHref(byline.Href)
 	if err != nil {
 		return nil, err
@@ -204,36 +299,210 @@ func (feed HyperFeed) AtomPerson(website *Website, byline *Byline) (person *atom
 	if err != nil {
 		return nil, err
 	}
-	return &atom.Author{
-		Name:    byline.Name,
-		URI:     uri.String(),
-		Favicon: favicon.String(),
-		Email:   byline.Email,
-	}, nil
+	return &atom.Author{Name: byline.Name, URI: uri.String(), Favicon: favicon.String(), Email: byline.Email}, nil
 }
 
-func (feed *HyperFeed) WriteAtom(build *Build, path string, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
+func (website *Website) HydrateFeeds() error {
+	feeds := Feeds{UserFeed: {}, TagFeed: {}}
+	for id, config := range website.Feeds {
+		feed := website.Feed(UserFeed, id, config)
+		feed.Pages = feed.selectPages(website.pages)
+		feed.HTMLURL = website.feedHTMLURL(config.HTMLURL)
+		feeds[UserFeed][id] = feed
 	}
+	for _, page := range website.pages {
+		if !slices.Contains(FeedVisible, page.Visibility) {
+			continue
+		}
+		for _, tag := range page.Tags {
+			if _, exists := feeds[TagFeed][tag]; exists {
+				continue
+			}
+			feed := website.Feed(TagFeed, tag, FeedConfig{Include: []FeedSelector{{Tags: []string{tag}}}})
+			feed.HTMLURL = website.tagPageURL(tag)
+			feed.Pages = feed.selectPages(website.pages)
+			feeds[TagFeed][tag] = feed
+		}
+	}
+	for _, catalog := range feeds {
+		for id, feed := range catalog {
+			feed.Items = feedItemViews(feed.Pages)
+			catalog[id] = feed
+		}
+	}
+	website.feeds = feeds
+	return nil
+}
 
-	var atomFeed *atom.Atom
-	atomRelPath := strings.TrimPrefix(strings.ToLower(filepath.ToSlash(filepath.Join(path, "atom.xml"))), "/")
-	atomPath, err := build.AbsolutePath(atomRelPath)
+func (website *Website) Feed(kind FeedKind, id string, config FeedConfig) Feed {
+	parts := []string{strings.Trim(website.Config.FeedPath, "/")}
+	if kind == TagFeed {
+		parts = append(parts, strings.Trim(website.Config.TagPath, "/"))
+	}
+	parts = append(parts, id+".atom.xml")
+	path := "/" + strings.Join(parts, "/")
+	return Feed{Kind: kind, ID: id, URL: *website.URL().ResolveReference(&url.URL{Path: path}), config: config}
+}
+
+func (website *Website) feedHTMLURL(value string) url.URL {
+	if value == "" {
+		return *website.URL()
+	}
+	resolved, err := website.ResolveHref(value)
 	if err != nil {
-		return err
+		return url.URL{}
 	}
-	var atomBytes []byte
-	if atomFeed, err = feed.Atom(build.Website, path); err != nil {
-		return err
+	return *resolved
+}
+
+func (website *Website) tagPageURL(tag string) url.URL {
+	path := "/" + strings.Trim(website.Config.TagPath, "/") + "/" + tag + "/"
+	return *website.URL().ResolveReference(&url.URL{Path: path})
+}
+
+func (page *Page) HydrateFeeds(website *Website) error {
+	for kind, entries := range page.Feeds {
+		for alias, data := range entries {
+			id := data.Source
+			if kind == TagFeed {
+				id = data.Tag
+			}
+			if feed, ok := website.feeds.Feed(kind, id); ok {
+				data.URL = feed.URL
+				data.Items = feed.Items
+				if data.Limit > 0 && data.Limit < len(data.Items) {
+					data.Items = data.Items[:data.Limit]
+				}
+			} else {
+				data.URL, data.Items = url.URL{}, []hypertemplates.TemplateData{}
+			}
+			entries[alias] = data
+		}
 	}
-	atomFeed.XMLNS = "https://hypergraph.network/xmlns" // TODO: make this configurable?
-	if atomBytes, err = xml.MarshalIndent(atomFeed, "", "\t"); err != nil {
-		return err
+	page.ResolveTemplateData(website)
+	return nil
+}
+
+func (website *Website) PageFeeds(pages ...*Page) Feeds {
+	selected := Feeds{UserFeed: {}, TagFeed: {}}
+	for _, page := range pages {
+		if page == nil {
+			continue
+		}
+		for id, feed := range website.feeds[UserFeed] {
+			if feed.Pages.Contains(page) {
+				selected[UserFeed][id] = feed
+			}
+		}
+		for _, tag := range page.Tags {
+			if feed, ok := website.feeds.Feed(TagFeed, tag); ok {
+				selected[TagFeed][tag] = feed
+			}
+		}
 	}
-	if err = os.MkdirAll(filepath.Dir(atomPath), 0755); err != nil {
-		return err
+	return selected
+}
+
+func (website *Website) TagPages(tags ...string) Pages {
+	pages := Pages{}
+	for _, page := range website.pages {
+		for _, data := range page.Feeds[TagFeed] {
+			if slices.Contains(tags, data.Tag) {
+				pages = pages.Add(page)
+				break
+			}
+		}
 	}
-	build.Status.Bytes.Increment(len(atomBytes), "feeds")
-	return build.WriteFile(atomPath, atomBytes, w)
+	return pages
+}
+
+func (website *Website) FeedPages(feeds Feeds) Pages {
+	pages := Pages{}
+	for _, page := range website.pages {
+		for kind, entries := range page.Feeds {
+			for _, data := range entries {
+				id := data.Source
+				if kind == TagFeed {
+					id = data.Tag
+				}
+				if _, ok := feeds.Feed(kind, id); ok {
+					pages = pages.Add(page)
+					break
+				}
+			}
+		}
+	}
+	return pages
+}
+
+func (feed *Feed) selectPages(pages Pages) Pages {
+	result := Pages{}
+	for _, page := range pages {
+		if page != nil && slices.Contains(FeedVisible, page.Visibility) && matchesFeedConfig(page, feed.config) {
+			result = append(result, page)
+		}
+	}
+	sortFeedPages(result, feed.config.Sort)
+	return result
+}
+
+func matchesFeedConfig(page *Page, config FeedConfig) bool {
+	included := len(config.Include) == 0
+	for _, selector := range config.Include {
+		if selector.Matches(page) {
+			included = true
+			break
+		}
+	}
+	if !included {
+		return false
+	}
+	for _, selector := range config.Exclude {
+		if selector.Matches(page) {
+			return false
+		}
+	}
+	return true
+}
+
+func (selector FeedSelector) Matches(page *Page) bool {
+	if selector.Path != "" {
+		if expression, err := hsync.ParsePathExpression(selector.Path); err == nil && expression.Matches(page.Path) {
+			return true
+		}
+	}
+	return slices.ContainsFunc(selector.Tags, func(tag string) bool {
+		return slices.ContainsFunc(page.Tags, func(value string) bool { return strings.EqualFold(tag, value) })
+	})
+}
+
+func sortFeedPages(pages Pages, rules []FeedSort) {
+	slices.SortStableFunc(pages, func(a, b *Page) int {
+		for _, rule := range rules {
+			for field, direction := range rule {
+				if value := cmp.Compare(a.ComparedBy(field), b.ComparedBy(field)); value != 0 {
+					if strings.EqualFold(direction, "asc") {
+						return value
+					}
+					return -value
+				}
+			}
+		}
+		if len(rules) == 0 {
+			if value := cmp.Compare(b.LastModified().UnixMilli(), a.LastModified().UnixMilli()); value != 0 {
+				return value
+			}
+		}
+		return cmp.Compare(a.Path, b.Path)
+	})
+}
+
+func feedItemViews(pages Pages) []hypertemplates.TemplateData {
+	items := make([]hypertemplates.TemplateData, 0, len(pages))
+	for _, page := range pages {
+		item := page.TemplateData.Clone()
+		delete(item, "feeds")
+		items = append(items, item)
+	}
+	return items
 }
