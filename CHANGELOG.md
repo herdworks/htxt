@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.41.0 (2026-08-11)
+
 * **BREAKING:** Implemented Feeds 2.0, replacing `HyperFeed` and `page.feed`.
   Define selector-based user feeds in `site.feeds`, then expose their URL and
   items through named `page.feeds` source or tag aliases. HyperTexting writes
