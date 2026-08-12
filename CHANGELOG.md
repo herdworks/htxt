@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.42.0 (2026-08-12)
+
 * **BREAKING:** Renamed the module to `github.com/herdworks/htxt` and its
   root package from `hypertexting` to `htxt`.
 * Updated dependencies to `hsync` v0.4.0, `hyperfeed` v0.27.0, `htup`
