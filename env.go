@@ -1,15 +1,15 @@
-package hypertexting
+package htxt
 
 import (
 	"os"
 	"strings"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
 )
 
 type Environment struct {
 	Variables    map[string]string
-	TemplateData hypertemplates.TemplateData
+	TemplateData httt.TemplateData
 }
 
 func (env *Environment) Load() (err error) {
@@ -17,7 +17,7 @@ func (env *Environment) Load() (err error) {
 		env.Variables = make(map[string]string)
 	}
 	if env.TemplateData == nil {
-		env.TemplateData = hypertemplates.TemplateData{}
+		env.TemplateData = httt.TemplateData{}
 	}
 	for _, e := range os.Environ() {
 		kv := strings.SplitN(e, "=", 2)

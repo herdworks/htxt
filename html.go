@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 type HTMLLink struct {
 	As             string `json:"as,omitempty" yaml:"as,omitempty"`

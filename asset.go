@@ -1,11 +1,11 @@
-package hypertexting
+package htxt
 
 import (
 	"fmt"
 	"path/filepath"
 
-	htfiles "github.com/herdworks/hypertemplates-go/files"
-	httheme "github.com/herdworks/hypertemplates-go/theme"
+	htfiles "github.com/herdworks/httt/files"
+	httheme "github.com/herdworks/httt/theme"
 )
 
 // Asset describes one discovered asset and its resolved source and public paths.

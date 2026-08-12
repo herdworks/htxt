@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"io"
@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertexting-go/href"
-	htpatch "github.com/herdworks/hypertexting-go/patch"
-	htprompt "github.com/herdworks/hypertexting-go/prompt"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/htxt/href"
+	htpatch "github.com/herdworks/htxt/patch"
+	htprompt "github.com/herdworks/htxt/prompt"
 )
 
 func assertTimestampDraftSegment(t *testing.T, draftSegment string) {
@@ -449,7 +449,7 @@ func TestPageRenderDataRendersMarkdownFromClonedPage(t *testing.T) {
 		Title:      "Preview Page",
 		Content:    "Preview body.",
 		Visibility: DraftVisibility,
-		TemplateData: hypertemplates.TemplateData{
+		TemplateData: httt.TemplateData{
 			"custom": "value",
 		},
 	}
@@ -488,7 +488,7 @@ func TestContentTypePreviewPageDataAppliesOverlayWithoutWriting(t *testing.T) {
 			URIResolver: TitleKabobURIResolver,
 			Format:      "markdown",
 			Visibility:  UnlistedVisibility,
-			TemplateData: hypertemplates.TemplateData{
+			TemplateData: httt.TemplateData{
 				"neighborhood": "",
 			},
 			Prompts: htprompt.Prompts{
@@ -1338,7 +1338,7 @@ func TestCreatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 			Path:        "posts",
 			URIResolver: TitleKabobURIResolver,
 			Format:      "markdown",
-			TemplateData: hypertemplates.TemplateData{
+			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 			},
 			Prompts: htprompt.Prompts{
@@ -1392,7 +1392,7 @@ func TestUpdatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 			Path:        "notes",
 			URIResolver: TitleKabobURIResolver,
 			Format:      "json",
-			TemplateData: hypertemplates.TemplateData{
+			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 			},
 			Prompts: htprompt.Prompts{
@@ -1442,7 +1442,7 @@ func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) 
 			URIResolver: TitleKabobURIResolver,
 			Format:      "markdown",
 			Visibility:  UnlistedVisibility,
-			TemplateData: hypertemplates.TemplateData{
+			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 				"tags":    []string{"spec"},
 			},
@@ -1467,7 +1467,7 @@ func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) 
 		URI:          &url.URL{Path: sourcePath},
 		Visibility:   DraftVisibility,
 		Content:      "final content",
-		TemplateData: hypertemplates.TemplateData{"visibility": "draft"},
+		TemplateData: httt.TemplateData{"visibility": "draft"},
 	}
 
 	if err := FinalizePage(website, page, contenttype, io.Discard); err != nil {
@@ -1508,7 +1508,7 @@ func TestFinalizePageWithoutContentTypeFinalizesInPlaceAndClearsDraft(t *testing
 		LayoutRef:    "default",
 		Title:        "Freeform",
 		Content:      "freeform content",
-		TemplateData: hypertemplates.TemplateData{"visibility": "draft", "title": "Freeform"},
+		TemplateData: httt.TemplateData{"visibility": "draft", "title": "Freeform"},
 	}
 
 	if err := FinalizePage(website, page, nil, io.Discard); err != nil {

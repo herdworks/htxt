@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,8 +53,8 @@ func validatePatches(patches Patches) error {
 	return nil
 }
 
-func (patches Patches) Validate(template hypertemplates.TemplateData) error {
-	base := hypertemplates.TemplateData{}
+func (patches Patches) Validate(template httt.TemplateData) error {
+	base := httt.TemplateData{}
 	if template != nil {
 		base = template.Clone()
 	}
@@ -83,7 +83,7 @@ func (patches Patches) ValidateReferences(refs map[string]any) error {
 	return nil
 }
 
-func Apply(data hypertemplates.TemplateData, patches Patches, values Values) error {
+func Apply(data httt.TemplateData, patches Patches, values Values) error {
 	if data == nil {
 		return fmt.Errorf("patch apply requires template data")
 	}
@@ -134,7 +134,7 @@ func ProtectedPath(path string) bool {
 	return false
 }
 
-func validationValue(data hypertemplates.TemplateData, patch Patch) any {
+func validationValue(data httt.TemplateData, patch Patch) any {
 	dataPath, err := DataPath(patch.Path)
 	if err == nil && patch.Op == OperationAppend {
 		if value := appendValidationValue(data.Get(dataPath)); value != nil {

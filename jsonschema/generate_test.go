@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	hypertexting "github.com/herdworks/hypertexting-go"
-	"github.com/herdworks/hypertexting-go/jsonschema"
+	"github.com/herdworks/htxt"
+	"github.com/herdworks/htxt/jsonschema"
 )
 
 type child struct {
@@ -63,10 +63,10 @@ func TestGenerateBuildsSchemaFromStructTags(t *testing.T) {
 		t.Fatalf("root metadata = %#v", schema)
 	}
 	defs := schema["$defs"].(map[string]any)
-	if got := schema["$ref"]; got != "#/$defs/github.com~1herdworks~1hypertexting-go~1jsonschema_test.example" {
+	if got := schema["$ref"]; got != "#/$defs/github.com~1herdworks~1htxt~1jsonschema_test.example" {
 		t.Fatalf("$ref = %q", got)
 	}
-	root := defs["github.com/herdworks/hypertexting-go/jsonschema_test.example"].(map[string]any)
+	root := defs["github.com/herdworks/htxt/jsonschema_test.example"].(map[string]any)
 	if root["title"] != "Example" || root["description"] != "An example schema." {
 		t.Fatalf("definition metadata = %#v", root)
 	}
@@ -117,14 +117,14 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 		dateProperty []string
 	}{
 		{
-			value:        hypertexting.Website{},
-			definition:   "github.com/herdworks/hypertexting-go.Website",
+			value:        htxt.Website{},
+			definition:   "github.com/herdworks/htxt.Website",
 			required:     []string{"base_url", "title", "description", "byline"},
 			dateProperty: []string{"created_at", "updated_at"},
 		},
 		{
-			value:        hypertexting.Page{},
-			definition:   "github.com/herdworks/hypertexting-go.Page",
+			value:        htxt.Page{},
+			definition:   "github.com/herdworks/htxt.Page",
 			required:     nil,
 			dateProperty: []string{"created_at", "updated_at"},
 		},
@@ -157,7 +157,7 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			}
 		}
 		properties := definition["properties"].(map[string]any)
-		if test.definition == "github.com/herdworks/hypertexting-go.Website" {
+		if test.definition == "github.com/herdworks/htxt.Website" {
 			if schema["title"] != "HyperTexting website" {
 				t.Fatalf("Website title = %#v", schema["title"])
 			}
@@ -167,18 +167,18 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			if definition["title"] != "HyperTexting website" {
 				t.Fatalf("Website definition title = %#v", definition["title"])
 			}
-			byline := schema["$defs"].(map[string]any)["github.com/herdworks/hypertexting-go.Byline"].(map[string]any)
+			byline := schema["$defs"].(map[string]any)["github.com/herdworks/htxt.Byline"].(map[string]any)
 			if got := byline["required"]; len(got.([]any)) != 1 || got.([]any)[0] != "name" {
 				t.Fatalf("Website byline required = %#v", got)
 			}
 			for name, want := range map[string]string{
-				"github.com/herdworks/hypertexting-go.Byline":         "Attribution details for a website, page, or feed.",
-				"github.com/herdworks/hypertexting-go.FeedConfig":     "Defines the selectors, ordering, and HTML alternate URL for a site feed.",
-				"github.com/herdworks/hypertexting-go.FeedSelector":   "Matches pages by path expression or tag for a site feed.",
-				"github.com/herdworks/hypertexting-go.HTMLLink":       "An HTML link element represented as source data.",
-				"github.com/herdworks/hypertexting-go.HTMLMeta":       "An HTML meta element represented as source data.",
-				"github.com/herdworks/hypertexting-go.WebsiteConfig":  "Optional website paths and rendering settings.",
-				"github.com/herdworks/hypertexting-go.WebsiteFavicon": "A favicon link included in the website HTML head.",
+				"github.com/herdworks/htxt.Byline":         "Attribution details for a website, page, or feed.",
+				"github.com/herdworks/htxt.FeedConfig":     "Defines the selectors, ordering, and HTML alternate URL for a site feed.",
+				"github.com/herdworks/htxt.FeedSelector":   "Matches pages by path expression or tag for a site feed.",
+				"github.com/herdworks/htxt.HTMLLink":       "An HTML link element represented as source data.",
+				"github.com/herdworks/htxt.HTMLMeta":       "An HTML meta element represented as source data.",
+				"github.com/herdworks/htxt.WebsiteConfig":  "Optional website paths and rendering settings.",
+				"github.com/herdworks/htxt.WebsiteFavicon": "A favicon link included in the website HTML head.",
 			} {
 				definition := schema["$defs"].(map[string]any)[name].(map[string]any)
 				if definition["description"] != want {
@@ -191,7 +191,7 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 				t.Fatalf("Generate(%T) %s format = %#v, want RFC3339 date-time", test.value, name, properties[name])
 			}
 		}
-		if test.definition == "github.com/herdworks/hypertexting-go.Page" {
+		if test.definition == "github.com/herdworks/htxt.Page" {
 			if schema["title"] != "HyperTexting page" {
 				t.Fatalf("Page title = %#v", schema["title"])
 			}
@@ -211,8 +211,8 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 				t.Fatalf("Page content description = %#v", properties["content"])
 			}
 			for name, want := range map[string]string{
-				"github.com/herdworks/hypertexting-go.Attachment": "A linked or embedded resource associated with a page.",
-				"github.com/herdworks/hypertexting-go.FeedData":   "References exactly one configured site feed or automatic tag feed for page template data.",
+				"github.com/herdworks/htxt.Attachment": "A linked or embedded resource associated with a page.",
+				"github.com/herdworks/htxt.FeedData":   "References exactly one configured site feed or automatic tag feed for page template data.",
 			} {
 				definition := schema["$defs"].(map[string]any)[name].(map[string]any)
 				if definition["description"] != want {

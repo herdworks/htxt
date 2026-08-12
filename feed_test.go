@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"net/url"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -21,7 +21,7 @@ func TestFeedDatasetUnmarshalsFlatAliases(t *testing.T) {
 }
 
 func TestFeedDatasetMarshalsFlatAliasesWithoutRuntimeData(t *testing.T) {
-	dataset := FeedDataset{UserFeed: {"latest": {Source: "blog", URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []hypertemplates.TemplateData{{"title": "one"}}}}, TagFeed: {"tasty": {Tag: "tasty"}}}
+	dataset := FeedDataset{UserFeed: {"latest": {Source: "blog", URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []httt.TemplateData{{"title": "one"}}}}, TagFeed: {"tasty": {Tag: "tasty"}}}
 	bytes, err := yaml.Marshal(dataset)
 	if err != nil {
 		t.Fatal(err)
@@ -72,8 +72,8 @@ func TestVisibilityControlsWebsiteFeedsAndOutput(t *testing.T) {
 
 func TestPageParseRejectsLegacyFeedAndVisibilityFields(t *testing.T) {
 	for _, key := range []string{"draft: true", "unlisted: true", "feed: {}"} {
-		page := &Page{URI: &url.URL{Path: "/content/index.md"}, TemplateData: hypertemplates.TemplateData{}}
-		data := hypertemplates.TemplateData{}
+		page := &Page{URI: &url.URL{Path: "/content/index.md"}, TemplateData: httt.TemplateData{}}
+		data := httt.TemplateData{}
 		if err := yaml.Unmarshal([]byte(key), &data); err != nil {
 			t.Fatal(err)
 		}
@@ -86,14 +86,14 @@ func TestPageParseRejectsLegacyFeedAndVisibilityFields(t *testing.T) {
 func TestPageScreenAllowsCustomNonBooleanLegacyNamesWithoutMutationOnReject(t *testing.T) {
 	page := &Page{
 		URI:          &url.URL{Path: "/content/index.md"},
-		TemplateData: hypertemplates.TemplateData{"existing": "value"},
+		TemplateData: httt.TemplateData{"existing": "value"},
 	}
-	for _, data := range []hypertemplates.TemplateData{{"draft": "custom"}, {"unlisted": map[string]any{"custom": true}}} {
+	for _, data := range []httt.TemplateData{{"draft": "custom"}, {"unlisted": map[string]any{"custom": true}}} {
 		if err := page.Parse(data); err != nil {
 			t.Fatalf("Page.Parse(%#v) error = %v", data, err)
 		}
 	}
-	if err := page.Parse(hypertemplates.TemplateData{"draft": true}); err == nil {
+	if err := page.Parse(httt.TemplateData{"draft": true}); err == nil {
 		t.Fatal("Page.Parse accepted legacy draft")
 	}
 	if got := page.TemplateData.Get("unlisted"); got == nil {
@@ -112,7 +112,7 @@ func TestTagFeedUsesTagPageAsAtomAlternate(t *testing.T) {
 }
 
 func TestFeedItemsCloneWithoutFeeds(t *testing.T) {
-	page := &Page{TemplateData: hypertemplates.TemplateData{"title": "Post", "feeds": hypertemplates.TemplateData{"blog": "recursive"}}}
+	page := &Page{TemplateData: httt.TemplateData{"title": "Post", "feeds": httt.TemplateData{"blog": "recursive"}}}
 	items := feedItemViews(Pages{page})
 	if items[0].Get("feeds") != nil || page.TemplateData.Get("feeds") == nil {
 		t.Fatalf("items = %#v; source = %#v", items, page.TemplateData)
@@ -121,7 +121,7 @@ func TestFeedItemsCloneWithoutFeeds(t *testing.T) {
 
 func TestFeedDataHydratesLimitedSharedItems(t *testing.T) {
 	website := &Website{BaseURL: "https://example.com/", Feeds: FeedConfigs{"blog": {}}}
-	website.feeds = Feeds{UserFeed: {"blog": {URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []hypertemplates.TemplateData{{"title": "one"}, {"title": "two"}}}}, TagFeed: {}}
+	website.feeds = Feeds{UserFeed: {"blog": {URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []httt.TemplateData{{"title": "one"}, {"title": "two"}}}}, TagFeed: {}}
 	page := &Page{Feeds: FeedDataset{UserFeed: {"latest": {Source: "blog", Limit: 1}}}}
 	if err := page.HydrateFeeds(website); err != nil {
 		t.Fatal(err)
@@ -138,11 +138,11 @@ func TestWebsiteSelectsFeedsAndRenderersFromCompleteCatalog(t *testing.T) {
 		Config:  WebsiteConfig{FeedPath: "/feeds", TagPath: "/tags"},
 		Feeds:   FeedConfigs{"blog": {}},
 	}
-	source := &Page{URI: &url.URL{Path: "/content/post/index.md"}, Path: "/post/", Tags: []string{"news"}, TemplateData: hypertemplates.TemplateData{"title": "Post"}}
+	source := &Page{URI: &url.URL{Path: "/content/post/index.md"}, Path: "/post/", Tags: []string{"news"}, TemplateData: httt.TemplateData{"title": "Post"}}
 	renderer := &Page{
 		URI:          &url.URL{Path: "/content/blog/index.md"},
 		Path:         "/blog/",
-		TemplateData: hypertemplates.TemplateData{},
+		TemplateData: httt.TemplateData{},
 		Feeds: FeedDataset{
 			UserFeed: {"latest": {Source: "blog"}},
 			TagFeed:  {"headlines": {Tag: "news"}},

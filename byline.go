@@ -1,9 +1,9 @@
-package hypertexting
+package htxt
 
 import (
 	"strings"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
 )
 
 // Page
@@ -42,8 +42,8 @@ func (byline *Byline) Ready() bool {
 	return len(strings.TrimSpace(byline.Name)) > 0
 }
 
-func (byline *Byline) TemplateData() (data hypertemplates.TemplateData) {
-	data = hypertemplates.TemplateData{}
+func (byline *Byline) TemplateData() (data httt.TemplateData) {
+	data = httt.TemplateData{}
 	data["name"] = byline.Name
 	data["username"] = byline.Username
 	data["favicon"] = byline.Favicon

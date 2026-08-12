@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"cmp"
@@ -17,9 +17,9 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 
-	atom "github.com/herdworks/hyperfeed-go/types/atom"
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	htfiles "github.com/herdworks/hypertemplates-go/files"
+	"github.com/herdworks/httt"
+	htfiles "github.com/herdworks/httt/files"
+	"github.com/herdworks/hyperfeed/atom"
 )
 
 // Page
@@ -54,10 +54,10 @@ type Page struct {
 	Feeds        FeedDataset        `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named feeds rendered by this page."`
 
 	// Computed properties
-	TemplateData hypertemplates.TemplateData `json:"-" yaml:"-"`
-	Path         string                      `json:"-" yaml:"-"`
-	Assets       []string                    `json:"-" yaml:"-"` // paths relative to website.ContentDirName()
-	Static       bool                        `json:"-" yaml:"-"`
+	TemplateData httt.TemplateData `json:"-" yaml:"-"`
+	Path         string            `json:"-" yaml:"-"`
+	Assets       []string          `json:"-" yaml:"-"` // paths relative to website.ContentDirName()
+	Static       bool              `json:"-" yaml:"-"`
 }
 type Pages []*Page
 
@@ -103,11 +103,11 @@ var (
 	)
 )
 
-// Page.Parse(data hypertemplates.TemplateData)
+// Page.Parse(data httt.TemplateData)
 //
 // Hydrates page properties from template data.
 // Parse first marshals the data to YAML bytes, then unmarshals the YAML to the page.
-func (page *Page) Parse(data hypertemplates.TemplateData) (err error) {
+func (page *Page) Parse(data httt.TemplateData) (err error) {
 	if err = page.Screen(data); err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (page *Page) Parse(data hypertemplates.TemplateData) (err error) {
 }
 
 // Screen page TemplateData for unsupported parameters (e.g. page.draft, page.unlisted, and page.feed)
-func (page *Page) Screen(data hypertemplates.TemplateData) error {
+func (page *Page) Screen(data httt.TemplateData) error {
 	if _, ok := data.Get("draft").(bool); ok {
 		return fmt.Errorf("page %q screened: page.draft is no longer supported; use page.visibility = \"draft\"", page.URI.Path)
 	}
@@ -251,7 +251,7 @@ func (page *Page) ApplyComputedProperties(website *Website) {
 // TODO: merge ResolveTemplateData() with ApplyComputedProperties()
 func (page *Page) ResolveTemplateData(website *Website) {
 	if page.TemplateData == nil {
-		page.TemplateData = hypertemplates.TemplateData{}
+		page.TemplateData = httt.TemplateData{}
 	}
 	if len(page.CreatedAt) > 0 {
 		page.TemplateData.Set("created_at", page.CreatedAt)
@@ -439,7 +439,7 @@ func (page *Page) HasChildPages() bool {
 	return false
 }
 
-func (pages Pages) TemplateData() (data []hypertemplates.TemplateData) {
+func (pages Pages) TemplateData() (data []httt.TemplateData) {
 	for i := range pages {
 		data = append(data, pages[i].TemplateData)
 	}
@@ -448,7 +448,7 @@ func (pages Pages) TemplateData() (data []hypertemplates.TemplateData) {
 
 // TemplateDataWithout returns each page's TemplateData with named top-level
 // keys omitted.
-func (pages Pages) TemplateDataWithout(keys ...string) (data []hypertemplates.TemplateData) {
+func (pages Pages) TemplateDataWithout(keys ...string) (data []httt.TemplateData) {
 	for i := range pages {
 		data = append(data, pages[i].TemplateData.Without(keys...))
 	}
@@ -654,8 +654,8 @@ func (page *Page) AtomContent() (content atom.Text) {
 
 func (page *Page) MarshalYAML() (any, error) {
 	return struct {
-		Page  *Page                       `yaml:",inline"`
-		Other hypertemplates.TemplateData `yaml:",inline"`
+		Page  *Page             `yaml:",inline"`
+		Other httt.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
 		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
@@ -1246,7 +1246,7 @@ func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err erro
 
 	var fileExt string = filepath.Ext(page.URI.Path)
 	var fileBytes []byte
-	var fileData hypertemplates.TemplateData
+	var fileData httt.TemplateData
 	if page.Loaded {
 		return // guard
 	}
@@ -1256,7 +1256,7 @@ func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err erro
 	if fileBytes, err = os.ReadFile(page.URI.Path); err != nil {
 		return err
 	}
-	if fileData, err = hypertemplates.ParseTemplateDataBytes(fileBytes, fileExt, website.Config.Markdown); err != nil {
+	if fileData, err = httt.ParseTemplateDataBytes(fileBytes, fileExt, website.Config.Markdown); err != nil {
 		return err
 	}
 	page.CreatedAt = website.CreatedAt // default created_at to website created_at

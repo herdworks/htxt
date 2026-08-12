@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"io"
@@ -8,9 +8,9 @@ import (
 	"reflect"
 	"testing"
 
-	httheme "github.com/herdworks/hypertemplates-go/theme"
-	htvariable "github.com/herdworks/hypertemplates-go/variable"
-	"github.com/herdworks/hypertexting-go/href"
+	httheme "github.com/herdworks/httt/theme"
+	htvariable "github.com/herdworks/httt/variable"
+	"github.com/herdworks/htxt/href"
 )
 
 func writeAssetTestFile(t *testing.T, path string) {

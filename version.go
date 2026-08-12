@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"time"

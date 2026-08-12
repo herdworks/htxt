@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
 )
 
 func TestApplyAddAndReplaceSetTemplateData(t *testing.T) {
-	data := hypertemplates.TemplateData{"featured": false}
+	data := httt.TemplateData{"featured": false}
 	values := Values{"title": "Hello", "featured": true}
 	patches := Patches{
 		{Op: OperationAdd, Path: "page.title", ValueRef: "title"},
@@ -28,7 +28,7 @@ func TestApplyAddAndReplaceSetTemplateData(t *testing.T) {
 }
 
 func TestApplyReplaceRejectsMissingTargets(t *testing.T) {
-	data := hypertemplates.TemplateData{}
+	data := httt.TemplateData{}
 	patches := Patches{{Op: OperationReplace, Path: "page.title", ValueRef: "title"}}
 	err := Apply(data, patches, Values{"title": "Hello"})
 
@@ -38,7 +38,7 @@ func TestApplyReplaceRejectsMissingTargets(t *testing.T) {
 }
 
 func TestApplyAppendCreatesAndAppendsArrays(t *testing.T) {
-	data := hypertemplates.TemplateData{"tags": []string{"existing"}}
+	data := httt.TemplateData{"tags": []string{"existing"}}
 	values := Values{"one": "new", "two": "created"}
 	patches := Patches{
 		{Op: OperationAppend, Path: "page.tags", ValueRef: "one"},
@@ -57,7 +57,7 @@ func TestApplyAppendCreatesAndAppendsArrays(t *testing.T) {
 }
 
 func TestApplyAppendRejectsScalarTargets(t *testing.T) {
-	data := hypertemplates.TemplateData{"tags": "not an array"}
+	data := httt.TemplateData{"tags": "not an array"}
 	patches := Patches{{Op: OperationAppend, Path: "page.tags", ValueRef: "tag"}}
 	err := Apply(data, patches, Values{"tag": "new"})
 
@@ -77,7 +77,7 @@ func TestValidateRejectsDashAppendSyntax(t *testing.T) {
 
 func TestPatchesValidateAgainstTemplate(t *testing.T) {
 	patches := Patches{{Op: OperationAppend, Path: "page.tags", ValueRef: "tag"}}
-	if err := patches.Validate(hypertemplates.TemplateData{"tags": []string{"base"}}); err != nil {
+	if err := patches.Validate(httt.TemplateData{"tags": []string{"base"}}); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
 
@@ -87,12 +87,12 @@ func TestPatchesValidateAgainstTemplate(t *testing.T) {
 	}
 
 	patches = Patches{{Op: OperationAdd, Path: "page.title", ValueRef: "title"}}
-	if err := patches.Validate(hypertemplates.TemplateData{"title": "Base Title"}); err == nil || !strings.Contains(err.Error(), "key already exists") {
+	if err := patches.Validate(httt.TemplateData{"title": "Base Title"}); err == nil || !strings.Contains(err.Error(), "key already exists") {
 		t.Fatalf("Validate() error = %v, want existing add target error", err)
 	}
 
 	patches = Patches{{Op: OperationAppend, Path: "page.tags", ValueRef: "tag"}}
-	if err := patches.Validate(hypertemplates.TemplateData{"tags": "not an array"}); err == nil || !strings.Contains(err.Error(), "not a supported JSON-like array") {
+	if err := patches.Validate(httt.TemplateData{"tags": "not an array"}); err == nil || !strings.Contains(err.Error(), "not a supported JSON-like array") {
 		t.Fatalf("Validate() error = %v, want scalar append target error", err)
 	}
 }

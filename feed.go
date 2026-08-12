@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"cmp"
@@ -15,8 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/herdworks/hsync"
-	atom "github.com/herdworks/hyperfeed-go/types/atom"
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/hyperfeed/atom"
 )
 
 // FeedConfig is declarative configuration for site.feeds
@@ -33,7 +33,7 @@ type Feed struct {
 	Kind    FeedKind
 	ID      string
 	Pages   Pages
-	Items   []hypertemplates.TemplateData
+	Items   []httt.TemplateData
 	URL     url.URL
 	HTMLURL url.URL
 	config  FeedConfig
@@ -46,8 +46,8 @@ type FeedData struct {
 	Tag    string `yaml:"tag,omitempty" json:"tag,omitempty" jsonschema:"description=Automatic tag feed identifier."`
 	Limit  int    `yaml:"limit,omitempty" json:"limit,omitempty" jsonschema:"description=Maximum number of feed items exposed to this page."`
 
-	URL   url.URL                       `yaml:"-" json:"-"`
-	Items []hypertemplates.TemplateData `yaml:"-" json:"-"`
+	URL   url.URL             `yaml:"-" json:"-"`
+	Items []httt.TemplateData `yaml:"-" json:"-"`
 }
 
 type FeedDataset map[FeedKind]map[string]FeedData
@@ -218,11 +218,11 @@ func (dataset FeedDataset) Clone() FeedDataset {
 	return clone
 }
 
-func (dataset FeedDataset) TemplateData() hypertemplates.TemplateData {
-	result := hypertemplates.TemplateData{}
+func (dataset FeedDataset) TemplateData() httt.TemplateData {
+	result := httt.TemplateData{}
 	for _, kind := range []FeedKind{UserFeed, TagFeed} {
 		for alias, data := range dataset[kind] {
-			feed := hypertemplates.TemplateData{"url": data.URL.String(), "items": data.Items}
+			feed := httt.TemplateData{"url": data.URL.String(), "items": data.Items}
 			if data.Tag != "" {
 				feed["tag"] = data.Tag
 			}
@@ -374,7 +374,7 @@ func (page *Page) HydrateFeeds(website *Website) error {
 					data.Items = data.Items[:data.Limit]
 				}
 			} else {
-				data.URL, data.Items = url.URL{}, []hypertemplates.TemplateData{}
+				data.URL, data.Items = url.URL{}, []httt.TemplateData{}
 			}
 			entries[alias] = data
 		}
@@ -497,8 +497,8 @@ func sortFeedPages(pages Pages, rules []FeedSort) {
 	})
 }
 
-func feedItemViews(pages Pages) []hypertemplates.TemplateData {
-	items := make([]hypertemplates.TemplateData, 0, len(pages))
+func feedItemViews(pages Pages) []httt.TemplateData {
+	items := make([]httt.TemplateData, 0, len(pages))
 	for _, page := range pages {
 		item := page.TemplateData.Clone()
 		delete(item, "feeds")

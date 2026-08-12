@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"io"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
 )
 
 func writeDataFile(t *testing.T, root, rel, content string) {
@@ -222,7 +222,7 @@ export default function() {
 	website.GlobalData = static
 
 	// Provide a minimal site TemplateData so the seed has site.title.
-	siteData := hypertemplates.TemplateData{"title": "Hello"}
+	siteData := httt.TemplateData{"title": "Hello"}
 	website.TemplateData = &siteData
 
 	if err := generateComputedData(build, false, io.Discard); err != nil {
@@ -242,15 +242,15 @@ func TestBuildContextExposesAllNamespaces(t *testing.T) {
 	website, build := testWebsite(t)
 	build.ID = "test-build"
 
-	siteData := hypertemplates.TemplateData{"title": "My Site"}
+	siteData := httt.TemplateData{"title": "My Site"}
 	website.TemplateData = &siteData
-	website.GlobalData = hypertemplates.TemplateData{
-		"social": hypertemplates.TemplateData{
-			"twitter": hypertemplates.TemplateData{"handle": "htmarkdown"},
+	website.GlobalData = httt.TemplateData{
+		"social": httt.TemplateData{
+			"twitter": httt.TemplateData{"handle": "htmarkdown"},
 		},
 	}
-	website.Theme.TemplateData = hypertemplates.TemplateData{"name": "default"}
-	build.Environment.TemplateData = hypertemplates.TemplateData{"HOST": "ci"}
+	website.Theme.TemplateData = httt.TemplateData{"name": "default"}
+	build.Environment.TemplateData = httt.TemplateData{"HOST": "ci"}
 
 	ctx := build.Context()
 	for _, key := range []string{"ht", "build", "env", "site", "data", "theme"} {

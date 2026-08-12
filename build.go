@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"context"
@@ -16,11 +16,11 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertemplates-go/directives"
-	"github.com/herdworks/hypertemplates-go/document"
-	htfiles "github.com/herdworks/hypertemplates-go/files"
-	htvariable "github.com/herdworks/hypertemplates-go/variable"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/httt/directives"
+	"github.com/herdworks/httt/document"
+	htfiles "github.com/herdworks/httt/files"
+	htvariable "github.com/herdworks/httt/variable"
 )
 
 type Build struct {
@@ -245,10 +245,10 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 //
 // build.date and ht.release_date resolve at call time, so each
 // invocation captures a fresh timestamp.
-func (build *Build) Context() hypertemplates.TemplateData {
-	siteData := hypertemplates.TemplateData{}
-	var globalData hypertemplates.TemplateData
-	var themeData hypertemplates.TemplateData
+func (build *Build) Context() httt.TemplateData {
+	siteData := httt.TemplateData{}
+	var globalData httt.TemplateData
+	var themeData httt.TemplateData
 	if build.Website != nil {
 		if build.Website.TemplateData != nil {
 			siteData = *build.Website.TemplateData
@@ -256,12 +256,12 @@ func (build *Build) Context() hypertemplates.TemplateData {
 		globalData = build.Website.GlobalData
 		themeData = build.Website.Theme.TemplateData
 	}
-	return hypertemplates.TemplateData{
-		"ht": hypertemplates.TemplateData{
+	return httt.TemplateData{
+		"ht": httt.TemplateData{
 			"version":      LibVersion,
 			"release_date": LibReleaseDate.Format(time.RFC3339),
 		},
-		"build": hypertemplates.TemplateData{
+		"build": httt.TemplateData{
 			"id":   build.ID,
 			"date": time.Now().Format(time.RFC3339),
 		},
@@ -736,7 +736,7 @@ func byteSize(bytes int) string {
 // each namespace from the file's path under the data directory. Files in
 // subdirectories nest into the resulting TemplateData by their path
 // segments (data/social/twitter.yaml -> data.social.twitter.*).
-func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool, w io.Writer) (hypertemplates.TemplateData, error) {
+func NamespacedTemplateData(website *Website, config *httt.HyperMarkConfig, verbose bool, w io.Writer) (httt.TemplateData, error) {
 	if w == nil {
 		w = os.Stdout
 	}
@@ -745,7 +745,7 @@ func NamespacedTemplateData(website *Website, config *hypertemplates.HyperMarkCo
 
 // ThemeTemplateData loads the theme's static data files using the same
 // filename-derived namespace rules as NamespacedTemplateData.
-func ThemeTemplateData(website *Website, config *hypertemplates.HyperMarkConfig, verbose bool, w io.Writer) (hypertemplates.TemplateData, error) {
+func ThemeTemplateData(website *Website, config *httt.HyperMarkConfig, verbose bool, w io.Writer) (httt.TemplateData, error) {
 	if w == nil {
 		w = os.Stdout
 	}
@@ -765,13 +765,13 @@ func NewTemplateDocument(website *Website, page *Page) (doc *document.Document, 
 	}, nil
 }
 
-func TemplateData(build *Build, website *Website, page *Page) (data *hypertemplates.TemplateData) {
-	data = &hypertemplates.TemplateData{}
-	data.Set("ht", hypertemplates.TemplateData{
+func TemplateData(build *Build, website *Website, page *Page) (data *httt.TemplateData) {
+	data = &httt.TemplateData{}
+	data.Set("ht", httt.TemplateData{
 		"version":      LibVersion,
 		"release_date": LibReleaseDate.Format(time.RFC3339),
 	})
-	data.Set("build", hypertemplates.TemplateData{
+	data.Set("build", httt.TemplateData{
 		"id":   build.ID,
 		"date": time.Now().Format(time.RFC3339),
 	})
@@ -799,7 +799,7 @@ func RenderPage(build *Build, website *Website, page *Page, w io.Writer) (pageBy
 		return nil, err
 	}
 	doc.Plugins = build.Plugins
-	if pageBytes, err = directives.Process(doc, TemplateData(build, website, page), &hypertemplates.TemplateData{"page": page.TemplateData}, w); err != nil {
+	if pageBytes, err = directives.Process(doc, TemplateData(build, website, page), &httt.TemplateData{"page": page.TemplateData}, w); err != nil {
 		return nil, err
 	}
 	// page.Output = gohtml.Format(page.Output) // TODO: restore HTML formatting 🤌🏽

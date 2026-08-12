@@ -1,17 +1,24 @@
-// hypertexting-go module
+// htxt module
 //
 // reference: https://go.dev/doc/modules/gomod-ref#replace
-module github.com/herdworks/hypertexting-go
+module github.com/herdworks/htxt
 
 go 1.26
 
 // first-party dependencies
 require (
-	github.com/herdworks/hsync v0.3.2
-	github.com/herdworks/hyperfeed-go v0.26.5
-	github.com/herdworks/hyperproviders-go v0.26.0
-	github.com/herdworks/hypertemplates-go v0.36.0
+	github.com/herdworks/hsync v0.4.0
+	github.com/herdworks/httt v0.37.0
+	github.com/herdworks/htup v0.27.1
+	github.com/herdworks/hyperfeed v0.27.0
 )
+
+// local development dependencies (replacements)
+//
+// uncomment to use local dependencies
+// replace github.com/herdworks/hyperfeed => ../hyperfeed
+// replace github.com/herdworks/htup => ../htup
+// replace github.com/herdworks/httt => ../httt
 
 // direct dependencies
 require (
@@ -20,13 +27,6 @@ require (
 	golang.org/x/sync v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-// local development dependencies (replacements)
-//
-// uncomment to use local dependencies
-// replace github.com/herdworks/hyperfeed-go => ../hyperfeed-go
-// replace github.com/herdworks/hyperproviders-go => ../hyperproviders-go
-// replace github.com/herdworks/hypertemplates-go => ../hypertemplates-go
 
 // transitive dependencies
 require (
@@ -74,8 +74,8 @@ require (
 	github.com/go-git/go-billy/v5 v5.8.0 // indirect
 	github.com/go-git/go-git/v5 v5.18.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/herdworks/hyperfiles-go v0.1.0 // indirect
-	github.com/herdworks/hypergraph-go v0.23.1 // indirect
+	github.com/herdworks/hq v0.24.0 // indirect
+	github.com/herdworks/hypermedia v0.2.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect

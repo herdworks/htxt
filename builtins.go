@@ -1,9 +1,9 @@
-package hypertexting
+package htxt
 
 import (
 	"embed"
 
-	httheme "github.com/herdworks/hypertemplates-go/theme"
+	httheme "github.com/herdworks/httt/theme"
 )
 
 //go:embed embedded

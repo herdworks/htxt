@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 	"sort"
 	"strings"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertemplates-go/data"
-	htfiles "github.com/herdworks/hypertemplates-go/files"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/httt/data"
+	htfiles "github.com/herdworks/httt/files"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,7 +38,7 @@ func (n NamespacedData) ColumnValues(field string) []string {
 // followed by remaining fields. Use it as a one-shot conversion at the
 // marshal site:
 //
-//	yaml.Marshal(hypertexting.OrderedTemplateData(page.TemplateData))
+//	yaml.Marshal(htxt.OrderedTemplateData(page.TemplateData))
 type OrderedTemplateData data.TemplateData
 
 // orderedFields is the canonical Page-schema field order. Fields not in this
@@ -136,7 +136,7 @@ func namespaceSegmentsFromRelPath(rel string) ([]string, error) {
 // scanNamespaceTree first; intermediates are always created by setNested
 // itself, so a non-map value at an intermediate keypath would mean the
 // scanner missed a file-vs-directory collision.
-func setNested(root hypertemplates.TemplateData, segments []string, value any) error {
+func setNested(root httt.TemplateData, segments []string, value any) error {
 	if len(segments) == 0 {
 		return fmt.Errorf("setNested: empty segments")
 	}
@@ -144,12 +144,12 @@ func setNested(root hypertemplates.TemplateData, segments []string, value any) e
 	for _, seg := range segments[:len(segments)-1] {
 		next, exists := cur[seg]
 		if !exists {
-			child := hypertemplates.TemplateData{}
+			child := httt.TemplateData{}
 			cur[seg] = child
 			cur = child
 			continue
 		}
-		cur = next.(hypertemplates.TemplateData)
+		cur = next.(httt.TemplateData)
 	}
 	leaf := segments[len(segments)-1]
 	if _, exists := cur[leaf]; exists {
@@ -251,8 +251,8 @@ func namespaceSegmentsFromDirRelPath(rel string) ([]string, error) {
 // loadStaticData walks dataDir for *.yaml, *.json, *.opml (etc.) files and
 // installs each parsed TemplateData under the keypath derived from its
 // filename. Subdirectories nest.
-func loadStaticData(website *Website, dataDir string, config *hypertemplates.HyperMarkConfig, verbose bool, w io.Writer) (hypertemplates.TemplateData, error) {
-	out := hypertemplates.TemplateData{}
+func loadStaticData(website *Website, dataDir string, config *httt.HyperMarkConfig, verbose bool, w io.Writer) (httt.TemplateData, error) {
+	out := httt.TemplateData{}
 
 	if err := scanNamespaceTree(dataDir); err != nil {
 		return nil, err
@@ -286,7 +286,7 @@ func loadStaticData(website *Website, dataDir string, config *hypertemplates.Hyp
 		if verbose && website != nil {
 			fmt.Fprintf(w, "data \"%s\" loading\n", website.RelativePath(absPath))
 		}
-		parsed, err := hypertemplates.ParseTemplateDataFile(absPath, config)
+		parsed, err := httt.ParseTemplateDataFile(absPath, config)
 		if err != nil {
 			return nil, fmt.Errorf("data %q: %w", p, err)
 		}

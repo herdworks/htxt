@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"errors"
@@ -6,14 +6,14 @@ import (
 	"net/url"
 	"path"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertexting-go/href"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/htxt/href"
 )
 
 type Attachment struct {
-	Kind AttachmentKind              `json:"kind,omitempty" yaml:"kind,omitempty" jsonschema:"required"`
-	Href *href.Href                  `json:"href,omitempty" yaml:"href,omitempty" jsonschema:"required,type=string,format=uri-reference,description=A URI reference. It may be absolute or relative."`
-	Data hypertemplates.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
+	Kind AttachmentKind    `json:"kind,omitempty" yaml:"kind,omitempty" jsonschema:"required"`
+	Href *href.Href        `json:"href,omitempty" yaml:"href,omitempty" jsonschema:"required,type=string,format=uri-reference,description=A URI reference. It may be absolute or relative."`
+	Data httt.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
 }
 type Attachments []*Attachment
 
@@ -59,19 +59,19 @@ func (attachment *Attachment) Clone() *Attachment {
 	return &clone
 }
 
-func (attachments Attachments) TemplateData() hypertemplates.TemplateDataSet {
-	data := []hypertemplates.TemplateData{}
+func (attachments Attachments) TemplateData() httt.TemplateDataSet {
+	data := []httt.TemplateData{}
 	for _, attachment := range attachments {
 		data = append(data, attachment.TemplateData())
 	}
 	return data
 }
-func (attachment *Attachment) TemplateData() (data hypertemplates.TemplateData) {
+func (attachment *Attachment) TemplateData() (data httt.TemplateData) {
 	href := ""
 	if attachment.Href != nil {
 		href = attachment.Href.String()
 	}
-	return hypertemplates.TemplateData{
+	return httt.TemplateData{
 		"kind": attachment.Kind,
 		"href": href,
 		"data": attachment.Data,

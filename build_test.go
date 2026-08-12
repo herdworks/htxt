@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"bytes"
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertexting-go/href"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/htxt/href"
 )
 
 type buildSelectionFixture struct {
@@ -471,8 +471,8 @@ feeds:
 	if got := build.Website.TemplateData.Get("config.status_redirect"); got != "/following/" {
 		t.Fatalf("site.config.status_redirect = %#v, want /following/", got)
 	}
-	pages, ok := build.Website.TemplateData.Get("pages").([]hypertemplates.TemplateData)
-	if !ok || !slices.ContainsFunc(pages, func(page hypertemplates.TemplateData) bool {
+	pages, ok := build.Website.TemplateData.Get("pages").([]httt.TemplateData)
+	if !ok || !slices.ContainsFunc(pages, func(page httt.TemplateData) bool {
 		return page.Get("title") == status.Title
 	}) {
 		t.Fatal("status page is absent from site.pages")

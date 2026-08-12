@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"context"
@@ -18,13 +18,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	hsync "github.com/herdworks/hsync"
-	hyperproviders "github.com/herdworks/hyperproviders-go"
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	htfiles "github.com/herdworks/hypertemplates-go/files"
-	httheme "github.com/herdworks/hypertemplates-go/theme"
-	htvariable "github.com/herdworks/hypertemplates-go/variable"
-	bootstrap "github.com/herdworks/hypertexting-go/bootstrap"
-	href "github.com/herdworks/hypertexting-go/href"
+	"github.com/herdworks/httt"
+	htfiles "github.com/herdworks/httt/files"
+	httheme "github.com/herdworks/httt/theme"
+	htvariable "github.com/herdworks/httt/variable"
+	"github.com/herdworks/htup"
+	"github.com/herdworks/htxt/bootstrap"
+	"github.com/herdworks/htxt/href"
 )
 
 var (
@@ -36,26 +36,26 @@ var (
 type Website struct {
 	URI *href.Href `json:"uri,omitempty" yaml:"-" jsonschema:"-"` // path to website config file
 
-	CreatedAt    string                                 `json:"created_at,omitempty" yaml:"created_at,omitempty" jsonschema:"format=date-time"` // RFC3339 timestamp
-	UpdatedAt    string                                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty" jsonschema:"format=date-time"` // RFC3339 timestamp
-	BaseURL      string                                 `json:"base_url" yaml:"base_url" jsonschema:"required,format=uri,pattern=^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]+,description=An absolute URL with a scheme and host."`
-	Title        string                                 `json:"title" yaml:"title" jsonschema:"required"`
-	Description  string                                 `json:"description" yaml:"description" jsonschema:"required"`
-	Byline       Byline                                 `json:"byline,omitempty" yaml:"byline,omitempty" jsonschema:"required"`
-	Favicon      WebsiteFavicon                         `json:"favicon,omitempty" yaml:"favicon,omitempty"`
-	Links        []HTMLLink                             `json:"links,omitempty" yaml:"links,omitempty"`
-	Metadata     []HTMLMeta                             `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Config       WebsiteConfig                          `json:"config" yaml:"config"`
-	Feeds        FeedConfigs                            `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named Atom feed definitions."`
-	Sync         *hsync.SyncConfig                      `json:"sync,omitempty" yaml:"sync,omitempty"`
-	Providers    hyperproviders.HostingProviders        `json:"providers,omitempty" yaml:"providers,omitempty"`
-	Environments map[string]*hyperproviders.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
+	CreatedAt    string                       `json:"created_at,omitempty" yaml:"created_at,omitempty" jsonschema:"format=date-time"` // RFC3339 timestamp
+	UpdatedAt    string                       `json:"updated_at,omitempty" yaml:"updated_at,omitempty" jsonschema:"format=date-time"` // RFC3339 timestamp
+	BaseURL      string                       `json:"base_url" yaml:"base_url" jsonschema:"required,format=uri,pattern=^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]+,description=An absolute URL with a scheme and host."`
+	Title        string                       `json:"title" yaml:"title" jsonschema:"required"`
+	Description  string                       `json:"description" yaml:"description" jsonschema:"required"`
+	Byline       Byline                       `json:"byline,omitempty" yaml:"byline,omitempty" jsonschema:"required"`
+	Favicon      WebsiteFavicon               `json:"favicon,omitempty" yaml:"favicon,omitempty"`
+	Links        []HTMLLink                   `json:"links,omitempty" yaml:"links,omitempty"`
+	Metadata     []HTMLMeta                   `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Config       WebsiteConfig                `json:"config" yaml:"config"`
+	Feeds        FeedConfigs                  `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named Atom feed definitions."`
+	Sync         *hsync.SyncConfig            `json:"sync,omitempty" yaml:"sync,omitempty"`
+	Providers    htup.HostingProviders        `json:"providers,omitempty" yaml:"providers,omitempty"`
+	Environments map[string]*htup.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
 
-	Theme        httheme.Theme                `json:"-" yaml:"-"`
-	TemplateData *hypertemplates.TemplateData `json:"-" yaml:"-"`
-	GlobalData   hypertemplates.TemplateData  `json:"-" yaml:"-"`
-	Plugins      htvariable.Plugins           `json:"-" yaml:"-"`
-	Assets       []string                     `json:"-" yaml:"-"` // paths relative to StaticDirName()
+	Theme        httheme.Theme      `json:"-" yaml:"-"`
+	TemplateData *httt.TemplateData `json:"-" yaml:"-"`
+	GlobalData   httt.TemplateData  `json:"-" yaml:"-"`
+	Plugins      htvariable.Plugins `json:"-" yaml:"-"`
+	Assets       []string           `json:"-" yaml:"-"` // paths relative to StaticDirName()
 
 	pages Pages
 	feeds Feeds
@@ -108,8 +108,8 @@ type WebsiteConfig struct {
 	StatusRedirect  string `json:"status_redirect,omitempty" yaml:"status_redirect,omitempty" jsonschema:"default=/,format=uri-reference"`
 	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty" jsonschema:"description=Refresh interval in seconds."`
 
-	TidyMode bool                            `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
-	Markdown *hypertemplates.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
+	TidyMode bool                  `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
+	Markdown *httt.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
 }
 
 func (WebsiteConfig) JSONSchemaTitle() string {
@@ -133,7 +133,7 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig, w io.
 
 	var fileExt string = filepath.Ext(website.URI.Path)
 	var fileBytes []byte
-	var fileTemplateData hypertemplates.TemplateData
+	var fileTemplateData httt.TemplateData
 	if verbose {
 		fmt.Fprintf(w, "website \"%s\" load\n", website.URI.String())
 	}
@@ -152,7 +152,7 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig, w io.
 	default:
 		return fmt.Errorf("unsupported file type: %s", fileExt)
 	}
-	if fileTemplateData, err = hypertemplates.ParseTemplateDataBytes(fileBytes, fileExt, nil); err != nil {
+	if fileTemplateData, err = httt.ParseTemplateDataBytes(fileBytes, fileExt, nil); err != nil {
 		return err
 	}
 	website.TemplateData = &fileTemplateData
@@ -237,14 +237,14 @@ func (website *Website) URL() *url.URL {
 
 func (website *Website) ResolveEnvironments() {
 	if len(website.Environments) == 0 {
-		defaultEnvironment := hyperproviders.Environment{"default"}
-		website.Environments = map[string]*hyperproviders.Environment{
+		defaultEnvironment := htup.Environment{"default"}
+		website.Environments = map[string]*htup.Environment{
 			"default": &defaultEnvironment,
 		}
 	}
 }
 
-func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Environment, error) {
+func (website *Website) DeploymentEnvironment(name string) (*htup.Environment, error) {
 	if name == "" {
 		return nil, fmt.Errorf("deployment environment name is required")
 	}
@@ -261,8 +261,8 @@ func (website *Website) DeploymentEnvironment(name string) (*hyperproviders.Envi
 	return env, nil
 }
 
-func (website *Website) DeploymentProviders(names []string) (hyperproviders.Environment, error) {
-	env := hyperproviders.Environment(names)
+func (website *Website) DeploymentProviders(names []string) (htup.Environment, error) {
+	env := htup.Environment(names)
 	if err := website.validateProviderNames(names); err != nil {
 		return nil, err
 	}
@@ -736,7 +736,7 @@ func (website *Website) LoadTagPages() error {
 			Title:        "#" + tag,
 			Description:  "Everything tagged with #" + tag,
 			Feeds:        FeedDataset{TagFeed: {"tag": {Tag: tag}}},
-			TemplateData: hypertemplates.TemplateData{},
+			TemplateData: httt.TemplateData{},
 		}
 		website.pages = append(website.pages, page)
 	}
@@ -789,9 +789,9 @@ func (website *Website) ListThemes(w io.Writer) (themes []httheme.Theme, err err
 	return themes, nil
 }
 
-func (website *Website) configTemplateData() hypertemplates.TemplateData {
-	data, _ := website.TemplateData.Get("config").(hypertemplates.TemplateData)
-	return data.Merge(hypertemplates.TemplateData{
+func (website *Website) configTemplateData() httt.TemplateData {
+	data, _ := website.TemplateData.Get("config").(httt.TemplateData)
+	return data.Merge(httt.TemplateData{
 		"builds_dir":      website.Config.BuildsDirectory,
 		"content_dir":     website.Config.ContentDirectory,
 		"data_dir":        website.Config.DataDirectory,

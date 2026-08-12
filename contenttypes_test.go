@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"encoding/json"
@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	"github.com/herdworks/hypertexting-go/href"
-	htpatch "github.com/herdworks/hypertexting-go/patch"
-	htprompt "github.com/herdworks/hypertexting-go/prompt"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/htxt/href"
+	htpatch "github.com/herdworks/htxt/patch"
+	htprompt "github.com/herdworks/htxt/prompt"
 )
 
 func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
@@ -377,7 +377,7 @@ func TestContentTypeTemplateDataAppliesPatchesToSpecTemplateClone(t *testing.T) 
 			Layout:      "default",
 			URIResolver: TimestampURIResolver,
 			Format:      "markdown",
-			TemplateData: hypertemplates.TemplateData{
+			TemplateData: httt.TemplateData{
 				"title": "Base Title",
 				"tags":  []string{"base"},
 			},
@@ -508,7 +508,7 @@ func TestContentTypeTemplateDataAddIgnoresPageDataAndReplaceRequiresSpecTemplate
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Prompt Title"}},
 	}
-	page := &Page{Title: "Page Title", TemplateData: hypertemplates.TemplateData{"title": "Page Title"}}
+	page := &Page{Title: "Page Title", TemplateData: httt.TemplateData{"title": "Page Title"}}
 
 	candidate, err := contenttype.OverlayPage(page)
 	if err != nil {
@@ -533,11 +533,11 @@ func TestContentTypeOverlayPageUsesOverlayPrecedenceWithoutMutatingPage(t *testi
 			Layout:      "default",
 			URIResolver: TimestampURIResolver,
 			Format:      "markdown",
-			TemplateData: hypertemplates.TemplateData{
+			TemplateData: httt.TemplateData{
 				"title":   "Spec Title",
 				"summary": "Spec summary",
 				"tags":    []string{"spec"},
-				"settings": hypertemplates.TemplateData{
+				"settings": httt.TemplateData{
 					"theme":  "default",
 					"accent": "blue",
 				},
@@ -560,11 +560,11 @@ func TestContentTypeOverlayPageUsesOverlayPrecedenceWithoutMutatingPage(t *testi
 		Title:   "Page Title",
 		Summary: "Page summary",
 		Tags:    []string{"page"},
-		TemplateData: hypertemplates.TemplateData{
+		TemplateData: httt.TemplateData{
 			"title":   "Page Title",
 			"summary": "Page summary",
 			"tags":    []string{"page"},
-			"settings": hypertemplates.TemplateData{
+			"settings": httt.TemplateData{
 				"accent": "red",
 				"custom": true,
 			},
@@ -610,7 +610,7 @@ func TestContentTypeCandidateReadyUsesOverlayWithoutMutatingPage(t *testing.T) {
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Prompt Title"}},
 	}
-	page := &Page{TemplateData: hypertemplates.TemplateData{"tags": []string{"existing"}}}
+	page := &Page{TemplateData: httt.TemplateData{"tags": []string{"existing"}}}
 
 	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires page.title property") {
 		t.Fatalf("Ready() error = %v, want missing title requirement", err)

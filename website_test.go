@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"encoding/json"
@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	hsync "github.com/herdworks/hsync"
-	hyperproviders "github.com/herdworks/hyperproviders-go"
-	hypertemplates "github.com/herdworks/hypertemplates-go"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/htup"
 )
 
 func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
@@ -28,12 +28,12 @@ func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
 }
 
 func TestWebsite_DeploymentEnvironment(t *testing.T) {
-	production := hyperproviders.Environment{"pages"}
+	production := htup.Environment{"pages"}
 	website := &Website{
-		Providers: hyperproviders.HostingProviders{
+		Providers: htup.HostingProviders{
 			"pages": {Kind: "git", Endpoint: "https://example.com"},
 		},
-		Environments: map[string]*hyperproviders.Environment{
+		Environments: map[string]*htup.Environment{
 			"production": &production,
 		},
 	}
@@ -58,7 +58,7 @@ func TestWebsite_DeploymentEnvironment(t *testing.T) {
 		t.Fatal("DeploymentEnvironment empty error = nil, want error")
 	}
 
-	missing := hyperproviders.Environment{"missing"}
+	missing := htup.Environment{"missing"}
 	website.Environments["broken"] = &missing
 	if _, err := website.DeploymentEnvironment("broken"); err == nil {
 		t.Fatal("DeploymentEnvironment missing provider error = nil, want error")
@@ -67,7 +67,7 @@ func TestWebsite_DeploymentEnvironment(t *testing.T) {
 
 func TestWebsite_DeploymentProviders(t *testing.T) {
 	website := &Website{
-		Providers: hyperproviders.HostingProviders{
+		Providers: htup.HostingProviders{
 			"pages":  {Kind: "git", Endpoint: "https://example.com"},
 			"assets": {Kind: "s3", Endpoint: "https://example.com"},
 		},
@@ -268,8 +268,8 @@ func TestWebsiteConfigResolveStatusDefaultsAndOverrides(t *testing.T) {
 func TestWebsiteConfigTemplateDataPreservesCustomProperties(t *testing.T) {
 	website := &Website{
 		Config: WebsiteConfig{ThemePath: "resolved-theme.json", StatusRedirect: "/following/"},
-		TemplateData: &hypertemplates.TemplateData{
-			"config": hypertemplates.TemplateData{"custom": "retained", "theme": "source-theme.json"},
+		TemplateData: &httt.TemplateData{
+			"config": httt.TemplateData{"custom": "retained", "theme": "source-theme.json"},
 		},
 	}
 

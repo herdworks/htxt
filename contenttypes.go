@@ -1,4 +1,4 @@
-package hypertexting
+package htxt
 
 import (
 	"encoding/json"
@@ -15,10 +15,10 @@ import (
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 
-	hypertemplates "github.com/herdworks/hypertemplates-go"
-	href "github.com/herdworks/hypertexting-go/href"
-	htpatch "github.com/herdworks/hypertexting-go/patch"
-	htprompt "github.com/herdworks/hypertexting-go/prompt"
+	"github.com/herdworks/httt"
+	"github.com/herdworks/htxt/href"
+	htpatch "github.com/herdworks/htxt/patch"
+	htprompt "github.com/herdworks/htxt/prompt"
 )
 
 // =============================================================================
@@ -41,16 +41,16 @@ type ContentTypeMetadata struct {
 }
 
 type ContentTypeSpecification struct {
-	Layout       string                      `json:"layout" yaml:"layout"`
-	Path         string                      `json:"path" yaml:"path"`
-	URIResolver  PageURIResolverName         `json:"uri_resolver" yaml:"uri_resolver"`
-	Format       string                      `json:"format" yaml:"format"`
-	Requires     ContentTypeRequirements     `json:"requires,omitempty" yaml:"requires,omitempty"`
-	Visibility   PageVisibilityKind          `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"description=Default visibility for pages of this content type."`
-	Unlisted     bool                        `json:"-" yaml:"-"`
-	TemplateData hypertemplates.TemplateData `json:"template" yaml:"template"`
-	Prompts      htprompt.Prompts            `json:"prompts,omitempty" yaml:"prompts,omitempty"`
-	Patches      htpatch.Patches             `json:"patches,omitempty" yaml:"patches,omitempty"`
+	Layout       string                  `json:"layout" yaml:"layout"`
+	Path         string                  `json:"path" yaml:"path"`
+	URIResolver  PageURIResolverName     `json:"uri_resolver" yaml:"uri_resolver"`
+	Format       string                  `json:"format" yaml:"format"`
+	Requires     ContentTypeRequirements `json:"requires,omitempty" yaml:"requires,omitempty"`
+	Visibility   PageVisibilityKind      `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"description=Default visibility for pages of this content type."`
+	Unlisted     bool                    `json:"-" yaml:"-"`
+	TemplateData httt.TemplateData       `json:"template" yaml:"template"`
+	Prompts      htprompt.Prompts        `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+	Patches      htpatch.Patches         `json:"patches,omitempty" yaml:"patches,omitempty"`
 }
 
 type ContentTypeState struct {
@@ -72,7 +72,7 @@ var (
 	DefaultContentType = ContentType{
 		URI:      &href.Href{URL: url.URL{Path: "/dev/null"}},
 		Metadata: ContentTypeMetadata{Name: "default", Description: "Default content type."},
-		Spec:     ContentTypeSpecification{Layout: "default", Path: "-", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: hypertemplates.TemplateData{}},
+		Spec:     ContentTypeSpecification{Layout: "default", Path: "-", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: httt.TemplateData{}},
 	}
 
 	draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
@@ -168,14 +168,14 @@ func (contenttype ContentType) Ready(page *Page) error {
 	return nil
 }
 
-func (contenttype ContentType) TemplateData() (hypertemplates.TemplateData, error) {
+func (contenttype ContentType) TemplateData() (httt.TemplateData, error) {
 	if err := contenttype.ValidateDefinition(); err != nil {
 		return nil, err
 	}
 	if err := contenttype.State.Validate(contenttype.Spec.Prompts); err != nil {
 		return nil, err
 	}
-	resolved := hypertemplates.TemplateData{}
+	resolved := httt.TemplateData{}
 	if contenttype.Spec.TemplateData != nil {
 		resolved = contenttype.Spec.TemplateData.Clone()
 	}
@@ -203,7 +203,7 @@ func (contenttype ContentType) OverlayPage(page *Page) (*Page, error) {
 	candidate.ResolveTemplateData(nil)
 	pageData := candidate.TemplateData
 	if pageData == nil {
-		pageData = hypertemplates.TemplateData{}
+		pageData = httt.TemplateData{}
 	}
 	candidate.TemplateData = pageData.Merge(resolved)
 	if err := candidate.Parse(candidate.TemplateData); err != nil {
