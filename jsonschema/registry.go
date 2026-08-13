@@ -23,6 +23,21 @@ type Schema struct {
 	Summary string
 }
 
+type Schemas []Schema
+
+// ColumnValues returns the values for a supported schema catalog column.
+func (schemas Schemas) ColumnValues(field string) (values []string) {
+	for _, schema := range schemas {
+		switch field {
+		case "Name":
+			values = append(values, schema.Name)
+		case "Description":
+			values = append(values, schema.Summary)
+		}
+	}
+	return values
+}
+
 // Validate reports empty and duplicate schema names.
 func (registry Registry) Validate() error {
 	names := map[string]struct{}{}
@@ -43,8 +58,8 @@ func (registry Registry) Validate() error {
 }
 
 // Entries returns schema names and descriptions in registry order.
-func (registry Registry) Entries() []Schema {
-	entries := make([]Schema, 0, len(registry))
+func (registry Registry) Entries() Schemas {
+	entries := make(Schemas, 0, len(registry))
 	for _, provider := range registry {
 		if provider != nil {
 			entries = append(entries, Schema{Name: provider.JSONSchemaName(), Summary: provider.JSONSchemaSummary()})

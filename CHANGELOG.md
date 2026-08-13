@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `jsonschema.Schemas`, a schema-listing collection with `ColumnValues`
+  for reusable columnar output.
+
 ## v0.42.0 (2026-08-12)
 
 * **BREAKING:** Renamed the module to `github.com/herdworks/htxt` and its

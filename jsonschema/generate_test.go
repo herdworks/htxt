@@ -39,6 +39,13 @@ func TestRegistryDescribesNamedProviders(t *testing.T) {
 	if entries := registry.Entries(); len(entries) != 1 || entries[0].Summary != "Example schema." {
 		t.Fatalf("Entries() = %#v", entries)
 	}
+	entries := jsonschema.Schemas{{Name: "example", Summary: "Example schema."}}
+	if got := entries.ColumnValues("Name"); len(got) != 1 || got[0] != "example" {
+		t.Fatalf("ColumnValues(Name) = %#v", got)
+	}
+	if got := entries.ColumnValues("Description"); len(got) != 1 || got[0] != "Example schema." {
+		t.Fatalf("ColumnValues(Description) = %#v", got)
+	}
 	if _, err := registry.Describe("example"); err != nil {
 		t.Fatal(err)
 	}
