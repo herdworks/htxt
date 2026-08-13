@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.43.1 (2026-08-13)
+
 * Changed command metadata
 
 ## v0.43.0 (2026-08-13)
