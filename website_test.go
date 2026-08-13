@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -180,6 +181,40 @@ func TestWebsiteDirectoryGettersUseConfiguredDirs(t *testing.T) {
 	}
 	if website.Config != wantConfig {
 		t.Fatalf("Website path getters mutated config: %#v, want %#v", website.Config, wantConfig)
+	}
+}
+
+func TestWebsiteFilePathsListsManagedFilesOnly(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	website := &Website{URI: mustHref(t, fixture.sitePath)}
+	if err := website.Load(false, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range map[string]string{
+		filepath.Join(fixture.root, "data", "site.yaml"):                   "name: Test\n",
+		filepath.Join(fixture.root, "static", "images", "logo.svg"):        "<svg/>",
+		filepath.Join(fixture.root, "plugins", "example.js"):               "export default {}",
+		filepath.Join(fixture.root, "builds", "development", "index.html"): "build",
+		filepath.Join(fixture.root, "deployments", "development.json"):     "{}",
+		filepath.Join(fixture.root, "notes.txt"):                           "unmanaged",
+	} {
+		writeBuildSelectionFile(t, path, content)
+	}
+
+	paths, err := website.FilePaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"content/index.html",
+		"data/site.yaml",
+		"plugins/example.js",
+		"site.yaml",
+		"static/images/logo.svg",
+		"theme.json",
+	}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("FilePaths() = %#v, want %#v", paths, want)
 	}
 }
 

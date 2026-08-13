@@ -3,13 +3,15 @@
 // reference: https://go.dev/doc/modules/gomod-ref#replace
 module github.com/herdworks/htxt
 
-go 1.26
+go 1.26.2
 
 // first-party dependencies
 require (
-	github.com/herdworks/hsync v0.4.0
+	github.com/herdworks/clic v0.4.1
+	github.com/herdworks/hsync v0.5.2
 	github.com/herdworks/httt v0.37.0
 	github.com/herdworks/htup v0.27.1
+	github.com/herdworks/htxtd v0.1.0
 	github.com/herdworks/hyperfeed v0.27.0
 )
 

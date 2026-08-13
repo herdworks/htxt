@@ -13,6 +13,7 @@
 * Downstream repos pull updates via `go get github.com/herdworks/htxt@<branch>`;
   for local testing, downstream repos can also use `replace` directives in `go.mod`
 * Only bump the library version (`version.go`) from the `main` branch. On other branches, record breaking changes (and other notable changes) under the `Unreleased` section of `CHANGELOG.md`; the version bump happens at release time on `main`
+* Format all `clic` command, option, metadata, specification, and options-map struct literals in fully expanded multi-line form. Never use inline or single-line composite literals for `clic.Command`, `clic.Option`, `clic.CommandMeta`, `clic.CommandSpec`, `clic.OptionMeta`, `clic.OptionSpec`, or `clic.Options`, even when the literal is short. Put one field per line and expand nested literals recursively.
 
 ### Release Instructions
 

@@ -292,6 +292,64 @@ func (website *Website) RootDir() string {
 	return filepath.Dir(website.URI.Path)
 }
 
+// FilePaths lists all managed website files with paths relative to the website root.
+func (website *Website) FilePaths() (paths []string, err error) {
+	if website.URI == nil || website.URI.Path == "" {
+		return nil, fmt.Errorf("website.uri is required")
+	}
+	root, err := filepath.Abs(website.RootDir())
+	if err != nil {
+		return nil, fmt.Errorf("resolve website root %q: %w", website.RootDir(), err)
+	}
+	seen := map[string]bool{}
+	add := func(path string) error {
+		relative, err := htfiles.RelativePath(root, path)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if _, err = htfiles.CleanRelativePath(relative); err != nil {
+			return err
+		}
+		if !seen[relative] {
+			seen[relative] = true
+			paths = append(paths, relative)
+		}
+		return nil
+	}
+	if err = add(website.URI.Path); err != nil {
+		return nil, err
+	}
+	for _, directory := range []string{
+		website.ContentDirPath(),
+		website.DataDirPath(),
+		website.StaticDirPath(),
+		website.PluginsDirPath(),
+	} {
+		files, err := htfiles.List(directory, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			if err = add(filepath.Join(directory, file)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	themeRoot := website.Theme.RootDir()
+	themeFiles, err := website.Theme.FilePaths()
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range themeFiles {
+		if err = add(filepath.Join(themeRoot, filepath.FromSlash(file))); err != nil {
+			return nil, err
+		}
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
 func (website *Website) StaticDirName() string {
 	return htfiles.ResourceDirectoryName(website.Config.StaticDirectory, "static")
 }

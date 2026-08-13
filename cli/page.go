@@ -1,0 +1,297 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+
+	"github.com/herdworks/clic"
+	"github.com/herdworks/htxt"
+	href "github.com/herdworks/htxt/href"
+)
+
+func PageCommand() clic.Command {
+	return clic.Command{
+		Meta: clic.CommandMeta{
+			Description: "Manage pages and drafts.",
+			Usage: []string{
+				"{{ .Command }} [command] [options]",
+			},
+		},
+		Spec: clic.CommandSpec{
+			Key:  "page",
+			Help: clic.DefaultHelp,
+		},
+		Commands: clic.MustCommandsFrom(
+			PageNewCommand,
+			PageListCommand,
+			PageInspectCommand,
+		),
+	}
+}
+
+// PageNewCommand creates a page in a website.
+func PageNewCommand() clic.Command {
+	config := WebsiteConfigOption()
+	return clic.Command{
+		Meta: clic.CommandMeta{
+			Description: "Create a new page.",
+			Usage: []string{
+				"{{ .Command }} [options]",
+			},
+		},
+		Spec: clic.CommandSpec{
+			Key:  "new",
+			Help: clic.DefaultHelp,
+			Options: clic.Options{
+				config.Spec.Key: &config,
+				"layout": {
+					Meta: clic.OptionMeta{
+						Name:        "layout",
+						ShortName:   "l",
+						Description: "New page layout.",
+					},
+					Spec: clic.OptionSpec{
+						Key:  "layout",
+						Kind: clic.StringOption,
+					},
+				},
+				"slug": {
+					Meta: clic.OptionMeta{
+						Name:        "slug",
+						ShortName:   "s",
+						Description: "New page slug.",
+					},
+					Spec: clic.OptionSpec{
+						Key:  "slug",
+						Kind: clic.StringOption,
+					},
+				},
+				"title": {
+					Meta: clic.OptionMeta{
+						Name:        "title",
+						ShortName:   "t",
+						Description: "New page title.",
+					},
+					Spec: clic.OptionSpec{
+						Key:  "title",
+						Kind: clic.StringOption,
+					},
+				},
+				"description": {
+					Meta: clic.OptionMeta{
+						Name:        "description",
+						ShortName:   "d",
+						Description: "New page description.",
+					},
+					Spec: clic.OptionSpec{
+						Key:  "description",
+						Kind: clic.StringOption,
+					},
+				},
+				"content-type": {
+					Meta: clic.OptionMeta{
+						Name:        "content-type",
+						Description: "New page content type.",
+					},
+					Spec: clic.OptionSpec{
+						Key:  "content-type",
+						Kind: clic.StringOption,
+					},
+				},
+				"content": {
+					Meta: clic.OptionMeta{
+						Name:        "content",
+						Description: "New page content.",
+					},
+					Spec: clic.OptionSpec{
+						Key:  "content",
+						Kind: clic.StringOption,
+					},
+				},
+				"draft": {
+					Meta: clic.OptionMeta{
+						Name:        "draft",
+						Description: "Create a draft page.",
+						Default:     false,
+					},
+					Spec: clic.OptionSpec{
+						Key:  "draft",
+						Kind: clic.BoolOption,
+					},
+				},
+			},
+			Handler: pageNewHandler,
+		},
+	}
+}
+func PageListCommand() clic.Command {
+	var config clic.Option = WebsiteConfigOption()
+	var visibility clic.Option = PageVisibilityOption()
+	return clic.Command{
+		Meta: clic.CommandMeta{
+			Description: "List website pages.",
+			Usage: []string{
+				"{{ .Command }} [options]",
+			}},
+		Spec: clic.CommandSpec{
+			Key:  "ls",
+			Help: clic.DefaultHelp,
+			Options: clic.Options{
+				config.Spec.Key:     &config,
+				visibility.Spec.Key: &visibility,
+			},
+			Validator: pageListValidator,
+			Handler:   pageListHandler,
+		},
+	}
+}
+func PageInspectCommand() clic.Command {
+	var config clic.Option = WebsiteConfigOption()
+	return clic.Command{
+		Meta: clic.CommandMeta{
+			Description: "Inspect website pages.",
+			Usage: []string{
+				"{{ .Command }} [options] <path>",
+			},
+		},
+		Spec: clic.CommandSpec{
+			Key:  "inspect",
+			Help: clic.DefaultHelp,
+			Options: clic.Options{
+				config.Spec.Key: &config,
+			},
+			Validator: expectedPositionalArguments(1),
+			Handler:   pageInspectHandler,
+		},
+	}
+}
+
+func PageVisibilityOption() clic.Option {
+	return clic.Option{
+		Meta: clic.OptionMeta{
+			Description: "Page visibility: all, public, unlisted, status, draft, or none.",
+			Default:     "all",
+		},
+		Spec: clic.OptionSpec{
+			Key:  "visibility",
+			Kind: clic.StringOption,
+		},
+	}
+}
+
+func pageListValidator(execution *clic.Execution) error {
+	if err := expectedPositionalArguments(0)(execution); err != nil {
+		return err
+	}
+	visibility := execution.Options["visibility"].StringValue()
+	switch visibility {
+	case "all", "public", "unlisted", "status", "draft", "none":
+		return nil
+	default:
+		return fmt.Errorf("visibility %q unknown (expected one of: all, public, unlisted, status, draft, none)", visibility)
+	}
+}
+
+func pageNewHandler(execution *clic.Execution) error {
+	options := execution.Options
+	website := htxt.Website{
+		URI: &href.Href{
+			URL: url.URL{
+				Path: options["config"].StringValue(),
+			},
+		},
+	}
+	if err := website.Load(false, nil, nil); err != nil {
+		return err
+	}
+	page := htxt.Page{
+		LayoutRef:   options["layout"].StringValue(),
+		Slug:        options["slug"].StringValue(),
+		Title:       options["title"].StringValue(),
+		Description: options["description"].StringValue(),
+		Content:     options["content"].StringValue(),
+	}
+	if options["draft"].BoolValue() {
+		page.Visibility = htxt.DraftVisibility
+	}
+	return htxt.CreatePage(&website, &page, website.GetContentTypeByName(options["content-type"].StringValue(), true, nil), nil)
+}
+func pageListHandler(execution *clic.Execution) error {
+	uri, err := href.Parse(execution.Options["config"].StringValue())
+	if err != nil {
+		return err
+	}
+	website := &htxt.Website{URI: uri}
+	if err = website.Load(false, nil, nil); err != nil {
+		return err
+	}
+	pages, err := website.ListPages()
+	if err != nil {
+		return err
+	}
+	if err = htxt.LoadPages(execution.Context, website, pages, nil, false, nil); err != nil {
+		return err
+	}
+	pages = filterPages(pages, execution.Options["visibility"].StringValue())
+	pages.SortBy("slug", true)
+	return clic.WriteList(execution.Stdout, clic.ColumnarFormat, pages,
+		clic.Field{Key: "lastmod", Header: "Last Modified"},
+		clic.Field{Key: "title", Header: "Title"},
+		clic.Field{Key: "visibility", Header: "Visibility"},
+		clic.Field{Key: "path", Header: "Path"},
+	)
+}
+func filterPages(pages htxt.Pages, visibility string) htxt.Pages {
+	result := make(htxt.Pages, 0, len(pages))
+	for _, page := range pages {
+		if page == nil || !matchesPageVisibility(page.Visibility, visibility) {
+			continue
+		}
+		result = append(result, page)
+	}
+	return result
+}
+
+func matchesPageVisibility(visibility htxt.PageVisibilityKind, filter string) bool {
+	switch filter {
+	case "all":
+		return true
+	case "public":
+		return visibility.IsPublic()
+	case "unlisted":
+		return visibility.IsUnlisted()
+	case "status":
+		return visibility.IsStatus()
+	case "draft":
+		return visibility.IsDraft()
+	case "none":
+		return visibility.IsNone()
+	default:
+		return false
+	}
+}
+func pageInspectHandler(execution *clic.Execution) error {
+	uri, err := href.Parse(execution.Options["config"].StringValue())
+	if err != nil {
+		return err
+	}
+	website := &htxt.Website{URI: uri}
+	if err = website.Load(false, nil, nil); err != nil {
+		return err
+	}
+	build := &htxt.Build{Website: website}
+	if err = build.LoadContext(execution.Context, nil); err != nil {
+		return err
+	}
+	page := build.Pages.PageByPath(execution.Command.State.Arguments[0])
+	if page == nil {
+		return fmt.Errorf("page %q not found", execution.Command.State.Arguments[0])
+	}
+	data, err := json.Marshal(page.TemplateData)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(execution.Stdout, string(data))
+	return err
+}

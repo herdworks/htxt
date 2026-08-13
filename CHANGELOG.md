@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** A standalone, importable `htxt` CLI with `init`, `build`,
+  `server`, `data`, `page`, `asset`, and `content-type` workflows. Its
+  `Command()` factory supports composition by host CLIs. 
+  
+* **Added:** `htxt init [directory]` initializes a website in the current 
+  or selected directory, refuses an existing `site.yaml`, `site.yml`, or 
+  `site.json`, and derives sensible website metadata from the directory name.
+
+* **Added:** `htxt server` builds a preview into a stable build ID, watches its
+  source directories, and live-reloads the browser after each successful
+  rebuild. It reports readiness only after binding its listener and gracefully
+  stops on interruption. `hyperctl website server` mounts the same command.
+
+* **Added:** `Website.FilePaths` lists managed source files for reusable,
+  configuration-aware file watching.
+
+* Updated dependencies to `github.com/herdworks/clic` v0.4.1,
+  `github.com/herdworks/hsync` v0.5.2, and `github.com/herdworks/htxtd`
+  v0.1.0.
+
 ## v0.42.2 (2026-08-12)
 
 * Added `ColumnValues` helpers for `Assets`, `NamespacedData`, and `Pages` to
