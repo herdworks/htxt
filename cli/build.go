@@ -15,10 +15,11 @@ import (
 func BuildCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Build management tools",
+			Description: "Generate static website builds.",
 			Usage: []string{
 				"{{ .Command }} [options]",
 			},
+			Order: 2,
 		},
 		Spec: clic.CommandSpec{
 			Key:  "build",

@@ -15,10 +15,11 @@ import (
 func DataCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Manage global template data.",
+			Description: "Manage website template data.",
 			Usage: []string{
 				"{{ .Command }} [command] [options]",
 			},
+			Order: 5,
 		},
 		Spec: clic.CommandSpec{
 			Key:  "data",

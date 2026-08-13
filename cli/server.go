@@ -13,10 +13,11 @@ import (
 func ServerCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Build and live-reload a preview website.",
+			Description: "Local website preview server.",
 			Usage: []string{
 				"{{ .Command }} [options]",
 			},
+			Order: 3,
 		},
 		Spec: clic.CommandSpec{
 			Key:  "server",

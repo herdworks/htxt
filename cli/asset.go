@@ -17,6 +17,7 @@ func AssetCommand() clic.Command {
 			Usage: []string{
 				"{{ .Command }} [command] [options]",
 			},
+			Order: 6,
 		},
 		Spec: clic.CommandSpec{
 			Key:  "asset",

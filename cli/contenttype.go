@@ -13,10 +13,11 @@ import (
 func ContentTypeCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Manage content-types.",
+			Description: "Manage website content-types.",
 			Usage: []string{
 				"{{ .Command }} [command] [options]",
 			},
+			Order: 7,
 		},
 		Spec: clic.CommandSpec{
 			Key:  "content-type",
