@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.42.1 (2026-08-12)
+
 * Added `jsonschema.Schemas`, a schema-listing collection with `ColumnValues`
   for reusable columnar output.
 
