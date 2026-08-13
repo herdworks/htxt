@@ -411,6 +411,14 @@ func (pages Pages) ColumnValues(field string) []string {
 			values = append(values, pages[i].Title)
 		case "LastModified", "lastmod":
 			values = append(values, pages[i].LastModified().Format(time.RFC3339))
+		case "Visibility", "visibility":
+			if pages[i].Visibility == AutoVisibility {
+				// return "public" if page.visibility is not set
+				values = append(values, string(PublicVisibility))
+			} else {
+				// return page.visibility
+				values = append(values, string(pages[i].Visibility))
+			}
 		}
 	}
 	return values

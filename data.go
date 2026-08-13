@@ -2,6 +2,7 @@ package htxt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/herdworks/httt"
@@ -22,15 +24,23 @@ import (
 // implement CLI ColumnListable conventions for the namespace columns.
 type NamespacedData data.TemplateData
 
-// ColumnValues implements cli.ColumnListable by returning the wrapped data's
-// top-level keys when field is "namespace" or "namespaces". All other field
-// names return nil.
-func (n NamespacedData) ColumnValues(field string) []string {
+// ColumnValues returns top-level namespace names and their best-effort JSON
+// byte sizes. A value that cannot be JSON-marshaled has size "?".
+func (n NamespacedData) ColumnValues(field string) (values []string) {
 	switch strings.ToLower(field) {
 	case "namespace", "namespaces":
 		return data.TemplateData(n).Keys("")
+	case "size":
+		for _, namespace := range data.TemplateData(n).Keys("") {
+			encoded, err := json.Marshal(data.TemplateData(n).Get(namespace))
+			if err != nil {
+				values = append(values, "?")
+				continue
+			}
+			values = append(values, strconv.Itoa(len(encoded)))
+		}
 	}
-	return nil
+	return values
 }
 
 // OrderedTemplateData wraps a TemplateData to control YAML marshal field

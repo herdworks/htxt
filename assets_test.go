@@ -125,6 +125,19 @@ func TestWebsiteAssetPublicPaths(t *testing.T) {
 	}
 }
 
+func TestAssetsColumnValues(t *testing.T) {
+	assets := Assets{
+		{SourcePath: "/workspace/site/static/site.css", PublicPath: "/site.css"},
+		{SourcePath: "/workspace/site/content/about/photo.jpg", PublicPath: "/about/photo.jpg"},
+	}
+	if got, want := assets.ColumnValues("source"), []string{"/workspace/site/static/site.css", "/workspace/site/content/about/photo.jpg"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ColumnValues(source) = %#v, want %#v", got, want)
+	}
+	if got, want := assets.ColumnValues("path"), []string{"/site.css", "/about/photo.jpg"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ColumnValues(path) = %#v, want %#v", got, want)
+	}
+}
+
 func TestWebsiteAssetEntriesUseWinningAssetSource(t *testing.T) {
 	website, _ := testWebsite(t)
 	page := &Page{Assets: []string{"shared.css"}}

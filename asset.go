@@ -36,6 +36,19 @@ func (assets Assets) PublicPaths() []string {
 	return paths
 }
 
+// ColumnValues returns the disk-source and published-path values for assets.
+func (assets Assets) ColumnValues(field string) (values []string) {
+	for _, asset := range assets {
+		switch field {
+		case "Source", "source":
+			values = append(values, asset.SourcePath)
+		case "Path", "path":
+			values = append(values, asset.PublicPath)
+		}
+	}
+	return values
+}
+
 func (assets Assets) FilterSource(source AssetSource) Assets {
 	filtered := Assets{}
 	for _, asset := range assets {

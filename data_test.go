@@ -4,11 +4,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/herdworks/httt"
 )
+
+func TestNamespacedDataColumnValues(t *testing.T) {
+	data := NamespacedData{
+		"text":    "hello",
+		"invalid": func() {},
+	}
+	if got, want := data.ColumnValues("namespace"), []string{"invalid", "text"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ColumnValues(namespace) = %v, want %v", got, want)
+	}
+	if got, want := data.ColumnValues("size"), []string{"?", "7"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ColumnValues(size) = %v, want %v", got, want)
+	}
+}
 
 func writeDataFile(t *testing.T, root, rel, content string) {
 	t.Helper()

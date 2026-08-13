@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,6 +53,16 @@ func TestPagesFilterDraft(t *testing.T) {
 	gotDrafts := pages.FilterDraft(true)
 	if len(gotDrafts) != 1 || gotDrafts[0] != draft {
 		t.Fatalf("FilterDraft(true) = %#v, want draft page", gotDrafts)
+	}
+}
+
+func TestPagesColumnValuesIncludesVisibility(t *testing.T) {
+	pages := Pages{
+		&Page{Visibility: AutoVisibility},
+		&Page{Visibility: DraftVisibility},
+	}
+	if got, want := pages.ColumnValues("visibility"), []string{"public", "draft"}; !slices.Equal(got, want) {
+		t.Fatalf("ColumnValues(visibility) = %v, want %v", got, want)
 	}
 }
 

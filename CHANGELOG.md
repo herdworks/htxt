@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `ColumnValues` helpers for `Assets`, `NamespacedData`, and `Pages` to
+  support reusable listings of asset source and published paths, namespace JSON
+  byte sizes, and effective page visibility.
+
 ## v0.42.1 (2026-08-12)
 
 * Added `jsonschema.Schemas`, a schema-listing collection with `ColumnValues`
