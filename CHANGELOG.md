@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.42.2 (2026-08-12)
+
 * Added `ColumnValues` helpers for `Assets`, `NamespacedData`, and `Pages` to
   support reusable listings of asset source and published paths, namespace JSON
   byte sizes, and effective page visibility.
