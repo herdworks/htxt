@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.43.0 (2026-08-13)
+
 * **Added:** A standalone, importable `htxt` CLI with `init`, `build`,
   `server`, `data`, `page`, `asset`, and `content-type` workflows. Its
   `Command()` factory supports composition by host CLIs. 
