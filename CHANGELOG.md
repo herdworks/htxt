@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.44.0 (2026-08-14)
+
 * **BREAKING:** `BuildConfig` is the declarative build request, including its
   source path, output URI, ID, incremental page expression, and preview mode;
   runtime `Build` state is now populated by `Execute`. Build requests may name
