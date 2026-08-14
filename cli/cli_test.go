@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/herdworks/clic"
 )
 
@@ -49,6 +50,20 @@ func TestCLIUsesHTXTEnvironmentPrefix(t *testing.T) {
 		if !strings.HasPrefix(option.Meta.EnvName, "{{ .EnvPrefix }}") {
 			t.Fatalf("option %q environment name = %q", option.Spec.Key, option.Meta.EnvName)
 		}
+	}
+}
+
+func TestServerCommandDefaultsBuildIdentifier(t *testing.T) {
+	option := ServerCommand().Spec.Options["id"]
+	if option == nil {
+		t.Fatal("server command has no build identifier option")
+	}
+	identifier, ok := option.Meta.Default.(string)
+	if !ok || identifier == "" {
+		t.Fatalf("server build identifier default = %#v, want UUID", option.Meta.Default)
+	}
+	if _, err := uuid.Parse(identifier); err != nil {
+		t.Fatalf("server build identifier default = %q, want UUID: %v", identifier, err)
 	}
 }
 

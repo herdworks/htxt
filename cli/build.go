@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/herdworks/clic"
 	"github.com/herdworks/htxt"
 )
@@ -43,6 +44,7 @@ func BuildIdentifierOption() clic.Option {
 		Meta: clic.OptionMeta{
 			ShortName:   "i",
 			Description: "Identifier to use for the build.",
+			Default:     uuid.New().String(),
 		},
 		Spec: clic.OptionSpec{
 			Key:      "id",

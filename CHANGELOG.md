@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Fixed:** `htxt server` and composed `hyperctl server` commands again
+  default their preview build identifier.
+
 ## v0.44.0 (2026-08-14)
 
 * **BREAKING:** `BuildConfig` is the declarative build request, including its
