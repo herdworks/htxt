@@ -44,7 +44,7 @@ func testWebsite(t *testing.T) (*Website, *Build) {
 		},
 	}
 	build := &Build{
-		URI:     &url.URL{Path: filepath.Join(root, "builds", "test")},
+		Config:  BuildConfig{URI: &url.URL{Path: filepath.Join(root, "builds", "test")}},
 		Website: website,
 	}
 	return website, build
@@ -73,19 +73,19 @@ func TestWebsiteAssetPaths(t *testing.T) {
 			name:       "website static",
 			relPath:    staticAsset,
 			publicPath: "/css/site.css",
-			buildPath:  filepath.Join(build.URI.Path, "css", "site.css"),
+			buildPath:  filepath.Join(build.Config.URI.Path, "css", "site.css"),
 		},
 		{
 			name:       "theme static",
 			relPath:    themeAsset,
 			publicPath: "/css/theme.css",
-			buildPath:  filepath.Join(build.URI.Path, "css", "theme.css"),
+			buildPath:  filepath.Join(build.Config.URI.Path, "css", "theme.css"),
 		},
 		{
 			name:       "page asset",
 			relPath:    pageAsset,
 			publicPath: "/about/photo.jpg",
-			buildPath:  filepath.Join(build.URI.Path, "about", "photo.jpg"),
+			buildPath:  filepath.Join(build.Config.URI.Path, "about", "photo.jpg"),
 		},
 	}
 
@@ -318,7 +318,7 @@ func TestBuildPath(t *testing.T) {
 	page := &Page{URI: &url.URL{Path: filepath.Join(website.ContentDirPath(), "about", "index.md")}}
 
 	got := build.BuildPath(page)
-	want := filepath.Join(build.URI.Path, "about", "index.html")
+	want := filepath.Join(build.Config.URI.Path, "about", "index.html")
 	if got != want {
 		t.Fatalf("BuildPath = %q, want %q", got, want)
 	}

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** `BuildConfig` is the declarative build request, including its
+  source path, output URI, ID, incremental page expression, and preview mode;
+  runtime `Build` state is now populated by `Execute`. Build requests may name
+  either a website directory or its `site.yaml`, `site.yml`, or `site.json`.
+* **Added:** `DeploymentConfig` and `Deployment` perform one fresh build and
+  its hsync-enabled deployment with validated environment or provider
+  selection. They report success only after both operations complete; CLI and
+  non-CLI consumers can supply their own secret providers and deployment
+  output writer.
+* **Changed:** Builds continue to write to standard output and optionally tee
+  to a configured build-relative log file; deployments likewise mirror their
+  output to generated build-relative deployment logs.
+* **Added:** `htxt deploy` builds and deploys a website without exposing
+  preview-build configuration.
+
 ## v0.43.1 (2026-08-13)
 
 * Changed command metadata

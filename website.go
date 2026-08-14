@@ -92,6 +92,8 @@ func (WebsiteFavicon) JSONSchemaDescription() string {
 type WebsiteFavicons []WebsiteFavicon
 
 type WebsiteConfig struct {
+	Path string `json:"-" yaml:"-" jsonschema:"-"`
+
 	BuildsDirectory      string `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty" jsonschema:"default=builds"`
 	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty" jsonschema:"default=content"`
 	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty" jsonschema:"default=data"`
@@ -100,13 +102,12 @@ type WebsiteConfig struct {
 	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty" jsonschema:"default=static"`
 	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
 	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
-
-	FeedPath        string `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
-	TagPath         string `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
-	TagLayout       string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
-	StatusLayout    string `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
-	StatusRedirect  string `json:"status_redirect,omitempty" yaml:"status_redirect,omitempty" jsonschema:"default=/,format=uri-reference"`
-	RefreshInterval int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty" jsonschema:"description=Refresh interval in seconds."`
+	FeedPath             string `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
+	TagPath              string `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
+	TagLayout            string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
+	StatusLayout         string `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
+	StatusRedirect       string `json:"status_redirect,omitempty" yaml:"status_redirect,omitempty" jsonschema:"default=/,format=uri-reference"`
+	RefreshInterval      int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty" jsonschema:"description=Refresh interval in seconds."`
 
 	TidyMode bool                  `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
 	Markdown *httt.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
@@ -184,6 +185,38 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig, w io.
 		website.UpdatedAt = LibReleaseDate.Format(time.RFC3339)
 	}
 	return website.Validate()
+}
+
+// LoadConfig loads and resolves only the website configuration needed before a
+// build output path can be determined. It does not load themes, assets,
+// plugins, pages, or template data.
+func (website *Website) LoadConfig(configOverrides *WebsiteConfig) (err error) {
+	if website == nil || website.URI == nil {
+		return fmt.Errorf("website.uri is required")
+	}
+
+	fileBytes, err := os.ReadFile(website.URI.Path)
+	if err != nil {
+		return err
+	}
+	var source struct {
+		Config WebsiteConfig `json:"config" yaml:"config"`
+	}
+	switch filepath.Ext(website.URI.Path) {
+	case ".json":
+		if err = json.Unmarshal(fileBytes, &source); err != nil {
+			return err
+		}
+	case ".yaml", ".yml":
+		if err = yaml.Unmarshal(fileBytes, &source); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported file type: %s", filepath.Ext(website.URI.Path))
+	}
+	website.Config = source.Config
+	website.ResolveConfig(configOverrides)
+	return website.ValidateConfig()
 }
 
 func (website *Website) Validate() error {

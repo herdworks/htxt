@@ -2,20 +2,16 @@ package cli
 
 import (
 	"fmt"
-	"net/url"
-	"path/filepath"
 
-	"github.com/google/uuid"
 	"github.com/herdworks/clic"
 	"github.com/herdworks/htxt"
-	href "github.com/herdworks/htxt/href"
 )
 
 // BuildCommand builds a HyperTexting website.
 func BuildCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Generate static website builds.",
+			Description: "Generate static website builds",
 			Usage: []string{
 				"{{ .Command }} [options]",
 			},
@@ -47,7 +43,6 @@ func BuildIdentifierOption() clic.Option {
 		Meta: clic.OptionMeta{
 			ShortName:   "i",
 			Description: "Identifier to use for the build.",
-			Default:     uuid.New().String(),
 		},
 		Spec: clic.OptionSpec{
 			Key:      "id",
@@ -159,8 +154,8 @@ func BuildLogFileOption() clic.Option {
 }
 
 func buildValidator(execution *clic.Execution) error {
-	incremental := execution.Options["incremental"].BoolValue()
-	page := execution.Options["page"].StringValue()
+	incremental := execution.Options.BoolValue("incremental")
+	page := execution.Options.StringValue("page")
 	if incremental && page == "" {
 		return fmt.Errorf("--page is required when --incremental is set")
 	}
@@ -171,24 +166,24 @@ func buildValidator(execution *clic.Execution) error {
 }
 
 func buildHandler(execution *clic.Execution) error {
-	options := execution.Options
-	websiteURI, err := href.Parse(options["config"].StringValue())
-	if err != nil {
-		return err
-	}
-	config := htxt.BuildConfig{WebsiteConfig: htxt.WebsiteConfig{ContentDirectory: options["content-dir"].StringValue(), DataDirectory: options["data-dir"].StringValue(), StaticDirectory: options["static-dir"].StringValue(), ThemePath: options["theme"].StringValue()}, DataFile: options["data-file"].StringValue(), LogFile: options["log-file"].StringValue(), Verbose: true}
-	website := &htxt.Website{URI: websiteURI}
-	if err := website.Load(false, &config.WebsiteConfig, nil); err != nil {
-		return err
-	}
-	var page *htxt.Page
-	if options["incremental"].BoolValue() {
-		pageURI, err := href.Parse(options["page"].StringValue())
-		if err != nil {
-			return err
-		}
-		page = &htxt.Page{URI: &pageURI.URL, Path: htxt.PagePath(website, &pageURI.URL)}
-	}
-	build := &htxt.Build{URI: &url.URL{Path: filepath.Join(website.BuildsDirPath(), options["id"].StringValue())}, ID: options["id"].StringValue(), Website: website, Config: config, Incremental: options["incremental"].BoolValue(), Page: page}
+	build := &htxt.Build{Config: buildConfig(execution)}
 	return build.Execute(execution.Context)
+}
+
+func buildConfig(execution *clic.Execution) htxt.BuildConfig {
+	return htxt.BuildConfig{
+		WebsiteConfig: htxt.WebsiteConfig{
+			Path:             execution.Options.StringValue("config"),
+			ContentDirectory: execution.Options.StringValue("content-dir"),
+			DataDirectory:    execution.Options.StringValue("data-dir"),
+			StaticDirectory:  execution.Options.StringValue("static-dir"),
+			ThemePath:        execution.Options.StringValue("theme"),
+		},
+		ID:          execution.Options.StringValue("id"),
+		Incremental: execution.Options.BoolValue("incremental"),
+		Page:        execution.Options.StringValue("page"),
+		DataFile:    execution.Options.StringValue("data-file"),
+		LogFile:     execution.Options.StringValue("log-file"),
+		Verbose:     true,
+	}
 }

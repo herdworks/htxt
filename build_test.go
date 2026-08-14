@@ -103,15 +103,17 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 	}
 
 	build := &Build{
-		URI:     &url.URL{Path: filepath.Join(root, "builds", "test")},
-		ID:      "test",
-		Website: website,
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: website.URI.Path},
+			URI:           &url.URL{Path: filepath.Join(root, "builds", "test")},
+			ID:            "test",
+		},
 	}
 	if err := build.Execute(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	output, err := os.ReadFile(filepath.Join(build.URI.Path, "index.html"))
+	output, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "index.html"))
 	if err != nil {
 		t.Fatalf("ReadFile(index.html) error = %v", err)
 	}
@@ -120,7 +122,7 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 			t.Errorf("rendered bootstrap output contains stale directive %q:\n%s", stale, output)
 		}
 	}
-	feed, err := os.ReadFile(filepath.Join(build.URI.Path, "feeds", "blog.atom.xml"))
+	feed, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "feeds", "blog.atom.xml"))
 	if err != nil {
 		t.Fatalf("ReadFile(blog Atom feed) error = %v", err)
 	}
@@ -132,19 +134,29 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 }
 
 func (fixture buildSelectionFixture) build(page *Page, incremental bool) *Build {
+	pagePath := ""
+	if page != nil {
+		pagePath, _ = filepath.Rel(fixture.root, page.URI.Path)
+	}
 	return &Build{
-		URI:         &url.URL{Path: filepath.Join(fixture.root, "builds", "test")},
-		ID:          "test",
-		Website:     &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
-		Incremental: incremental,
-		Page:        page,
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+			URI:           &url.URL{Path: filepath.Join(fixture.root, "builds", "test")},
+			ID:            "test",
+			Incremental:   incremental,
+			Page:          pagePath,
+		},
+		Website: &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
 	}
 }
 
 func (fixture buildExecutionFixture) build() *Build {
 	return &Build{
-		URI:     &url.URL{Path: fixture.buildPath},
-		ID:      "test",
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+			URI:           &url.URL{Path: fixture.buildPath},
+			ID:            "test",
+		},
 		Website: &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
 	}
 }
@@ -236,8 +248,8 @@ func TestBuildLoadContextFullBuildRejectsPage(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadContext() error = nil")
 	}
-	if !strings.Contains(err.Error(), "build.page is only supported for incremental builds") {
-		t.Fatalf("LoadContext() error = %v, want build.page incremental error", err)
+	if !strings.Contains(err.Error(), "build.config.page is only supported for incremental builds") {
+		t.Fatalf("LoadContext() error = %v, want build.config.page incremental error", err)
 	}
 }
 
@@ -257,7 +269,7 @@ func TestBuildLoadContextIncrementalBuildRequiresPage(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadContext() error = nil")
 	}
-	if !strings.Contains(err.Error(), "build.page is required for incremental builds") {
+	if !strings.Contains(err.Error(), "build.config.page is required for incremental builds") {
 		t.Fatalf("LoadContext() error = %v, want required page error", err)
 	}
 }
@@ -316,7 +328,7 @@ func TestBuildLoadContextCanRebuildIncrementalSelection(t *testing.T) {
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("first LoadContext() error = %v", err)
 	}
-	build.Page = &Page{URI: &url.URL{Path: fixture.pages[1]}}
+	build.Config.Page, _ = filepath.Rel(fixture.root, fixture.pages[1])
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("second LoadContext() error = %v", err)
 	}
@@ -329,7 +341,9 @@ func TestBuildLoadContextUsesBuildConfig(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
 	build.Config = BuildConfig{
-		WebsiteConfig: WebsiteConfig{ContentDirectory: "custom-content"},
+		WebsiteConfig: WebsiteConfig{Path: build.Website.URI.Path, ContentDirectory: "custom-content"},
+		URI:           &url.URL{Path: fixture.buildPath},
+		ID:            "test",
 		BaseURL:       "https://preview.example.com/",
 		Verbose:       true,
 	}
@@ -351,7 +365,9 @@ func TestBuildLoadContextUsesBuildConfig(t *testing.T) {
 func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.Config = BuildConfig{DataFile: "build.json", LogFile: "build.log", Verbose: true}
+	build.Config.DataFile = "build.json"
+	build.Config.LogFile = "build.log"
+	build.Config.Verbose = true
 
 	if err := build.Execute(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -363,6 +379,9 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 	}
 	if got := string(logBytes); !strings.Contains(got, `build "test" starting`) {
 		t.Fatalf("build.log = %q, want build start log", got)
+	}
+	if got := string(logBytes); !strings.Contains(got, `website "`+fixture.sitePath+`" load`) {
+		t.Fatalf("build.log = %q, want website load log", got)
 	}
 
 	dataBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.json"))
@@ -411,6 +430,121 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildExecuteInitializesDeclarativeConfig(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := &Build{
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+		},
+	}
+
+	if err := build.Execute(t.Context()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if build.Config.ID == "" {
+		t.Fatal("Execute() did not generate a build ID")
+	}
+	if build.Config.URI == nil {
+		t.Fatal("Execute() did not generate a build URI")
+	}
+	wantRoot := filepath.Join(fixture.root, "builds", build.Config.ID)
+	if build.Config.URI.Path != wantRoot {
+		t.Fatalf("build URI = %q, want %q", build.Config.URI.Path, wantRoot)
+	}
+	if _, err := os.Stat(filepath.Join(wantRoot, "index.html")); err != nil {
+		t.Fatalf("default output missing: %v", err)
+	}
+}
+
+func TestBuildResolveURILeavesWebsiteUnset(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+		ID:            "build-1",
+	}}
+
+	uri, err := build.ResolveURI()
+	if err != nil {
+		t.Fatalf("ResolveURI() error = %v", err)
+	}
+	if build.Website != nil {
+		t.Fatalf("ResolveURI() website = %#v, want nil", build.Website)
+	}
+	if build.Config.URI != nil {
+		t.Fatalf("ResolveURI() build URI = %#v, want nil", build.Config.URI)
+	}
+	want := filepath.Join(fixture.root, "builds", "build-1")
+	if uri.Path != want {
+		t.Fatalf("ResolveURI() URI = %q, want %q", uri.Path, want)
+	}
+}
+
+func TestBuildExecuteResolvesWebsiteDirectory(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := &Build{
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.root},
+			ID:            "directory",
+		},
+	}
+
+	if err := build.Execute(t.Context()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got, want := build.Website.URI.Path, fixture.sitePath; got != want {
+		t.Fatalf("website URI = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(fixture.root, "builds", "directory", "index.html")); err != nil {
+		t.Fatalf("directory build output missing: %v", err)
+	}
+}
+
+func TestBuildExecutePreservesExplicitOutputURI(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	output := filepath.Join(t.TempDir(), "external-build")
+	build := &Build{
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+			ID:            "external",
+			URI:           &url.URL{Path: output},
+		},
+	}
+
+	if err := build.Execute(t.Context()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if build.Config.URI.Path != output {
+		t.Fatalf("build URI = %q, want explicit %q", build.Config.URI.Path, output)
+	}
+	if _, err := os.Stat(filepath.Join(output, "index.html")); err != nil {
+		t.Fatalf("explicit output missing: %v", err)
+	}
+}
+
+func TestBuildRejectsAbsolutePageExpression(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := &Build{
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+			Incremental:   true,
+			Page:          fixture.sitePath,
+			LogFile:       "build.log",
+		},
+	}
+
+	err := build.Execute(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "must be relative to the website root") {
+		t.Fatalf("Execute() error = %v, want relative page error", err)
+	}
+	logBytes, logErr := os.ReadFile(filepath.Join(build.Config.URI.Path, "build.log"))
+	if logErr != nil {
+		t.Fatalf("ReadFile(build.log) error = %v", logErr)
+	}
+	if got := string(logBytes); !strings.Contains(got, `build "`+build.Config.ID+`" failed: `+err.Error()) {
+		t.Fatalf("build.log = %q, want logged build error", got)
+	}
+}
+
 func TestBuildWritersEnforceVisibilityOnSelectedDependencies(t *testing.T) {
 	root := t.TempDir()
 	page := &Page{
@@ -422,10 +556,9 @@ func TestBuildWritersEnforceVisibilityOnSelectedDependencies(t *testing.T) {
 	}
 	pages := Pages{page}
 	build := &Build{
-		URI:         &url.URL{Path: filepath.Join(root, "builds", "test")},
-		Website:     &Website{BaseURL: "https://example.com/"},
-		Pages:       &pages,
-		Incremental: true,
+		Config:  BuildConfig{URI: &url.URL{Path: filepath.Join(root, "builds", "test")}, Incremental: true},
+		Website: &Website{BaseURL: "https://example.com/"},
+		Pages:   &pages,
 	}
 	if pages := build.buildPages(pages); len(pages) != 0 {
 		t.Fatalf("buildPages() = %#v, want no hidden dependency", pages)
@@ -433,7 +566,7 @@ func TestBuildWritersEnforceVisibilityOnSelectedDependencies(t *testing.T) {
 	if err := build.WritePage(page, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(build.URI.Path, "feed", "index.html")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(build.Config.URI.Path, "feed", "index.html")); !os.IsNotExist(err) {
 		t.Fatalf("hidden page was written, stat error = %v", err)
 	}
 	if got := build.Result().PageCount; got != 0 {
@@ -520,14 +653,14 @@ func TestBuildExecuteUnsetArtifactFilesWritesNoArtifacts(t *testing.T) {
 func TestBuildWriteFileLogsBuildRelativePathForExternalBuildRoot(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.ID = "build-1"
-	build.URI = &url.URL{Path: filepath.Join(t.TempDir(), "remote-output", build.ID)}
-	if err := os.MkdirAll(build.URI.Path, 0755); err != nil {
-		t.Fatalf("MkdirAll(build.URI.Path) error = %v", err)
+	build.Config.ID = "build-1"
+	build.Config.URI = &url.URL{Path: filepath.Join(t.TempDir(), "remote-output", build.Config.ID)}
+	if err := os.MkdirAll(build.Config.URI.Path, 0755); err != nil {
+		t.Fatalf("MkdirAll(build.Config.URI.Path) error = %v", err)
 	}
 
 	var log bytes.Buffer
-	if err := build.WriteFile(filepath.Join(build.URI.Path, "index.html"), []byte("home"), &log); err != nil {
+	if err := build.WriteFile(filepath.Join(build.Config.URI.Path, "index.html"), []byte("home"), &log); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	if got, want := log.String(), "writing 4 bytes to build-1/index.html\n"; got != want {
@@ -538,8 +671,8 @@ func TestBuildWriteFileLogsBuildRelativePathForExternalBuildRoot(t *testing.T) {
 func TestBuildCopyAssetLogsBuildRelativePathForExternalBuildRoot(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.ID = "build-1"
-	build.URI = &url.URL{Path: filepath.Join(t.TempDir(), "remote-output", build.ID)}
+	build.Config.ID = "build-1"
+	build.Config.URI = &url.URL{Path: filepath.Join(t.TempDir(), "remote-output", build.Config.ID)}
 	writeBuildSelectionFile(t, filepath.Join(fixture.root, "static", "favicon.png"), "icon")
 
 	var log bytes.Buffer
@@ -553,7 +686,7 @@ func TestBuildCopyAssetLogsBuildRelativePathForExternalBuildRoot(t *testing.T) {
 
 func TestBuildAbsolutePathUsesBuildRelativePaths(t *testing.T) {
 	root := t.TempDir()
-	build := &Build{URI: &url.URL{Path: filepath.Join(root, "build")}}
+	build := &Build{Config: BuildConfig{URI: &url.URL{Path: filepath.Join(root, "build")}}}
 	want := filepath.Join(root, "build", "logs", "build.log")
 
 	got, err := build.AbsolutePath("logs/build.log")
@@ -566,10 +699,10 @@ func TestBuildAbsolutePathUsesBuildRelativePaths(t *testing.T) {
 }
 
 func TestBuildPathHelpersUseAbsoluteBuildRoot(t *testing.T) {
-	build := &Build{URI: &url.URL{Path: filepath.Join("testdata", "site", ".builds", "test")}}
-	absRoot, err := filepath.Abs(build.URI.Path)
+	build := &Build{Config: BuildConfig{URI: &url.URL{Path: filepath.Join("testdata", "site", ".builds", "test")}}}
+	absRoot, err := filepath.Abs(build.Config.URI.Path)
 	if err != nil {
-		t.Fatalf("Abs(build.URI.Path) error = %v", err)
+		t.Fatalf("Abs(build.Config.URI.Path) error = %v", err)
 	}
 
 	absPath, err := build.AbsolutePath("posts/hello/index.html")
@@ -580,7 +713,7 @@ func TestBuildPathHelpersUseAbsoluteBuildRoot(t *testing.T) {
 		t.Fatalf("AbsolutePath() = %q, want %q", absPath, want)
 	}
 
-	relPath, err := build.RelativePath(filepath.Join(build.URI.Path, "posts", "hello", "index.html"))
+	relPath, err := build.RelativePath(filepath.Join(build.Config.URI.Path, "posts", "hello", "index.html"))
 	if err != nil {
 		t.Fatalf("RelativePath() error = %v", err)
 	}
@@ -600,7 +733,8 @@ func TestBuildValidateRejectsAbsoluteArtifactPaths(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			pages := Pages{&Page{}}
-			build := &Build{URI: &url.URL{Path: t.TempDir()}, Config: tc.config, Pages: &pages}
+			tc.config.URI = &url.URL{Path: t.TempDir()}
+			build := &Build{Config: tc.config, Pages: &pages}
 			err := build.Validate()
 			if err == nil {
 				t.Fatal("Validate() error = nil, want absolute artifact path error")
@@ -655,7 +789,8 @@ func TestBuildExecuteContinuesWhenDeploymentIgnoreFails(t *testing.T) {
 func TestBuildExecuteContinuesWhenBuildDataFails(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.Config = BuildConfig{DataFile: "reports/build.json", LogFile: "build.log"}
+	build.Config.DataFile = "reports/build.json"
+	build.Config.LogFile = "build.log"
 	if err := os.MkdirAll(fixture.buildPath, 0755); err != nil {
 		t.Fatalf("MkdirAll(buildPath) error = %v", err)
 	}

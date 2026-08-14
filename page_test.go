@@ -1553,7 +1553,7 @@ func TestBuildPathWithRelativeWebsiteRoot(t *testing.T) {
 	}
 	website := &Website{URI: &href.Href{URL: url.URL{Path: filepath.Join("testdata", "site", "site.yaml")}}}
 	build := &Build{
-		URI:     &url.URL{Path: filepath.Join("testdata", "site", ".builds", "test")},
+		Config:  BuildConfig{URI: &url.URL{Path: filepath.Join("testdata", "site", ".builds", "test")}},
 		Website: website,
 	}
 	page := &Page{URI: &url.URL{Path: sourcePath}, Path: "/about/"}
@@ -1578,27 +1578,27 @@ func TestBuildPathWithPagePath(t *testing.T) {
 		{
 			name: "index file path",
 			path: "/about/",
-			want: filepath.Join(build.URI.Path, "about", "index.html"),
+			want: filepath.Join(build.Config.URI.Path, "about", "index.html"),
 		},
 		{
 			name: "ugly url",
 			path: "/404.html",
-			want: filepath.Join(build.URI.Path, "404.html"),
+			want: filepath.Join(build.Config.URI.Path, "404.html"),
 		},
 		{
 			name: "nested ugly url",
 			path: "/posts/hello.html",
-			want: filepath.Join(build.URI.Path, "posts", "hello.html"),
+			want: filepath.Join(build.Config.URI.Path, "posts", "hello.html"),
 		},
 		{
 			name: "root path",
 			path: "/",
-			want: filepath.Join(build.URI.Path, "index.html"),
+			want: filepath.Join(build.Config.URI.Path, "index.html"),
 		},
 		{
 			name: "path without trailing slash",
 			path: "/tags/go",
-			want: filepath.Join(build.URI.Path, "tags", "go", "index.html"),
+			want: filepath.Join(build.Config.URI.Path, "tags", "go", "index.html"),
 		},
 	}
 

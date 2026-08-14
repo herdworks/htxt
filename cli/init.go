@@ -17,7 +17,7 @@ const defaultWebsiteDescription = "This website is powered by HyperTemplates."
 func InitCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Initialize a new website.",
+			Description: "Initialize a new website",
 			Usage: []string{
 				"{{ .Command }} [directory] [options]",
 			},

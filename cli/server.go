@@ -13,7 +13,7 @@ import (
 func ServerCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Local website preview server.",
+			Description: "Local website preview server",
 			Usage: []string{
 				"{{ .Command }} [options]",
 			},

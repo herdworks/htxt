@@ -254,7 +254,7 @@ func TestBuildContextExposesAllNamespaces(t *testing.T) {
 	// build with each namespace populated and verify all six keys are
 	// reachable, with values flowing through unchanged.
 	website, build := testWebsite(t)
-	build.ID = "test-build"
+	build.Config.ID = "test-build"
 
 	siteData := httt.TemplateData{"title": "My Site"}
 	website.TemplateData = &siteData

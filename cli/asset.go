@@ -13,7 +13,7 @@ import (
 func AssetCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Manage website assets.",
+			Description: "Manage website assets",
 			Usage: []string{
 				"{{ .Command }} [command] [options]",
 			},

@@ -19,7 +19,7 @@ var CLI = clic.CLI{
 func Command() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "The HyperTexting CLI.",
+			Description: "The HyperTexting static site generator.",
 			EnvPrefix:   "HTXT_",
 			Usage: []string{
 				"{{ .CLI }} [command] [options]",
@@ -32,6 +32,7 @@ func Command() clic.Command {
 		Commands: clic.MustCommandsFrom(
 			InitCommand,
 			BuildCommand,
+			DeployCommand,
 			ServerCommand,
 			DataCommand,
 			PageCommand,

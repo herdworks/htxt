@@ -3,9 +3,7 @@ package htxt
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
-	"path/filepath"
 
 	"github.com/herdworks/htxt/href"
 	"github.com/herdworks/htxtd"
@@ -90,26 +88,17 @@ func (server *Server) Build(ctx context.Context) (*Website, error) {
 	} else {
 		config.BaseURL = fmt.Sprintf("http://localhost:%d/", server.Port)
 	}
-	website := &Website{
-		URI: websiteURI,
-	}
-	if err := website.Load(false, &config.WebsiteConfig, nil); err != nil {
-		return nil, err
-	}
-	server.Directory = filepath.Join(website.BuildsDirPath(), server.BuildID)
+	config.WebsiteConfig.Path = websiteURI.Path
+	config.ID = server.BuildID
 	build := &Build{
-		URI: &url.URL{
-			Path: server.Directory,
-		},
-		ID:      server.BuildID,
-		Website: website,
-		Config:  config,
-		Preview: true,
+		Config: config,
 	}
+	build.Config.Preview = true
 	if err := build.Execute(ctx); err != nil {
 		return nil, err
 	}
-	return website, nil
+	server.Directory = build.Config.URI.Path
+	return build.Website, nil
 }
 
 func (server *Server) writeListening() {

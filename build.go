@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 
@@ -21,31 +22,35 @@ import (
 	"github.com/herdworks/httt/document"
 	htfiles "github.com/herdworks/httt/files"
 	htvariable "github.com/herdworks/httt/variable"
+	"github.com/herdworks/htxt/href"
 )
 
 type Build struct {
-	URI         *url.URL
-	ID          string
-	Website     *Website
-	Config      BuildConfig
-	Environment Environment
-	Incremental bool
-	Page        *Page // Incremental-build request input.
-	Preview     bool  // Include draft content in website and build output.
-	Plugins     htvariable.Plugins
+	// declarative config
+	Config BuildConfig
 
-	Pages  *Pages // Build state
-	Feeds  Feeds  // Build state
-	Status BuildStatus
+	// state
+	Environment Environment
+	Website     *Website
+	Plugins     htvariable.Plugins
+	Page        *Page
+	Pages       *Pages
+	Feeds       Feeds
+	Status      BuildStatus
 }
 
 type BuildConfig struct {
 	WebsiteConfig `json:",inline" yaml:",inline"`
 
-	BaseURL  string `json:"base_url,omitempty" yaml:"base_url,omitempty"`
-	DataFile string `json:"data_file,omitempty" yaml:"data_file,omitempty"`
-	LogFile  string `json:"log_file,omitempty" yaml:"log_file,omitempty"`
-	Verbose  bool   `json:"verbose,omitempty" yaml:"verbose,omitempty"`
+	URI         *url.URL `json:"-" yaml:"-"`
+	ID          string   `json:"id,omitempty" yaml:"id,omitempty"`
+	Incremental bool     `json:"incremental,omitempty" yaml:"incremental,omitempty"`
+	Page        string   `json:"page,omitempty" yaml:"page,omitempty"`
+	Preview     bool     `json:"preview,omitempty" yaml:"preview,omitempty"`
+	BaseURL     string   `json:"base_url,omitempty" yaml:"base_url,omitempty"`
+	DataFile    string   `json:"data_file,omitempty" yaml:"data_file,omitempty"`
+	LogFile     string   `json:"log_file,omitempty" yaml:"log_file,omitempty"`
+	Verbose     bool     `json:"verbose,omitempty" yaml:"verbose,omitempty"`
 }
 
 type BuildStatus struct {
@@ -80,8 +85,14 @@ func (w *synchronizedWriter) Write(p []byte) (int, error) {
 }
 
 func (build *Build) Execute(ctx context.Context) (err error) {
-	if build.URI == nil || build.URI.Path == "" {
-		return fmt.Errorf("build.uri is required")
+	if build == nil {
+		return fmt.Errorf("build is required")
+	}
+	if build.Config.ID == "" {
+		build.Config.ID = uuid.NewString()
+	}
+	if build.Config.URI, err = build.ResolveURI(); err != nil {
+		return err
 	}
 
 	// load an io.Writer for stdout & optional file logging
@@ -90,7 +101,18 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 		return err
 	}
 	defer wc() // close the log writer
-	fmt.Fprintf(w, "build %q starting\n", build.ID)
+	defer func() {
+		// ensure post-logger errors are written to w before returning
+		if err != nil {
+			_, _ = fmt.Fprintf(w, "build %q failed: %v\n", build.Config.ID, err)
+		}
+	}()
+	fmt.Fprintf(w, "build %q starting\n", build.Config.ID)
+
+	build.Website = &Website{URI: &href.Href{URL: url.URL{Path: build.Config.WebsiteConfig.Path}}}
+	if err = build.Website.ResolveURI(); err != nil {
+		return err
+	}
 
 	// measure build execution time from here
 	start := time.Now()
@@ -122,9 +144,35 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	result := build.Result()
 	build.writeBuildData(result, w)
 	build.writeDeploymentIgnore(w)
-	fmt.Fprintf(w, "build %q completed\n", build.ID)
+	fmt.Fprintf(w, "build %q completed\n", build.Config.ID)
 	build.logResult(result, w)
 	return nil
+}
+
+// ResolveURI does the minimum possible work to resolve a build URI for the
+// build logger.
+func (build *Build) ResolveURI() (*url.URL, error) {
+	if build == nil {
+		return nil, fmt.Errorf("build is required")
+	}
+
+	// early return the configured build.Config.URI if already set
+	if build.Config.URI != nil && build.Config.URI.Path != "" {
+		return build.Config.URI, nil
+	}
+
+	// resolve build URI from the provided WebsiteConfig.Path
+	var website = &Website{URI: &href.Href{URL: url.URL{Path: build.Config.WebsiteConfig.Path}}}
+	if err := website.ResolveURI(); err != nil {
+		return nil, err
+	}
+	if err := website.LoadConfig(&build.Config.WebsiteConfig); err != nil {
+		return nil, err
+	}
+	if build.Config.ID == "" {
+		return nil, fmt.Errorf("a build ID is required to auto-generate a build URI")
+	}
+	return &url.URL{Path: filepath.Join(website.BuildsDirPath(), build.Config.ID)}, nil
 }
 
 func (build *Build) logger() (w io.Writer, wc func(), err error) {
@@ -168,20 +216,18 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 		w = os.Stdout
 	}
 	build.Reset()
-	if !build.Incremental && build.Page != nil {
-		return fmt.Errorf("build.page is only supported for incremental builds")
-	}
-	if build.Incremental && build.Page == nil {
-		return fmt.Errorf("build.page is required for incremental builds")
-	}
-	if build.Incremental && build.Page.URI == nil {
-		return fmt.Errorf("build.page.uri is required for incremental builds")
-	}
-
-	// load website
-	if err = build.Website.Load(build.Config.Verbose, &build.Config.WebsiteConfig, w); err != nil {
+	if err := build.validateBuildScope(); err != nil {
 		return err
 	}
+	if build.Website == nil {
+		return fmt.Errorf("build.website is required")
+	}
+	if build.Website.TemplateData == nil {
+		if err = build.Website.Load(build.Config.Verbose, &build.Config.WebsiteConfig, w); err != nil {
+			return err
+		}
+	}
+
 	if err = build.Environment.Load(); err != nil {
 		return err
 	}
@@ -209,14 +255,17 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 	build.Website.TemplateData.Set("pages", sitemap.TemplateData())
 
 	// init build.Pages catalog
-	if !build.Incremental {
+	if !build.Config.Incremental {
 		pages := append(Pages(nil), build.Website.pages...)
 		build.Pages = &pages
 		build.Feeds = build.Website.feeds
 	} else {
-		page := build.Website.pages.PageByURI(build.Page.URI)
+		if err = build.resolvePage(); err != nil {
+			return err
+		}
+		page := build.Page
 		if page == nil {
-			return fmt.Errorf("build.page %q was not found in the website catalog", build.Page.URI)
+			return fmt.Errorf("build.config.page %q was not found in the website catalog", build.Config.Page)
 		}
 		selected := Pages{page}
 		build.Feeds = build.Website.PageFeeds(selected...)
@@ -236,6 +285,37 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 	// result into Website.GlobalData; per-page renders read these
 	// values back through TemplateData.
 	return generateComputedData(build, build.Config.Verbose, w)
+}
+
+func (build *Build) resolvePage() error {
+	root := filepath.Dir(build.Website.URI.Path)
+	page := build.Website.pages.PageByURI(&url.URL{Path: filepath.Join(root, build.Config.Page)})
+	if page == nil {
+		return fmt.Errorf("build.config.page %q was not found in the website catalog", build.Config.Page)
+	}
+	build.Page = page
+	return nil
+}
+
+func (build *Build) validateBuildScope() error {
+	if !build.Config.Incremental && build.Config.Page != "" {
+		return fmt.Errorf("build.config.page is only supported for incremental builds")
+	}
+	if build.Config.Page == "" {
+		if build.Config.Incremental {
+			return fmt.Errorf("build.config.page is required for incremental builds")
+		}
+		return nil
+	}
+	if filepath.IsAbs(build.Config.Page) {
+		return fmt.Errorf("build.config.page must be relative to the website root: %s", build.Config.Page)
+	}
+	relative, err := htfiles.CleanRelativePath(build.Config.Page)
+	if err != nil {
+		return fmt.Errorf("build.config.page must be relative to the website root: %w", err)
+	}
+	build.Config.Page = relative
+	return nil
 }
 
 // Context returns the unified template context that page templates
@@ -262,7 +342,7 @@ func (build *Build) Context() httt.TemplateData {
 			"release_date": LibReleaseDate.Format(time.RFC3339),
 		},
 		"build": httt.TemplateData{
-			"id":   build.ID,
+			"id":   build.Config.ID,
 			"date": time.Now().Format(time.RFC3339),
 		},
 		"env":   build.Environment.TemplateData,
@@ -280,7 +360,7 @@ func (build *Build) Reset() {
 
 func (build *Build) buildPages(incoming Pages) (pages Pages) {
 	var visibility []PageVisibilityKind = BuildVisible
-	if build.Preview {
+	if build.Config.Preview {
 		visibility = BuildPreviewVisible
 	}
 	for _, page := range incoming {
@@ -292,10 +372,10 @@ func (build *Build) buildPages(incoming Pages) (pages Pages) {
 }
 
 func (build *Build) Validate() (err error) {
-	if build.URI == nil {
+	if build.Config.URI == nil {
 		return fmt.Errorf("build.uri is required")
 	}
-	if build.URI.Path == "" {
+	if build.Config.URI.Path == "" {
 		return fmt.Errorf("build.uri is required")
 	}
 	if filepath.IsAbs(build.Config.DataFile) {
@@ -339,7 +419,7 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 	if err != nil {
 		return err
 	}
-	if build.Incremental {
+	if build.Config.Incremental {
 		assets = assets.FilterSource(AssetSourcePage)
 	}
 	for _, asset := range assets {
@@ -386,7 +466,7 @@ func (build *Build) copyAsset(srcPath string, relPath string, w io.Writer) (err 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "copying \"%s\" to \"%s\"\n", build.Website.RelativePath(srcPath), filepath.ToSlash(filepath.Join(build.ID, dstRelPath)))
+	fmt.Fprintf(w, "copying \"%s\" to \"%s\"\n", build.Website.RelativePath(srcPath), filepath.ToSlash(filepath.Join(build.Config.ID, dstRelPath)))
 	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
 	}
@@ -453,7 +533,7 @@ func (build *Build) WritePage(page *Page, w io.Writer) (err error) {
 	}
 
 	var visibility []PageVisibilityKind = BuildVisible
-	if build.Preview {
+	if build.Config.Preview {
 		visibility = BuildPreviewVisible
 	}
 	if !slices.Contains(visibility, page.Visibility) {
@@ -486,7 +566,7 @@ func (build *Build) WriteFile(fileName string, fileBytes []byte, w io.Writer) (e
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), filepath.ToSlash(filepath.Join(build.ID, fileRelPath)))
+	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), filepath.ToSlash(filepath.Join(build.Config.ID, fileRelPath)))
 	if file, err = os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
 		return err
 	}
@@ -518,8 +598,8 @@ func (build *Build) BuildPath(page *Page) string {
 	}
 	filePath, err := build.AbsolutePath(relPath)
 	if err != nil {
-		if build != nil && build.URI != nil {
-			return filepath.Join(build.URI.Path, relPath)
+		if build != nil && build.Config.URI != nil {
+			return filepath.Join(build.Config.URI.Path, relPath)
 		}
 		return relPath
 	}
@@ -527,7 +607,7 @@ func (build *Build) BuildPath(page *Page) string {
 }
 
 func (build *Build) AbsolutePath(relPath string) (string, error) {
-	if build == nil || build.URI == nil || build.URI.Path == "" {
+	if build == nil || build.Config.URI == nil || build.Config.URI.Path == "" {
 		return "", fmt.Errorf("build.uri is required")
 	}
 	if filepath.IsAbs(relPath) {
@@ -537,7 +617,7 @@ func (build *Build) AbsolutePath(relPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	root, err := filepath.Abs(build.URI.Path)
+	root, err := filepath.Abs(build.Config.URI.Path)
 	if err != nil {
 		return "", err
 	}
@@ -545,10 +625,10 @@ func (build *Build) AbsolutePath(relPath string) (string, error) {
 }
 
 func (build *Build) RelativePath(path string) (string, error) {
-	if build == nil || build.URI == nil || build.URI.Path == "" {
+	if build == nil || build.Config.URI == nil || build.Config.URI.Path == "" {
 		return "", fmt.Errorf("build.uri is required")
 	}
-	root, err := filepath.Abs(build.URI.Path)
+	root, err := filepath.Abs(build.Config.URI.Path)
 	if err != nil {
 		return "", err
 	}
@@ -582,14 +662,14 @@ func (*Build) logResult(result BuildResult, w io.Writer) {
 
 func (build *Build) Result() BuildResult {
 	result := BuildResult{
-		ID:         build.ID,
+		ID:         build.Config.ID,
 		Assets:     build.Status.Assets.Map(),
 		Tags:       build.Status.Tags.Map(),
 		Bytes:      build.Status.Bytes.Map(),
 		DurationMS: build.Status.DurationMS,
 	}
-	if build.URI != nil {
-		result.URI = build.URI.String()
+	if build.Config.URI != nil {
+		result.URI = build.Config.URI.String()
 	}
 	result.PageCount = build.Status.Pages.Map()["written"]
 	result.FeedCount = build.Status.Feeds.Map()["written"]
@@ -635,7 +715,7 @@ func (build *Build) writeDeploymentIgnore(w io.Writer) {
 	if len(paths) == 0 {
 		return
 	}
-	if build.URI == nil || build.URI.Path == "" {
+	if build.Config.URI == nil || build.Config.URI.Path == "" {
 		fmt.Fprintf(w, "deployment ignore skipped: build.uri is required\n")
 		return
 	}
@@ -772,7 +852,7 @@ func TemplateData(build *Build, website *Website, page *Page) (data *httt.Templa
 		"release_date": LibReleaseDate.Format(time.RFC3339),
 	})
 	data.Set("build", httt.TemplateData{
-		"id":   build.ID,
+		"id":   build.Config.ID,
 		"date": time.Now().Format(time.RFC3339),
 	})
 	data.Set("env", build.Environment.TemplateData)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 
 	"github.com/herdworks/clic"
 	"github.com/herdworks/httt/scripting"
@@ -15,7 +14,7 @@ import (
 func DataCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Manage website template data.",
+			Description: "Manage website template data",
 			Usage: []string{
 				"{{ .Command }} [command] [options]",
 			},
@@ -87,7 +86,12 @@ func loadBuildContext(execution *clic.Execution) (*htxt.Build, error) {
 	if err != nil {
 		return nil, err
 	}
-	build := &htxt.Build{URI: &url.URL{}, ID: "inspect", Website: &htxt.Website{URI: uri}}
+	build := &htxt.Build{
+		Config: htxt.BuildConfig{
+			ID: "inspect",
+		},
+		Website: &htxt.Website{URI: uri},
+	}
 	writer := io.Writer(io.Discard)
 	if execution.Options["verbose"].BoolValue() {
 		writer = execution.Stderr

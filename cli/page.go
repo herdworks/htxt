@@ -13,7 +13,7 @@ import (
 func PageCommand() clic.Command {
 	return clic.Command{
 		Meta: clic.CommandMeta{
-			Description: "Manage website pages.",
+			Description: "Manage website pages",
 			Usage: []string{
 				"{{ .Command }} [command] [options]",
 			},
