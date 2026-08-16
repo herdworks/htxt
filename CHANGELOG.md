@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.44.2 (2026-08-15)
+
 * **Added:** Page feed entries may omit `source` when their alias matches a
   configured `site.feeds` identifier. Automatic tag feed entries still require
   an explicit `tag`.
