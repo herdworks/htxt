@@ -219,7 +219,7 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			}
 			for name, want := range map[string]string{
 				"github.com/herdworks/htxt.Attachment": "A linked or embedded resource associated with a page.",
-				"github.com/herdworks/htxt.FeedData":   "References exactly one configured site feed or automatic tag feed for page template data.",
+				"github.com/herdworks/htxt.FeedData":   "References a configured site feed or automatic tag feed for page template data. An empty entry uses its alias as the site feed identifier.",
 			} {
 				definition := schema["$defs"].(map[string]any)[name].(map[string]any)
 				if definition["description"] != want {

@@ -9,7 +9,7 @@ go 1.26.2
 require (
 	github.com/herdworks/clic v0.4.2
 	github.com/herdworks/hsync v0.5.2
-	github.com/herdworks/httt v0.37.0
+	github.com/herdworks/httt v0.39.0
 	github.com/herdworks/htup v0.27.1
 	github.com/herdworks/htxtd v0.1.0
 	github.com/herdworks/hyperfeed v0.27.0

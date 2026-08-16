@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** Page feed entries may omit `source` when their alias matches a
+  configured `site.feeds` identifier. Automatic tag feed entries still require
+  an explicit `tag`.
+* **Fixed:** The built-in head fragment omits the canonical-link element when
+  a page has no canonical URL.
+* Updated the `httt` dependency to v0.39.0.
+
 ## v0.44.1 (2026-08-14)
 
 * **Fixed:** `htxt server` and composed `hyperctl server` commands again

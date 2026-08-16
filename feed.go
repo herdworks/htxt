@@ -125,7 +125,7 @@ func (FeedData) JSONSchemaSummary() string {
 }
 
 func (FeedData) JSONSchemaDescription() string {
-	return "References exactly one configured site feed or automatic tag feed for page template data."
+	return "References a configured site feed or automatic tag feed for page template data. An empty entry uses its alias as the site feed identifier."
 }
 
 func (data FeedData) Validate(website *Website) (FeedKind, error) {
@@ -177,6 +177,9 @@ func (dataset *FeedDataset) UnmarshalYAML(value *yaml.Node) error {
 	}
 	result := FeedDataset{UserFeed: {}, TagFeed: {}}
 	for alias, data := range flat {
+		if data.Source == "" && data.Tag == "" {
+			data.Source = alias
+		}
 		if (data.Source == "") == (data.Tag == "") {
 			return fmt.Errorf("page.feeds.%s requires exactly one of source or tag", alias)
 		}

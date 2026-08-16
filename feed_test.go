@@ -20,6 +20,29 @@ func TestFeedDatasetUnmarshalsFlatAliases(t *testing.T) {
 	}
 }
 
+func TestFeedDatasetDefaultsEmptyAliasToSource(t *testing.T) {
+	var dataset FeedDataset
+	if err := yaml.Unmarshal([]byte("main:\n"), &dataset); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := dataset[UserFeed]["main"].Source, "main"; got != want {
+		t.Fatalf("main source = %q, want %q", got, want)
+	}
+	if err := dataset.Validate(&Website{Feeds: FeedConfigs{"main": {}}}); err != nil {
+		t.Fatalf("FeedDataset.Validate() error = %v", err)
+	}
+}
+
+func TestFeedDatasetDefaultSourceMustBeConfigured(t *testing.T) {
+	var dataset FeedDataset
+	if err := yaml.Unmarshal([]byte("main:\n"), &dataset); err != nil {
+		t.Fatal(err)
+	}
+	if err := dataset.Validate(&Website{}); err == nil || !strings.Contains(err.Error(), `source "main" is not configured`) {
+		t.Fatalf("FeedDataset.Validate() error = %v, want unconfigured source error", err)
+	}
+}
+
 func TestFeedDatasetMarshalsFlatAliasesWithoutRuntimeData(t *testing.T) {
 	dataset := FeedDataset{UserFeed: {"latest": {Source: "blog", URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []httt.TemplateData{{"title": "one"}}}}, TagFeed: {"tasty": {Tag: "tasty"}}}
 	bytes, err := yaml.Marshal(dataset)
