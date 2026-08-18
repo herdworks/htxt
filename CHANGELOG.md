@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Updated `github.com/herdworks/htup` to v0.27.2, and `github.com/herdworks/hsync` to v0.5.3
+
 ## v0.44.2 (2026-08-15)
 
 * **Added:** Page feed entries may omit `source` when their alias matches a
