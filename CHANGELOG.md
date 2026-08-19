@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.45.1 (2026-08-19)
+
 * Updated `github.com/herdworks/hsync` to v0.6.4 w/ improved push/pull no-op output
 
 ## v0.45.0 (2026-08-19)
