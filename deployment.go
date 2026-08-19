@@ -15,10 +15,10 @@ type Deployment struct {
 	Config DeploymentConfig
 
 	// Runtime
-	Secrets    htup.SecretsProviders
-	Writer     io.Writer
-	Build      *Build
-	deployment *hsync.Deployment
+	Secrets   htup.SecretsProviders
+	Writer    io.Writer
+	Build     *Build
+	operation *hsync.Deployment
 }
 
 type DeploymentConfig struct {
@@ -37,16 +37,18 @@ func (d *Deployment) Execute(ctx context.Context) (err error) {
 	if err := d.Build.Execute(ctx); err != nil {
 		return err
 	}
-	if d.deployment, err = d.configure(); err != nil {
+	if d.operation, err = d.configure(); err != nil {
 		return err
 	}
 	if err = d.logDefaultEnvironment(); err != nil {
 		return err
 	}
 	deploymentContext := htup.WithDeploymentRoot(ctx, d.Build.Config.URI.Path)
-	deploymentContext, writer, finish := htup.BeginDeployment(deploymentContext, d.deployment.Environment, d.Writer)
+	deploymentContext, writer, finish := htup.BeginDeployment(deploymentContext, d.operation.Deployment.Environment, d.Writer)
 	defer func() { finish(err) }()
-	return d.deployment.Execute(deploymentContext, d.Secrets, writer)
+	d.operation.Writer = writer
+	d.operation.Secrets = d.Secrets
+	return d.operation.Run(deploymentContext)
 }
 
 func (d *Deployment) configure() (*hsync.Deployment, error) {
@@ -77,13 +79,13 @@ func (d *Deployment) configure() (*hsync.Deployment, error) {
 	if d.Build.Config.Incremental {
 		kind = htup.IncrementalDeployment
 	}
-	return &hsync.Deployment{
+	return hsync.NewDeployment(&htup.Deployment{
 		ConfigPath:  d.Build.Website.URI.Path,
 		PayloadPath: d.Build.Config.URI.Path,
 		Providers:   providers,
 		Environment: environment,
 		Kind:        kind,
-	}, nil
+	}), nil
 }
 
 func (d *Deployment) validate() error {

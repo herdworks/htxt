@@ -27,14 +27,14 @@ func TestDeploymentSelectsEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("configure() error = %v", err)
 	}
-	if deployment.Environment != "production" {
-		t.Fatalf("environment = %q, want production", deployment.Environment)
+	if deployment.Deployment.Environment != "production" {
+		t.Fatalf("environment = %q, want production", deployment.Deployment.Environment)
 	}
-	if len(deployment.Providers) != 0 {
-		t.Fatalf("providers = %#v, want environment selection", deployment.Providers)
+	if len(deployment.Deployment.Providers) != 0 {
+		t.Fatalf("providers = %#v, want environment selection", deployment.Deployment.Providers)
 	}
-	if deployment.Kind != htup.CompleteDeployment {
-		t.Fatalf("kind = %q, want complete", deployment.Kind)
+	if deployment.Deployment.Kind != htup.CompleteDeployment {
+		t.Fatalf("kind = %q, want complete", deployment.Deployment.Kind)
 	}
 	if _, err := (&Deployment{Build: build, Config: DeploymentConfig{Environment: "missing"}}).configure(); err == nil {
 		t.Fatal("configure() missing environment error = nil")
@@ -56,8 +56,8 @@ func TestDeploymentSelectsDefaultEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("configure() error = %v", err)
 	}
-	if configured.Environment != "default" {
-		t.Fatalf("environment = %q, want default", configured.Environment)
+	if configured.Deployment.Environment != "default" {
+		t.Fatalf("environment = %q, want default", configured.Deployment.Environment)
 	}
 }
 
@@ -77,14 +77,14 @@ func TestDeploymentSelectsProvidersAndIncrementalKind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("configure() error = %v", err)
 	}
-	if deployment.Environment != "" {
-		t.Fatalf("environment = %q, want empty direct-provider selection", deployment.Environment)
+	if deployment.Deployment.Environment != "" {
+		t.Fatalf("environment = %q, want empty direct-provider selection", deployment.Deployment.Environment)
 	}
-	if len(deployment.Providers) != 2 {
-		t.Fatalf("providers = %#v, want pages and assets", deployment.Providers)
+	if len(deployment.Deployment.Providers) != 2 {
+		t.Fatalf("providers = %#v, want pages and assets", deployment.Deployment.Providers)
 	}
-	if deployment.Kind != htup.IncrementalDeployment {
-		t.Fatalf("kind = %q, want incremental", deployment.Kind)
+	if deployment.Deployment.Kind != htup.IncrementalDeployment {
+		t.Fatalf("kind = %q, want incremental", deployment.Deployment.Kind)
 	}
 }
 
