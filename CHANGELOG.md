@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Update `github.com/herdworks/hsync` to v0.6.1 with breaking manifest.index_path change
+
 ## v0.44.3 (2026-08-18)
 
 * Updated `github.com/herdworks/htup` to v0.27.2, and `github.com/herdworks/hsync` to v0.5.3
