@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -77,6 +78,43 @@ func TestServerRunCancellationJoinsPreviewServerAndWatcher(t *testing.T) {
 	cancel()
 	if err := waitForServerRun(t, errors); err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	assertPreviewListenerReusable(t, port)
+}
+
+func TestServerRunWithReadySignalsBoundListener(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	port := reserveServerPort(t)
+	server := newPreviewServer(t, fixture, port)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan *url.URL, 1)
+	errors := make(chan error, 1)
+	go func() {
+		errors <- server.RunWithReady(ctx, func(value *url.URL) {
+			ready <- value
+		})
+	}()
+
+	select {
+	case value := <-ready:
+		if want := "http://127.0.0.1:" + strconv.Itoa(port) + "/"; value.String() != want {
+			t.Fatalf("ready URL = %q, want %q", value, want)
+		}
+	case err := <-errors:
+		t.Fatalf("RunWithReady() returned before readiness: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("RunWithReady() did not report readiness")
+	}
+
+	cancel()
+	if err := waitForServerRun(t, errors); err != nil {
+		t.Fatalf("RunWithReady() error = %v, want nil", err)
+	}
+	select {
+	case value := <-ready:
+		t.Fatalf("unexpected second readiness: %#v", value)
+	default:
 	}
 	assertPreviewListenerReusable(t, port)
 }
