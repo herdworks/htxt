@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.45.2 (2026-08-20)
+
 * **Changed:** Preview `Server.Run` now shares cancellation between its watcher
   and HTTP server, joining both before it returns after cancellation or either
   component's failure. A forced HTTP shutdown is returned as an error.
