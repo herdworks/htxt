@@ -1,6 +1,7 @@
 package htxt
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -239,7 +240,7 @@ export default function() {
 	siteData := httt.TemplateData{"title": "Hello"}
 	website.TemplateData = &siteData
 
-	if err := generateComputedData(build, false, io.Discard); err != nil {
+	if err := generateComputedData(context.Background(), build, false, io.Discard); err != nil {
 		t.Fatalf("generateComputedData: %v", err)
 	}
 

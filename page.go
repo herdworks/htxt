@@ -1232,9 +1232,15 @@ func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, 
 	if cache == nil {
 		cache = Pages{}
 	}
-	taskgroup, _ := errgroup.WithContext(ctx)
+	taskgroup, taskContext := errgroup.WithContext(ctx)
 	for i := range pages {
+		if err = errgroupCancellationCheckpoint(taskContext, taskgroup); err != nil {
+			return err
+		}
 		taskgroup.Go(func() error {
+			if err := contextCancellationCheckpoint(taskContext); err != nil {
+				return err
+			}
 			if cache.Contains(pages[i]) {
 				pages[i] = cache.PageByURI(pages[i].URI)
 			}

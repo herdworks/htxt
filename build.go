@@ -129,13 +129,19 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	if err = build.Validate(); err != nil {
 		return err
 	}
+	if err = contextCancellationCheckpoint(ctx); err != nil {
+		return err
+	}
 
 	// perform build
-	writegroup, _ := errgroup.WithContext(ctx)
-	writegroup.Go(func() error { return build.WriteAssets(ctx, w) })
-	writegroup.Go(func() error { return build.WriteFeeds(ctx, w) })
-	writegroup.Go(func() error { return build.WritePages(ctx, w) })
+	writegroup, writeContext := errgroup.WithContext(ctx)
+	writegroup.Go(func() error { return build.WriteAssets(writeContext, w) })
+	writegroup.Go(func() error { return build.WriteFeeds(writeContext, w) })
+	writegroup.Go(func() error { return build.WritePages(writeContext, w) })
 	if err = writegroup.Wait(); err != nil {
+		return err
+	}
+	if err = contextCancellationCheckpoint(ctx); err != nil {
 		return err
 	}
 
@@ -284,7 +290,7 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 	// static-data context (including site.pages) and installs its
 	// result into Website.GlobalData; per-page renders read these
 	// values back through TemplateData.
-	return generateComputedData(build, build.Config.Verbose, w)
+	return generateComputedData(ctx, build, build.Config.Verbose, w)
 }
 
 func (build *Build) resolvePage() error {
@@ -414,6 +420,11 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 		w = os.Stdout
 	}
 
+	// Don't perform asset discovery if the context has already been cancelled.
+	if err = contextCancellationCheckpoint(ctx); err != nil {
+		return err
+	}
+
 	assetPages := build.buildPages(*build.Pages)
 	assets, err := AssetEntries(&build.Website.Theme, build.Website, assetPages)
 	if err != nil {
@@ -425,10 +436,18 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 	for _, asset := range assets {
 		build.Status.Assets.Increment(1, build.AssetCounterKey(asset.RelPath))
 	}
-	taskgroup, _ := errgroup.WithContext(ctx)
+	taskgroup, taskContext := errgroup.WithContext(ctx)
 	for _, asset := range assets {
+		// Do not dispatch another asset after observing cancellation; join active workers first.
+		if err = errgroupCancellationCheckpoint(taskContext, taskgroup); err != nil {
+			return err
+		}
 		asset := asset
 		taskgroup.Go(func() error {
+			// Do not begin this copy if cancellation won the dispatch-to-worker race.
+			if err := contextCancellationCheckpoint(taskContext); err != nil {
+				return err
+			}
 			return build.copyAsset(asset.SourcePath, asset.RelPath, w)
 		})
 	}
@@ -503,12 +522,26 @@ func (build *Build) WriteFeeds(ctx context.Context, w io.Writer) (err error) {
 	if w == nil {
 		w = os.Stdout
 	}
+	// Stop before feed rendering when this phase has already been cancelled.
+	if err = contextCancellationCheckpoint(ctx); err != nil {
+		return err
+	}
 
-	taskgroup, _ := errgroup.WithContext(ctx)
+	taskgroup, taskContext := errgroup.WithContext(ctx)
 	for _, catalog := range build.Feeds {
 		for _, feed := range catalog {
+			// Do not dispatch another feed after observing cancellation; join active workers first.
+			if err = errgroupCancellationCheckpoint(taskContext, taskgroup); err != nil {
+				return err
+			}
 			feed := feed
-			taskgroup.Go(func() error { return feed.WriteAtom(build, w) })
+			taskgroup.Go(func() error {
+				// Do not begin this feed render if cancellation won the dispatch-to-worker race.
+				if err := contextCancellationCheckpoint(taskContext); err != nil {
+					return err
+				}
+				return feed.WriteAtom(build, w)
+			})
 		}
 	}
 	return taskgroup.Wait()
@@ -518,10 +551,22 @@ func (build *Build) WritePages(ctx context.Context, w io.Writer) (err error) {
 	if w == nil {
 		w = os.Stdout
 	}
+	// Stop before page rendering when this phase has already been cancelled.
+	if err = contextCancellationCheckpoint(ctx); err != nil {
+		return err
+	}
 
-	taskgroup, _ := errgroup.WithContext(ctx)
+	taskgroup, taskContext := errgroup.WithContext(ctx)
 	for i := range *build.Pages {
+		// Do not dispatch another page after observing cancellation; join active workers first.
+		if err = errgroupCancellationCheckpoint(taskContext, taskgroup); err != nil {
+			return err
+		}
 		taskgroup.Go(func() error {
+			// Do not begin this page render if cancellation won the dispatch-to-worker race.
+			if err := contextCancellationCheckpoint(taskContext); err != nil {
+				return err
+			}
 			return build.WritePage((*build.Pages)[i], w)
 		})
 	}
@@ -810,6 +855,27 @@ func byteSize(bytes int) string {
 		return fmt.Sprintf("%.1f MB", float64(bytes)/1_048_576)
 	}
 	return fmt.Sprintf("%.3f GB", float64(bytes)/1_073_741_824)
+}
+
+// contextCancellationCheckpoint returns ctx's cancellation error, if any.
+//
+// we don't normally like thin wrappers, but this is an exception to the rule;
+// checking <some context>.Err() multiple times in a process is less legible
+// than clearly demarcated "context cancellation checkpoints", thus this helper.
+func contextCancellationCheckpoint(ctx context.Context) error {
+	return ctx.Err()
+}
+
+// errgroupCancellationCheckpoint stops dispatch when ctx is cancelled and joins any
+// work already started by taskgroup before returning.
+func errgroupCancellationCheckpoint(ctx context.Context, taskgroup *errgroup.Group) error {
+	if err := ctx.Err(); err != nil {
+		if groupErr := taskgroup.Wait(); groupErr != nil {
+			return groupErr
+		}
+		return err
+	}
+	return nil
 }
 
 // NamespacedTemplateData loads the website's static data files, deriving

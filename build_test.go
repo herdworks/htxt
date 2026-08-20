@@ -70,6 +70,38 @@ config:
 	}
 }
 
+func TestBuildWritePhasesDoNotStartAfterCancellation(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := &Build{
+		Config: BuildConfig{
+			WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+			URI:           &url.URL{Path: fixture.buildPath},
+			ID:            "test",
+		},
+		Website: &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}},
+	}
+	if err := build.Website.ResolveURI(); err != nil {
+		t.Fatalf("ResolveURI() error = %v", err)
+	}
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("LoadContext() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for name, write := range map[string]func(context.Context, io.Writer) error{
+		"assets": build.WriteAssets,
+		"feeds":  build.WriteFeeds,
+		"pages":  build.WritePages,
+	} {
+		if err := write(ctx, io.Discard); err != context.Canceled {
+			t.Errorf("Write%s() error = %v, want context.Canceled", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(fixture.buildPath, "index.html")); !os.IsNotExist(err) {
+		t.Errorf("cancelled write created page output: %v", err)
+	}
+}
+
 func writeBuildSelectionFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

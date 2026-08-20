@@ -21,7 +21,9 @@ type Server struct {
 }
 
 // Run builds the website, serves it, and rebuilds after source changes.
-func (server *Server) Run(ctx context.Context) error {
+func (server *Server) Run(ctx context.Context) (err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if err := server.Validate(); err != nil {
 		return err
 	}
@@ -36,22 +38,28 @@ func (server *Server) Run(ctx context.Context) error {
 	}
 
 	server.LiveReload = true
+	if contextCancellationCheckpoint(ctx) != nil {
+		return nil
+	}
 	listener, err := server.Server.Listen()
 	if err != nil {
 		return err
 	}
 	server.writeListening()
-	serverErrors := make(chan error, 1)
-	go func() {
-		serverErrors <- server.Server.Serve(ctx, listener)
-	}()
-	watcherErrors := make(chan error, 1)
-	go func() {
-		watcherErrors <- server.Watcher.Run(ctx)
+	errors := make(chan error, 2)
+	completed := 0
+	go func() { errors <- server.Server.Serve(ctx, listener) }()
+	go func() { errors <- server.Watcher.Run(ctx) }()
+	defer func() {
+		cancel()
+		err = drainServerErrors(errors, completed, err)
 	}()
 	for {
 		select {
 		case <-server.Watcher.Changes():
+			if contextCancellationCheckpoint(ctx) != nil {
+				return nil
+			}
 			website, err = server.Build(ctx)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "build failed: %v\n", err)
@@ -60,9 +68,9 @@ func (server *Server) Run(ctx context.Context) error {
 			server.Watcher.SetWebsite(website)
 			server.Reload()
 			server.writeListening()
-		case err = <-watcherErrors:
-			return err
-		case err = <-serverErrors:
+		case err = <-errors:
+			completed++
+			cancel()
 			return err
 		case <-ctx.Done():
 			return nil
@@ -125,4 +133,17 @@ func (server *Server) Validate() error {
 		return fmt.Errorf("server.bind is required")
 	}
 	return nil
+}
+
+// drainServerErrors waits for all server-owned components and preserves the
+// first failure when no earlier result has been selected.
+func drainServerErrors(errors <-chan error, completed int, err error) error {
+	for completed < 2 {
+		componentErr := <-errors
+		completed++
+		if err == nil && componentErr != nil {
+			err = componentErr
+		}
+	}
+	return err
 }

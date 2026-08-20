@@ -317,7 +317,7 @@ func loadStaticData(website *Website, dataDir string, config *httt.HyperMarkConf
 // have been discovered/loaded — site.pages, in particular, is what gives
 // computed scripts their primary purpose. The build's Execute method
 // invokes this between Pages.ResolveTemplateData and WritePages.
-func generateComputedData(build *Build, verbose bool, w io.Writer) error {
+func generateComputedData(ctx context.Context, build *Build, verbose bool, w io.Writer) error {
 	if build.Website == nil {
 		return nil
 	}
@@ -349,6 +349,9 @@ func generateComputedData(build *Build, verbose bool, w io.Writer) error {
 	bindings := map[string]any(build.Context())
 
 	for _, p := range paths {
+		if err := contextCancellationCheckpoint(ctx); err != nil {
+			return err
+		}
 		absPath, err := htfiles.LocalPath(dataDir, p)
 		if err != nil {
 			return err
@@ -364,7 +367,7 @@ func generateComputedData(build *Build, verbose bool, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("computed data %q: %w", p, err)
 		}
-		result, err := plugin.Run(context.Background())
+		result, err := plugin.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("computed data %q: %w", p, err)
 		}

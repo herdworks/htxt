@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Changed:** Preview `Server.Run` now shares cancellation between its watcher
+  and HTTP server, joining both before it returns after cancellation or either
+  component's failure. A forced HTTP shutdown is returned as an error.
+* **Changed:** Builds propagate their context into computed-data plugins and
+  check cancellation before beginning each build phase or dispatching another
+  build worker.
+* Updated dependencies to `github.com/herdworks/httt` v0.39.1,
+  `github.com/herdworks/htxtd` v0.2.0, and
+  `github.com/herdworks/hyperfeed` v0.28.0.
+
 ## v0.45.1 (2026-08-19)
 
 * Updated `github.com/herdworks/hsync` to v0.6.4 w/ improved push/pull no-op output
