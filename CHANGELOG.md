@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.45.3 (2026-08-20)
+
 * **Added:** `Server.RunWithReady` calls a one-shot readiness callback with the
   bound HTTP URL after the initial build succeeds and its listener is bound,
   while retaining `Server.Run` behavior.
