@@ -44,8 +44,8 @@ func (c *Counter) Map() map[string]int {
 	return values
 }
 
-func (c Counter) MarshalJSON() ([]byte, error) {
-	return json.Marshal((&c).Map())
+func (c *Counter) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Map())
 }
 
 func (c *Counter) UnmarshalJSON(data []byte) error {
