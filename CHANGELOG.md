@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.45.4 (2026-08-21)
+
 * Fixed `Counter` JSON serialization to avoid copying its synchronization lock.
 * Added `SyncConfigManager`, which derives effective website synchronization
   policy from a site configuration and its configured theme while retaining

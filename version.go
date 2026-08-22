@@ -6,6 +6,6 @@ import (
 
 // ============================ Package Variables ============================
 var (
-	LibVersion        = "v0.45.3"
-	LibReleaseDate, _ = time.Parse(time.RFC3339, "2026-08-20T16:00:00-07:00") // Usage: LibReleaseDate.Format(time.RFC3339)
+	LibVersion        = "v0.45.4"
+	LibReleaseDate, _ = time.Parse(time.RFC3339, "2026-08-21T22:00:00-07:00") // Usage: LibReleaseDate.Format(time.RFC3339)
 )
