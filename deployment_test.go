@@ -12,15 +12,32 @@ import (
 	href "github.com/herdworks/htxt/href"
 )
 
+func newDeploymentTestWebsite(t *testing.T) *Website {
+	t.Helper()
+	root := t.TempDir()
+	path := filepath.Join(root, "site.yaml")
+	writeBuildSelectionFile(t, path, `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+sync:
+  remote: https://example.com
+`)
+	writeBuildSelectionFile(t, filepath.Join(root, "theme.json"), "{}")
+	return &Website{URI: &href.Href{URL: url.URL{Path: path}}}
+}
+
 func TestDeploymentSelectsEnvironment(t *testing.T) {
 	production := htup.Environment{"pages"}
+	website := newDeploymentTestWebsite(t)
+	website.Providers = htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}}
+	website.Environments = map[string]*htup.Environment{"production": &production}
 	build := &Build{
-		Config: BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/production"}},
-		Website: &Website{
-			URI:          &href.Href{URL: url.URL{Path: "/tmp/site/site.yaml"}},
-			Providers:    htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}},
-			Environments: map[string]*htup.Environment{"production": &production},
-		},
+		Config:  BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/production"}},
+		Website: website,
 	}
 
 	deployment, err := (&Deployment{Build: build, Config: DeploymentConfig{Environment: "production"}}).configure()
@@ -43,13 +60,12 @@ func TestDeploymentSelectsEnvironment(t *testing.T) {
 
 func TestDeploymentSelectsDefaultEnvironment(t *testing.T) {
 	defaultEnvironment := htup.Environment{"pages"}
+	website := newDeploymentTestWebsite(t)
+	website.Providers = htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}}
+	website.Environments = map[string]*htup.Environment{"default": &defaultEnvironment}
 	build := &Build{
-		Config: BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/default"}},
-		Website: &Website{
-			URI:          &href.Href{URL: url.URL{Path: "/tmp/site/site.yaml"}},
-			Providers:    htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}},
-			Environments: map[string]*htup.Environment{"default": &defaultEnvironment},
-		},
+		Config:  BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/default"}},
+		Website: website,
 	}
 
 	configured, err := (&Deployment{Build: build}).configure()
@@ -62,15 +78,14 @@ func TestDeploymentSelectsDefaultEnvironment(t *testing.T) {
 }
 
 func TestDeploymentSelectsProvidersAndIncrementalKind(t *testing.T) {
+	website := newDeploymentTestWebsite(t)
+	website.Providers = htup.HostingProviders{
+		"pages":  {Kind: "git", Endpoint: "https://example.com"},
+		"assets": {Kind: "s3", Endpoint: "https://example.com"},
+	}
 	build := &Build{
-		Config: BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/incremental"}, Incremental: true},
-		Website: &Website{
-			URI: &href.Href{URL: url.URL{Path: "/tmp/site/site.yaml"}},
-			Providers: htup.HostingProviders{
-				"pages":  {Kind: "git", Endpoint: "https://example.com"},
-				"assets": {Kind: "s3", Endpoint: "https://example.com"},
-			},
-		},
+		Config:  BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/incremental"}, Incremental: true},
+		Website: website,
 	}
 
 	deployment, err := (&Deployment{Build: build, Config: DeploymentConfig{Providers: []string{"pages", "assets"}}}).configure()
@@ -96,13 +111,12 @@ func TestDeploymentRejectsInvalidTarget(t *testing.T) {
 }
 
 func TestDeploymentAllowsPreviewBuild(t *testing.T) {
+	website := newDeploymentTestWebsite(t)
+	website.Providers = htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}}
+	website.Environments = map[string]*htup.Environment{"default": ptr(htup.Environment{"pages"})}
 	build := &Build{
-		Config: BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/preview"}, Preview: true},
-		Website: &Website{
-			URI:          &href.Href{URL: url.URL{Path: "/tmp/site/site.yaml"}},
-			Providers:    htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}},
-			Environments: map[string]*htup.Environment{"default": ptr(htup.Environment{"pages"})},
-		},
+		Config:  BuildConfig{URI: &url.URL{Path: "/tmp/site/builds/preview"}, Preview: true},
+		Website: website,
 	}
 	if _, err := (&Deployment{Build: build}).configure(); err != nil {
 		t.Fatalf("configure() error = %v", err)
@@ -118,6 +132,8 @@ byline:
   name: Test Author
 config:
   theme: theme.json
+sync:
+  remote: https://example.com
 providers:
   default:
     kind: missing

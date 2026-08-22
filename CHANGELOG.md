@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Fixed hsync-backed website deployments with omitted sync policy fields to
+  retain `SyncConfigManager`'s effective configuration through reconciliation.
+* Updated `github.com/herdworks/hsync` to v0.7.1.
+
 ## v0.45.4 (2026-08-21)
 
 * Fixed `Counter` JSON serialization to avoid copying its synchronization lock.

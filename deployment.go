@@ -79,13 +79,17 @@ func (d *Deployment) configure() (*hsync.Deployment, error) {
 	if d.Build.Config.Incremental {
 		kind = htup.IncrementalDeployment
 	}
-	return hsync.NewDeployment(&htup.Deployment{
+	config, err := (SyncConfigManager{}).Read("", d.Build.Website.URI.Path)
+	if err != nil {
+		return nil, err
+	}
+	return hsync.NewDeploymentWithConfig(&htup.Deployment{
 		ConfigPath:  d.Build.Website.URI.Path,
 		PayloadPath: d.Build.Config.URI.Path,
 		Providers:   providers,
 		Environment: environment,
 		Kind:        kind,
-	}), nil
+	}, config), nil
 }
 
 func (d *Deployment) validate() error {

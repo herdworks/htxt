@@ -8,7 +8,7 @@ go 1.26.2
 // first-party dependencies
 require (
 	github.com/herdworks/clic v0.4.3
-	github.com/herdworks/hsync v0.7.0
+	github.com/herdworks/hsync v0.7.1
 	github.com/herdworks/httt v0.39.1
 	github.com/herdworks/htup v0.27.3
 	github.com/herdworks/htxtd v0.2.0
