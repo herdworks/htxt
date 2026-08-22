@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Added `SyncConfigManager`, which derives effective website synchronization
+  policy from a site configuration and its configured theme while retaining
+  explicit sync settings.
+* Changed `SyncConfigManager.Initialize` to materialize that effective policy
+  on verbose initialization and preserve YAML top-level ordering while moving
+  `sync` to the end of the site configuration.
+* Updated `github.com/herdworks/hsync` to v0.7.0 and
+  `github.com/herdworks/clic` to v0.4.3.
+
 ## v0.45.3 (2026-08-20)
 
 * **Added:** `Server.RunWithReady` calls a one-shot readiness callback with the
