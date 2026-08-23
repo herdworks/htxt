@@ -22,6 +22,7 @@ import (
 	"github.com/herdworks/httt/document"
 	htfiles "github.com/herdworks/httt/files"
 	htvariable "github.com/herdworks/httt/variable"
+	"github.com/herdworks/htup"
 	"github.com/herdworks/htxt/href"
 )
 
@@ -149,7 +150,7 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	build.Status.DurationMS = int(time.Since(start).Milliseconds())
 	result := build.Result()
 	build.writeBuildData(result, w)
-	build.writeDeploymentIgnore(w)
+	build.writeDeploymentInstructions(w)
 	fmt.Fprintf(w, "build %q completed\n", build.Config.ID)
 	build.logResult(result, w)
 	return nil
@@ -748,64 +749,70 @@ func (build *Build) writeBuildData(result BuildResult, w io.Writer) {
 	}
 }
 
-func (build *Build) writeDeploymentIgnore(w io.Writer) {
+func (build *Build) writeDeploymentInstructions(w io.Writer) {
 	if w == nil {
 		w = os.Stdout
 	}
 	paths, err := build.deploymentIgnoreArtifactPaths()
 	if err != nil {
-		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
 		return
 	}
 	if len(paths) == 0 {
 		return
 	}
 	if build.Config.URI == nil || build.Config.URI.Path == "" {
-		fmt.Fprintf(w, "deployment ignore skipped: build.uri is required\n")
+		fmt.Fprintf(w, "deployment instructions skipped: build.uri is required\n")
 		return
 	}
 
-	ignorePath, err := build.AbsolutePath(".deploymentignore")
+	instructionsPath, err := build.AbsolutePath(htup.DeploymentInstructionsFile)
 	if err != nil {
-		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
 		return
 	}
-	root := filepath.Dir(ignorePath)
+	root := filepath.Dir(instructionsPath)
+	instructions, err := htup.LoadDeploymentInstructions(root)
+	if err != nil {
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
+		return
+	}
 	seen := map[string]bool{}
-	lines := []string{}
-	if data, err := os.ReadFile(ignorePath); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			entry := normalizeDeploymentIgnoreEntry(line)
-			if entry == "" || seen[entry] {
-				continue
-			}
-			seen[entry] = true
-			lines = append(lines, entry)
-		}
-	} else if !os.IsNotExist(err) {
-		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
-		return
-	}
-
-	changed := false
-	for _, path := range paths {
-		entry := normalizeDeploymentIgnoreEntry(path)
+	normalizedIgnore := make([]string, 0, len(instructions.Ignore)+len(paths))
+	for _, configured := range instructions.Ignore {
+		entry := normalizeDeploymentInstructionIgnoreEntry(configured)
 		if entry == "" || seen[entry] {
 			continue
 		}
 		seen[entry] = true
-		lines = append(lines, entry)
+		normalizedIgnore = append(normalizedIgnore, entry)
+	}
+	instructions.Ignore = normalizedIgnore
+
+	changed := false
+	for _, path := range paths {
+		entry := normalizeDeploymentInstructionIgnoreEntry(path)
+		if entry == "" || seen[entry] {
+			continue
+		}
+		seen[entry] = true
+		instructions.Ignore = append(instructions.Ignore, entry)
 		changed = true
 	}
 	if !changed {
 		return
 	}
 	if err := os.MkdirAll(root, 0755); err != nil {
-		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
 		return
 	}
-	if err := build.WriteFile(ignorePath, []byte(strings.Join(lines, "\n")+"\n"), w); err != nil {
-		fmt.Fprintf(w, "deployment ignore skipped: %v\n", err)
+	data, err := json.Marshal(instructions)
+	if err != nil {
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
+		return
+	}
+	if err := build.WriteFile(instructionsPath, data, w); err != nil {
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
 	}
 }
 
@@ -837,7 +844,7 @@ func (status *BuildStatus) Reset() {
 	status.DurationMS = 0
 }
 
-func normalizeDeploymentIgnoreEntry(entry string) string {
+func normalizeDeploymentInstructionIgnoreEntry(entry string) string {
 	entry = strings.TrimSpace(entry)
 	entry = strings.TrimLeft(entry, "/")
 	entry = filepath.ToSlash(entry)

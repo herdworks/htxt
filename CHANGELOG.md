@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed configured build-artifact exclusions to be written to
+  `.deployment.json` instead of the legacy `.deploymentignore` file, preserving
+  existing deployment declarations for hsync to compose with its synchronization
+  state rules.
+* Updated `github.com/herdworks/hsync` to v0.7.2.
+
 ## v0.45.5 (2026-08-22)
 
 * Fixed hsync-backed website deployments with omitted sync policy fields to

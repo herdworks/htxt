@@ -450,14 +450,19 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 		t.Fatalf("bytes pages = %d, want %d", data.Bytes["pages"], len("<h1>Home</h1>"))
 	}
 
-	ignoreBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deploymentignore"))
+	instructionsBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deployment.json"))
 	if err != nil {
-		t.Fatalf("ReadFile(.deploymentignore) error = %v", err)
+		t.Fatalf("ReadFile(.deployment.json) error = %v", err)
 	}
-	ignore := string(ignoreBytes)
+	var instructions struct {
+		Ignore []string `json:"ignore"`
+	}
+	if err := json.Unmarshal(instructionsBytes, &instructions); err != nil {
+		t.Fatalf("Unmarshal(.deployment.json) error = %v", err)
+	}
 	for _, want := range []string{"build.json", "build.log"} {
-		if !strings.Contains(ignore, want) {
-			t.Fatalf(".deploymentignore = %q, want %q", ignore, want)
+		if !slices.Contains(instructions.Ignore, want) {
+			t.Fatalf(".deployment.json ignore = %#v, want %q", instructions.Ignore, want)
 		}
 	}
 }
@@ -675,7 +680,7 @@ func TestBuildExecuteUnsetArtifactFilesWritesNoArtifacts(t *testing.T) {
 	if err := build.Execute(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	for _, rel := range []string{"build.json", "build.log", ".deploymentignore"} {
+	for _, rel := range []string{"build.json", "build.log", ".deployment.json"} {
 		if _, err := os.Stat(filepath.Join(fixture.buildPath, rel)); !os.IsNotExist(err) {
 			t.Fatalf("%s exists or stat error = %v, want not exist", rel, err)
 		}
@@ -795,12 +800,12 @@ func TestBuildExecuteRejectsInvalidDataFileBeforeWritingOutput(t *testing.T) {
 	}
 }
 
-func TestBuildExecuteContinuesWhenDeploymentIgnoreFails(t *testing.T) {
+func TestBuildExecuteContinuesWhenDeploymentInstructionsFail(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
 	build.Config.LogFile = "build.log"
-	if err := os.MkdirAll(filepath.Join(fixture.buildPath, ".deploymentignore"), 0755); err != nil {
-		t.Fatalf("MkdirAll(.deploymentignore) error = %v", err)
+	if err := os.MkdirAll(filepath.Join(fixture.buildPath, ".deployment.json"), 0755); err != nil {
+		t.Fatalf("MkdirAll(.deployment.json) error = %v", err)
 	}
 
 	if err := build.Execute(context.Background()); err != nil {
@@ -813,8 +818,8 @@ func TestBuildExecuteContinuesWhenDeploymentIgnoreFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(build.log) error = %v", err)
 	}
-	if got := string(logBytes); !strings.Contains(got, "deployment ignore skipped:") {
-		t.Fatalf("build.log = %q, want deployment ignore warning", got)
+	if got := string(logBytes); !strings.Contains(got, "deployment instructions skipped:") {
+		t.Fatalf("build.log = %q, want deployment instructions warning", got)
 	}
 }
 
@@ -845,20 +850,20 @@ func TestBuildExecuteContinuesWhenBuildDataFails(t *testing.T) {
 	}
 }
 
-func TestBuildWriteDeploymentIgnoreLogsBuildRelativePath(t *testing.T) {
+func TestBuildWriteDeploymentInstructionsLogsBuildRelativePath(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
 	build.Config.DataFile = filepath.Join("artifacts", "build.json")
 
 	var log bytes.Buffer
-	build.writeDeploymentIgnore(&log)
+	build.writeDeploymentInstructions(&log)
 
-	if got, want := log.String(), "writing 21 bytes to test/.deploymentignore\n"; got != want {
+	if got, want := log.String(), "writing 35 bytes to test/.deployment.json\n"; got != want {
 		t.Fatalf("log = %q, want %q", got, want)
 	}
 }
 
-func TestBuildExecuteAddsNestedArtifactToDeploymentIgnore(t *testing.T) {
+func TestBuildExecuteAddsNestedArtifactToDeploymentInstructions(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
 	build.Config.DataFile = filepath.Join("artifacts", "build.json")
@@ -866,11 +871,11 @@ func TestBuildExecuteAddsNestedArtifactToDeploymentIgnore(t *testing.T) {
 	if err := build.Execute(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	ignoreBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deploymentignore"))
+	instructionsBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deployment.json"))
 	if err != nil {
-		t.Fatalf("ReadFile(.deploymentignore) error = %v", err)
+		t.Fatalf("ReadFile(.deployment.json) error = %v", err)
 	}
-	if got := string(ignoreBytes); !strings.Contains(got, "artifacts/build.json") {
-		t.Fatalf(".deploymentignore = %q, want artifacts/build.json", got)
+	if !strings.Contains(string(instructionsBytes), "artifacts/build.json") {
+		t.Fatalf(".deployment.json = %q, want artifacts/build.json", instructionsBytes)
 	}
 }
