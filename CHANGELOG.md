@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.45.6 (2026-08-22)
+
 * Changed configured build-artifact exclusions to be written to
   `.deployment.json` instead of the legacy `.deploymentignore` file, preserving
   existing deployment declarations for hsync to compose with its synchronization
