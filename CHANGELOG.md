@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.45.7 (2026-08-24)
+
 * Fixed configured build logs to write to their artifact file before mirroring
   to stdout, so GUI callers without stdout retain build output.
 
