@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/url"
 	"os"
@@ -15,6 +16,14 @@ import (
 	"github.com/herdworks/httt"
 	"github.com/herdworks/htxt/href"
 )
+
+type failingWriter struct {
+	err error
+}
+
+func (w failingWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
 
 type buildSelectionFixture struct {
 	root     string
@@ -67,6 +76,23 @@ config:
 		root:      root,
 		sitePath:  filepath.Join(root, "site.yaml"),
 		buildPath: filepath.Join(root, "builds", "test"),
+	}
+}
+
+func TestBuildLogWriterWritesArtifactBeforeUnavailableStdout(t *testing.T) {
+	stdoutErr := errors.New("stdout unavailable")
+	var log bytes.Buffer
+	writer := io.MultiWriter(&log, failingWriter{err: stdoutErr})
+
+	n, err := writer.Write([]byte("build log\n"))
+	if !errors.Is(err, stdoutErr) {
+		t.Fatalf("Write() error = %v, want stdout error", err)
+	}
+	if n != 0 {
+		t.Fatalf("Write() bytes = %d, want 0", n)
+	}
+	if got := log.String(); got != "build log\n" {
+		t.Fatalf("artifact log = %q, want build log", got)
 	}
 }
 

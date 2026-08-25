@@ -204,7 +204,10 @@ func (build *Build) logger() (w io.Writer, wc func(), err error) {
 			return nil, nil, err
 		}
 		wc = func() { _ = file.Close() }
-		w = io.MultiWriter(w, file)
+		// The configured artifact is the durable log sink. Every caller can
+		// request it, while GUI hosts may not provide stdout. io.MultiWriter
+		// stops at its first failed write, so the file must be first.
+		w = io.MultiWriter(file, w)
 	}
 	return &synchronizedWriter{w: w}, wc, nil
 }
