@@ -1,6 +1,7 @@
 package htxt
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -435,7 +436,7 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 		return err
 	}
 	if build.Config.Incremental {
-		assets = assets.FilterSource(AssetSourcePage)
+		assets = assets.FilterSource(PageAsset)
 	}
 	for _, asset := range assets {
 		build.Status.Assets.Increment(1, build.AssetCounterKey(asset.RelPath))
@@ -452,7 +453,7 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 			if err := contextCancellationCheckpoint(taskContext); err != nil {
 				return err
 			}
-			return build.copyAsset(asset.SourcePath, asset.RelPath, w)
+			return build.copyAsset(asset, w)
 		})
 	}
 	return taskgroup.Wait()
@@ -462,7 +463,7 @@ func (build *Build) CopyAsset(asset Asset, w io.Writer) error {
 	if w == nil {
 		w = os.Stdout
 	}
-	return build.copyAsset(asset.SourcePath, asset.RelPath, w)
+	return build.copyAsset(asset, w)
 }
 
 func (build *Build) CopyWebsiteAsset(relPath string, w io.Writer) error {
@@ -474,30 +475,46 @@ func (build *Build) CopyWebsiteAsset(relPath string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return build.copyAsset(srcPath, relPath, w)
+	return build.copyAsset(Asset{Source: WebsiteAsset, RelPath: filepath.ToSlash(relPath), SourcePath: srcPath}, w)
 }
 
-func (build *Build) copyAsset(srcPath string, relPath string, w io.Writer) (err error) {
-	var srcFile *os.File
+func (build *Build) copyAsset(asset Asset, w io.Writer) (err error) {
+	var srcFile io.ReadCloser
+	var found bool
+	var resourceBytes []byte
 	var dstPath string
 	var dstFile *os.File
 	var dstFileBytesWritten int64
-	if dstPath, err = build.Website.AssetBuildPath(build, relPath); err != nil {
+	if dstPath, err = build.Website.AssetBuildPath(build, asset.RelPath); err != nil {
 		return err
 	}
 	dstRelPath, err := build.RelativePath(dstPath)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "copying \"%s\" to \"%s\"\n", build.Website.RelativePath(srcPath), filepath.ToSlash(filepath.Join(build.Config.ID, dstRelPath)))
+	sourcePath := asset.SourcePath
+	switch asset.Source {
+	case BuiltinAsset:
+		hydrateThemeBuiltins(&build.Website.Theme)
+		resourceBytes, found, err = build.Website.Theme.BuiltinResourceBytes(filepath.ToSlash(filepath.Join("static", asset.RelPath)))
+		if err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("builtin asset %q not found", asset.SourcePath)
+		}
+		srcFile = io.NopCloser(bytes.NewReader(resourceBytes))
+	default:
+		sourcePath = build.Website.RelativePath(sourcePath)
+		if srcFile, err = os.Open(asset.SourcePath); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(w, "copying \"%s\" to \"%s\"\n", sourcePath, filepath.ToSlash(filepath.Join(build.Config.ID, dstRelPath)))
 	if err = os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
 		return err
 	}
-	if srcFile, err = os.Open(srcPath); err != nil {
-		return err
-	} else {
-		defer srcFile.Close()
-	}
+	defer srcFile.Close()
 	if dstFile, err = os.Create(dstPath); err != nil {
 		return err
 	} else {
@@ -909,6 +926,7 @@ func ThemeTemplateData(website *Website, config *httt.HyperMarkConfig, verbose b
 }
 
 func NewTemplateDocument(website *Website, page *Page) (doc *document.Document, err error) {
+	hydrateThemeBuiltins(&website.Theme)
 	var layout *html.Node
 	if layout, err = website.Theme.LayoutHTML(page.LayoutRef); err != nil {
 		return nil, err

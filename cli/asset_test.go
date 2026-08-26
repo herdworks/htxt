@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"net/url"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/herdworks/clic"
+	"github.com/herdworks/htxt"
+	href "github.com/herdworks/htxt/href"
 )
 
 func TestAssetCommandRegistersAssetWorkflow(t *testing.T) {
@@ -38,5 +43,20 @@ func TestAssetCommandPositionalArgumentValidation(t *testing.T) {
 				t.Fatalf("validator error = %v, valid = %t", err, test.valid)
 			}
 		})
+	}
+}
+
+func TestAssetListUsesWebsiteRelativeDiskSources(t *testing.T) {
+	root := t.TempDir()
+	website := &htxt.Website{URI: &href.Href{URL: url.URL{Path: filepath.Join(root, "site.yaml")}}}
+	list := assetList{
+		website: website,
+		assets: htxt.Assets{
+			{Source: htxt.WebsiteAsset, SourcePath: filepath.Join(root, "static", "site.css"), PublicPath: "/site.css"},
+			{Source: htxt.BuiltinAsset, SourcePath: "builtins/static/css/reset.css", PublicPath: "/css/reset.css"},
+		},
+	}
+	if got, want := list.ColumnValues("source"), []string{"static/site.css", "builtins/static/css/reset.css"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ColumnValues(source) = %#v, want %#v", got, want)
 	}
 }

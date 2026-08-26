@@ -21,22 +21,33 @@ import (
 
 // FeedConfig is declarative configuration for site.feeds
 type FeedConfig struct {
-	Include []FeedSelector `json:"include,omitempty" yaml:"include,omitempty" jsonschema:"description=Selectors that include pages in this feed."`
-	Exclude []FeedSelector `json:"exclude,omitempty" yaml:"exclude,omitempty" jsonschema:"description=Selectors that exclude pages from this feed."`
-	Sort    []FeedSort     `json:"sort,omitempty" yaml:"sort,omitempty" jsonschema:"description=Ordered feed entry sort rules."`
-	HTMLURL string         `json:"html_url,omitempty" yaml:"html_url,omitempty" jsonschema:"format=uri-reference,description=HTML alternate URL for this feed."`
+	Metadata FeedMeta       `json:"metadata,omitempty" yaml:"metadata,omitempty" jsonschema:"description=Atom feed metadata overrides."`
+	Include  []FeedSelector `json:"include,omitempty" yaml:"include,omitempty" jsonschema:"description=Selectors that include pages in this feed."`
+	Exclude  []FeedSelector `json:"exclude,omitempty" yaml:"exclude,omitempty" jsonschema:"description=Selectors that exclude pages from this feed."`
+	Sort     []FeedSort     `json:"sort,omitempty" yaml:"sort,omitempty" jsonschema:"description=Ordered feed entry sort rules."`
+	HTMLURL  string         `json:"html_url,omitempty" yaml:"html_url,omitempty" jsonschema:"format=uri-reference,description=HTML alternate URL for this feed."`
 }
 type FeedConfigs map[string]FeedConfig
 
+// FeedMeta defines Atom feed identity fields.
+type FeedMeta struct {
+	Title       string `json:"title,omitempty" yaml:"title,omitempty" jsonschema:"description=Atom feed title."`
+	Description string `json:"description,omitempty" yaml:"description,omitempty" jsonschema:"description=Atom feed subtitle."`
+	Author      string `json:"author,omitempty" yaml:"author,omitempty" jsonschema:"description=Atom feed author name."`
+	Email       string `json:"email,omitempty" yaml:"email,omitempty" jsonschema:"format=email,description=Atom feed author email address."`
+	Favicon     string `json:"favicon,omitempty" yaml:"favicon,omitempty" jsonschema:"format=uri-reference,description=Atom feed author favicon URL."`
+}
+
 // Feed is the resolved feed catalog containing pages and template data
 type Feed struct {
-	Kind    FeedKind
-	ID      string
-	Pages   Pages
-	Items   []httt.TemplateData
-	URL     url.URL
-	HTMLURL url.URL
-	config  FeedConfig
+	Metadata FeedMeta
+	Kind     FeedKind
+	ID       string
+	Pages    Pages
+	Items    []httt.TemplateData
+	URL      url.URL
+	HTMLURL  url.URL
+	config   FeedConfig
 }
 
 type Feeds map[FeedKind]map[string]Feed
@@ -73,7 +84,17 @@ func (FeedConfig) JSONSchemaName() string    { return "feed-config" }
 func (FeedConfig) JSONSchemaSummary() string { return "Defines an Atom feed in site.feeds." }
 
 func (FeedConfig) JSONSchemaDescription() string {
-	return "Defines the selectors, ordering, and HTML alternate URL for a site feed."
+	return "Defines Atom metadata, selectors, ordering, and an HTML alternate URL for a site feed."
+}
+
+func (FeedMeta) JSONSchemaTitle() string {
+	return "Atom feed metadata"
+}
+func (FeedMeta) JSONSchemaName() string    { return "feed-meta" }
+func (FeedMeta) JSONSchemaSummary() string { return "Atom feed identity metadata." }
+
+func (FeedMeta) JSONSchemaDescription() string {
+	return "Optional Atom feed metadata that overrides the website defaults."
 }
 
 func (configs FeedConfigs) Validate(website *Website) error {
@@ -84,12 +105,17 @@ func (configs FeedConfigs) Validate(website *Website) error {
 		if id == strings.Trim(strings.TrimPrefix(website.Config.TagPath, "/"), "/") {
 			return fmt.Errorf("site.feeds identifier %q collides with tag namespace", id)
 		}
-		if len(config.Include) == 1 && len(config.Include[0].Tags) == 1 && config.Include[0].Path == "" && len(config.Exclude) == 0 && len(config.Sort) == 0 && config.HTMLURL == "" {
+		if len(config.Include) == 1 && len(config.Include[0].Tags) == 1 && config.Include[0].Path == "" && len(config.Exclude) == 0 && len(config.Sort) == 0 && config.HTMLURL == "" && config.Metadata == (FeedMeta{}) {
 			return fmt.Errorf("site.feeds.%s duplicates an automatic tag feed", id)
 		}
 		if config.HTMLURL != "" {
 			if _, err := website.ResolveHref(config.HTMLURL); err != nil {
 				return fmt.Errorf("site.feeds.%s html_url: %w", id, err)
+			}
+		}
+		if config.Metadata.Favicon != "" {
+			if _, err := website.ResolveHref(config.Metadata.Favicon); err != nil {
+				return fmt.Errorf("site.feeds.%s metadata.favicon: %w", id, err)
 			}
 		}
 		for _, selector := range append(append([]FeedSelector{}, config.Include...), config.Exclude...) {
@@ -242,9 +268,16 @@ func (feeds Feeds) Feed(kind FeedKind, id string) (Feed, bool) {
 
 func (feed Feed) Atom(website *Website) *atom.Atom {
 	result := &atom.Atom{
-		ID: feed.URL.String(), Title: feed.ID,
+		ID: feed.URL.String(), Title: feed.Metadata.Title, Subtitle: feed.Metadata.Description,
 		Links:   []atom.Link{{Href: feed.URL.String(), Rel: "self", Type: "application/atom+xml"}},
 		Updated: atom.TimeStamp(feed.Pages.LastModified().Format(time.RFC3339)),
+	}
+	if feed.Metadata.Author != "" {
+		favicon := feed.Metadata.Favicon
+		if resolved, err := website.ResolveHref(favicon); err == nil {
+			favicon = resolved.String()
+		}
+		result.Authors = []*atom.Author{{Name: feed.Metadata.Author, Email: feed.Metadata.Email, Favicon: favicon}}
 	}
 	if feed.HTMLURL.String() != "" {
 		result.Links = append(result.Links, atom.Link{Href: feed.HTMLURL.String(), Rel: "alternate", Type: "text/html"})
@@ -342,9 +375,43 @@ func (website *Website) Feed(kind FeedKind, id string, config FeedConfig) Feed {
 	if kind == TagFeed {
 		parts = append(parts, strings.Trim(website.Config.TagPath, "/"))
 	}
-	parts = append(parts, id+".atom.xml")
+	parts = append(parts, id+".xml")
 	path := "/" + strings.Join(parts, "/")
-	return Feed{Kind: kind, ID: id, URL: *website.URL().ResolveReference(&url.URL{Path: path}), config: config}
+	metadata := website.feedMetadata(config.Metadata)
+	if kind == TagFeed {
+		metadata.Title, metadata.Description = tagFeedIdentity(id)
+	}
+	return Feed{Metadata: metadata, Kind: kind, ID: id, URL: *website.URL().ResolveReference(&url.URL{Path: path}), config: config}
+}
+
+func (website *Website) feedMetadata(overrides FeedMeta) FeedMeta {
+	metadata := FeedMeta{
+		Title:       website.Title,
+		Description: website.Description,
+		Author:      website.Byline.Name,
+		Email:       website.Byline.Email,
+		Favicon:     website.Byline.Favicon,
+	}
+	if overrides.Title != "" {
+		metadata.Title = overrides.Title
+	}
+	if overrides.Description != "" {
+		metadata.Description = overrides.Description
+	}
+	if overrides.Author != "" {
+		metadata.Author = overrides.Author
+	}
+	if overrides.Email != "" {
+		metadata.Email = overrides.Email
+	}
+	if overrides.Favicon != "" {
+		metadata.Favicon = overrides.Favicon
+	}
+	return metadata
+}
+
+func tagFeedIdentity(tag string) (title, description string) {
+	return "#" + tag, "Everything tagged with #" + tag
 }
 
 func (website *Website) feedHTMLURL(value string) url.URL {

@@ -6,8 +6,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +36,48 @@ func TestServerBuildUsesStablePreviewDirectory(t *testing.T) {
 	}
 	if got, want := website.BaseURL, "http://localhost:8080/"; got != want {
 		t.Fatalf("BaseURL = %q, want %q", got, want)
+	}
+}
+
+func TestServerBuildRefreshesThemeResourceCache(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	if err := os.Remove(filepath.Join(fixture.root, "content", "index.html")); err != nil {
+		t.Fatalf("Remove(index.html) error = %v", err)
+	}
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "content", "index.md"), "---\ntitle: Home\nredirect: /\n---\n\nHome")
+	layoutPath := filepath.Join(fixture.root, "layouts", "default.html")
+	writeBuildSelectionFile(t, layoutPath, "<html><body>first</body></html>")
+	server := Server{
+		Server: htxtd.Server{
+			Bind: "0.0.0.0",
+			Port: 8080,
+		},
+		WebsiteURI: mustHref(t, fixture.sitePath),
+		BuildID:    "development",
+	}
+
+	if _, err := server.Build(context.Background()); err != nil {
+		t.Fatalf("first Build() error = %v", err)
+	}
+	outputPath := filepath.Join(server.Directory, "index.html")
+	output, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(first index.html) error = %v", err)
+	}
+	if !strings.Contains(string(output), "<body>first</body>") {
+		t.Fatalf("first output = %q", output)
+	}
+
+	writeBuildSelectionFile(t, layoutPath, "<html><body>second</body></html>")
+	if _, err := server.Build(context.Background()); err != nil {
+		t.Fatalf("second Build() error = %v", err)
+	}
+	output, err = os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(second index.html) error = %v", err)
+	}
+	if !strings.Contains(string(output), "<body>second</body>") || strings.Contains(string(output), "<body>first</body>") {
+		t.Fatalf("second output = %q", output)
 	}
 }
 

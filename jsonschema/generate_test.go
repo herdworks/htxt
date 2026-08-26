@@ -178,9 +178,19 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			if got := byline["required"]; len(got.([]any)) != 1 || got.([]any)[0] != "name" {
 				t.Fatalf("Website byline required = %#v", got)
 			}
+			feeds := properties["feeds"].(map[string]any)["additionalProperties"].(map[string]any)
+			if got, want := feeds["$ref"], "#/$defs/github.com~1herdworks~1htxt.FeedConfig"; got != want {
+				t.Fatalf("Website feeds schema = %#v, want %q", feeds, want)
+			}
+			feedConfig := schema["$defs"].(map[string]any)["github.com/herdworks/htxt.FeedConfig"].(map[string]any)
+			metadata := feedConfig["properties"].(map[string]any)["metadata"].(map[string]any)
+			if got, want := metadata["$ref"], "#/$defs/github.com~1herdworks~1htxt.FeedMeta"; got != want {
+				t.Fatalf("Website feed metadata schema = %#v, want %q", metadata, want)
+			}
 			for name, want := range map[string]string{
 				"github.com/herdworks/htxt.Byline":         "Attribution details for a website, page, or feed.",
-				"github.com/herdworks/htxt.FeedConfig":     "Defines the selectors, ordering, and HTML alternate URL for a site feed.",
+				"github.com/herdworks/htxt.FeedConfig":     "Defines Atom metadata, selectors, ordering, and an HTML alternate URL for a site feed.",
+				"github.com/herdworks/htxt.FeedMeta":       "Optional Atom feed metadata that overrides the website defaults.",
 				"github.com/herdworks/htxt.FeedSelector":   "Matches pages by path expression or tag for a site feed.",
 				"github.com/herdworks/htxt.HTMLLink":       "An HTML link element represented as source data.",
 				"github.com/herdworks/htxt.HTMLMeta":       "An HTML meta element represented as source data.",

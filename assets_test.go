@@ -1,12 +1,15 @@
 package htxt
 
 import (
+	"bytes"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"testing/fstest"
 
 	httheme "github.com/herdworks/httt/theme"
 	htvariable "github.com/herdworks/httt/variable"
@@ -31,6 +34,11 @@ func writeAssetTestScript(t *testing.T, path string, source string) {
 	if err := os.WriteFile(path, []byte(source), 0644); err != nil {
 		t.Fatalf("write script test file: %v", err)
 	}
+}
+
+func withBuiltinAssetsFS(t *testing.T, theme *httheme.Theme, fsys fs.FS) {
+	t.Helper()
+	theme.BuiltinsFS = fsys
 }
 
 func testWebsite(t *testing.T) (*Website, *Build) {
@@ -119,7 +127,7 @@ func TestWebsiteAssetPublicPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AssetPublicPaths returned error: %v", err)
 	}
-	want := []string{"/shared.css", "/theme.css", "/site.css"}
+	want := []string{"/css/chroma-palette.css", "/css/reset.css", "/shared.css", "/theme.css", "/site.css"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("AssetPublicPaths = %#v, want %#v", got, want)
 	}
@@ -151,17 +159,92 @@ func TestWebsiteAssetEntriesUseWinningAssetSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AssetEntries returned error: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("AssetEntries len = %d, want 1", len(got))
+	var shared Asset
+	for _, asset := range got {
+		if asset.RelPath == "shared.css" {
+			shared = asset
+			break
+		}
 	}
 	want := Asset{
-		Source:     AssetSourcePage,
+		Source:     PageAsset,
 		RelPath:    "shared.css",
 		PublicPath: "/shared.css",
 		SourcePath: filepath.Join(website.ContentDirPath(), "shared.css"),
 	}
-	if !reflect.DeepEqual(got[0], want) {
-		t.Fatalf("AssetEntries[0] = %#v, want %#v", got[0], want)
+	if !reflect.DeepEqual(shared, want) {
+		t.Fatalf("shared AssetEntries entry = %#v, want %#v", shared, want)
+	}
+}
+
+func TestBuiltinAssetsPreservePathsAndPrecedence(t *testing.T) {
+	website, _ := testWebsite(t)
+	withBuiltinAssetsFS(t, &website.Theme, fstest.MapFS{
+		"builtins/static/shared.css":        {Data: []byte("builtin")},
+		"builtins/static/css/nested.css":    {Data: []byte("nested")},
+		"builtins/fragments/ignored.html":   {Data: []byte("ignored")},
+		"builtins/static/ignored-directory": {Mode: fs.ModeDir},
+	})
+	website.Theme.Assets = []string{"shared.css"}
+	website.Assets = []string{"shared.css"}
+	page := &Page{Assets: []string{"shared.css"}}
+	writeAssetTestFile(t, filepath.Join(website.Theme.StaticDirPath(), "shared.css"))
+	writeAssetTestFile(t, filepath.Join(website.StaticDirPath(), "shared.css"))
+	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "shared.css"))
+
+	candidates, err := AssetCandidates(&website.Theme, website, Pages{page})
+	if err != nil {
+		t.Fatalf("AssetCandidates returned error: %v", err)
+	}
+	if got, want := []AssetSource{candidates[0].Source, candidates[1].Source, candidates[2].Source, candidates[3].Source, candidates[4].Source}, []AssetSource{BuiltinAsset, BuiltinAsset, ThemeAsset, WebsiteAsset, PageAsset}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("asset candidate sources = %#v, want %#v", got, want)
+	}
+	assets, err := AssetEntries(&website.Theme, website, Pages{page})
+	if err != nil {
+		t.Fatalf("AssetEntries returned error: %v", err)
+	}
+	if got, want := assets.PublicPaths(), []string{"/css/nested.css", "/shared.css"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("AssetEntries public paths = %#v, want %#v", got, want)
+	}
+	if assets[0].Source != BuiltinAsset || assets[0].SourcePath != "builtins/static/css/nested.css" {
+		t.Fatalf("nested builtin asset = %#v, want embedded builtin source", assets[0])
+	}
+	if assets[1].Source != PageAsset {
+		t.Fatalf("shared asset source = %q, want page", assets[1].Source)
+	}
+}
+
+func TestBuildCopyBuiltinAsset(t *testing.T) {
+	website, build := testWebsite(t)
+	build.Config.ID = "test"
+	assets, err := AssetEntries(&website.Theme, website, nil)
+	if err != nil {
+		t.Fatalf("AssetEntries returned error: %v", err)
+	}
+	asset := assets[0]
+	if asset.Source != BuiltinAsset || asset.RelPath != "css/chroma-palette.css" {
+		t.Fatalf("builtin asset = %#v, want chroma palette", asset)
+	}
+	var log bytes.Buffer
+	if err := build.CopyAsset(asset, &log); err != nil {
+		t.Fatalf("CopyAsset returned error: %v", err)
+	}
+	want, found, err := website.Theme.BuiltinResourceBytes("static/" + asset.RelPath)
+	if err != nil {
+		t.Fatalf("BuiltinResourceBytes returned error: %v", err)
+	}
+	if !found {
+		t.Fatalf("BuiltinResourceBytes did not find %q", asset.RelPath)
+	}
+	got, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "css", "chroma-palette.css"))
+	if err != nil {
+		t.Fatalf("ReadFile(build asset) error = %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("built asset bytes differ from embedded source")
+	}
+	if got, want := log.String(), "copying \"builtins/static/css/chroma-palette.css\" to \"test/css/chroma-palette.css\"\n"; got != want {
+		t.Fatalf("copy log = %q, want %q", got, want)
 	}
 }
 

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** Configured `site.feeds` entries may set nested `metadata` overrides
+  for Atom feed title, description, author, email, and favicon. Omitted values
+  inherit the corresponding site title, description, and byline values.
+* **Added:** Built-in static assets participate in the resolved build asset
+  hierarchy before theme, website, and page assets; later sources override
+  matching paths before assets are copied.
+* **Added:** The built-in `/css/chroma-palette.css` stylesheet provides the
+  default Chroma syntax-highlighting palette and is linked from the built-in
+  head fragment.
+* **Fixed:** `website asset ls` reports disk asset sources relative to the
+  website root while retaining logical paths for embedded builtin assets.
+* **Changed:** The built-in head fragment emits Atom alternate links for
+  configured `site.feeds` entries.
+* **Changed:** Built-in theme resources are selected per `Theme` rather than
+  through a package-global filesystem, allowing isolated theme resource packs
+  and refreshing theme resources on subsequent preview builds.
+* **Changed:** Changed configured and automatic tag Atom feed output paths to
+  use the format-neutral `.xml` suffix, replacing `.atom.xml`.
+* Updated `github.com/herdworks/httt` to v0.40.1.
+
 ## v0.45.7 (2026-08-24)
 
 * Fixed configured build logs to write to their artifact file before mirroring

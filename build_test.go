@@ -180,7 +180,7 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 			t.Errorf("rendered bootstrap output contains stale directive %q:\n%s", stale, output)
 		}
 	}
-	feed, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "feeds", "blog.atom.xml"))
+	feed, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "feeds", "blog.xml"))
 	if err != nil {
 		t.Fatalf("ReadFile(blog Atom feed) error = %v", err)
 	}

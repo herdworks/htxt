@@ -3,12 +3,32 @@ package cli
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/herdworks/clic"
 	"github.com/herdworks/htxt"
 	href "github.com/herdworks/htxt/href"
 )
+
+type assetList struct {
+	assets  htxt.Assets
+	website *htxt.Website
+}
+
+func (list assetList) ColumnValues(field string) (values []string) {
+	if !strings.EqualFold(field, "source") {
+		return list.assets.ColumnValues(field)
+	}
+	for _, asset := range list.assets {
+		if asset.Source == htxt.BuiltinAsset {
+			values = append(values, asset.SourcePath)
+			continue
+		}
+		values = append(values, filepath.ToSlash(list.website.RelativePath(asset.SourcePath)))
+	}
+	return values
+}
 
 func AssetCommand() clic.Command {
 	return clic.Command{
@@ -108,7 +128,7 @@ func assetListHandler(execution *clic.Execution) error {
 	if err != nil {
 		return err
 	}
-	return clic.WriteList(execution.Stdout, clic.ColumnarFormat, assets,
+	return clic.WriteList(execution.Stdout, clic.ColumnarFormat, assetList{assets: assets, website: website},
 		clic.Field{Key: "Source", Header: "Source"},
 		clic.Field{Key: "Path", Header: "Path"},
 	)

@@ -1,8 +1,11 @@
 package htxt
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
+	"strings"
 
 	htfiles "github.com/herdworks/httt/files"
 	httheme "github.com/herdworks/httt/theme"
@@ -23,9 +26,10 @@ type Assets []Asset
 type AssetSource string
 
 const (
-	AssetSourceTheme   AssetSource = "theme"
-	AssetSourceWebsite AssetSource = "website"
-	AssetSourcePage    AssetSource = "page"
+	BuiltinAsset AssetSource = "builtin"
+	ThemeAsset   AssetSource = "theme"
+	WebsiteAsset AssetSource = "website"
+	PageAsset    AssetSource = "page"
 )
 
 func (assets Assets) PublicPaths() []string {
@@ -36,7 +40,7 @@ func (assets Assets) PublicPaths() []string {
 	return paths
 }
 
-// ColumnValues returns the disk-source and published-path values for assets.
+// ColumnValues returns the source and published-path values for assets.
 func (assets Assets) ColumnValues(field string) (values []string) {
 	for _, asset := range assets {
 		switch field {
@@ -63,7 +67,7 @@ func (asset Asset) BuildPath(build *Build) (string, error) {
 	return build.Website.AssetBuildPath(build, asset.RelPath)
 }
 
-// AssetPublicPaths returns public URL paths for discovered theme, website, and page assets.
+// AssetPublicPaths returns public URL paths for discovered builtin, theme, website, and page assets.
 func AssetPublicPaths(theme *httheme.Theme, website *Website, pages Pages) ([]string, error) {
 	assets, err := AssetEntries(theme, website, pages)
 	if err != nil {
@@ -72,21 +76,27 @@ func AssetPublicPaths(theme *httheme.Theme, website *Website, pages Pages) ([]st
 	return assets.PublicPaths(), nil
 }
 
-// AssetCandidates returns the full, un-collapsed list of theme, website, and
-// page asset entries in iteration order (theme first, then website, then
-// page-by-page). Entries that share a public path are preserved so callers can
-// inspect every contributor; use AssetEntries for the collapsed view.
+// AssetCandidates returns the full, un-collapsed list of builtin, theme,
+// website, and page asset entries in precedence order. Entries that share a
+// public path are preserved so callers can inspect every contributor; use
+// AssetEntries for the collapsed view.
 func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Assets, error) {
 	if website == nil {
 		return nil, fmt.Errorf("website is required")
 	}
+	hydrateThemeBuiltins(&website.Theme)
 	candidates := Assets{}
+	builtinAssets, err := builtinAssetEntries(&website.Theme, website)
+	if err != nil {
+		return nil, err
+	}
+	candidates = append(candidates, builtinAssets...)
 	if theme != nil {
 		themeAssetSourcePath := func(relPath string) (string, error) {
 			return htfiles.LocalPath(theme.StaticDirPath(), relPath)
 		}
 		for _, relPath := range theme.Assets {
-			asset, err := buildAssetEntry(website, AssetSourceTheme, relPath, themeAssetSourcePath)
+			asset, err := buildAssetEntry(website, ThemeAsset, relPath, themeAssetSourcePath)
 			if err != nil {
 				return nil, err
 			}
@@ -97,7 +107,7 @@ func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Asset
 		return website.ResourcePath(website.StaticDirPath(), relPath)
 	}
 	for _, relPath := range website.Assets {
-		asset, err := buildAssetEntry(website, AssetSourceWebsite, relPath, websiteAssetSourcePath)
+		asset, err := buildAssetEntry(website, WebsiteAsset, relPath, websiteAssetSourcePath)
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +121,7 @@ func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Asset
 			continue
 		}
 		for _, relPath := range page.Assets {
-			asset, err := buildAssetEntry(website, AssetSourcePage, relPath, pageAssetSourcePath)
+			asset, err := buildAssetEntry(website, PageAsset, relPath, pageAssetSourcePath)
 			if err != nil {
 				return nil, err
 			}
@@ -121,7 +131,7 @@ func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Asset
 	return candidates, nil
 }
 
-// AssetEntries combines theme, website, and page assets into resolved asset entries.
+// AssetEntries combines builtin, theme, website, and page assets into resolved asset entries.
 // Later sources replace earlier entries with the same public path.
 func AssetEntries(theme *httheme.Theme, website *Website, pages Pages) (Assets, error) {
 	candidates, err := AssetCandidates(theme, website, pages)
@@ -139,6 +149,31 @@ func AssetEntries(theme *httheme.Theme, website *Website, pages Pages) (Assets, 
 		assets = append(assets, asset)
 	}
 	return assets, nil
+}
+
+func builtinAssetEntries(theme *httheme.Theme, website *Website) (assets Assets, err error) {
+	hydrateThemeBuiltins(theme)
+	err = fs.WalkDir(theme.BuiltinsFS, builtinStaticDir, func(sourcePath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				return nil
+			}
+			return walkErr
+		}
+		if entry.IsDir() || !entry.Type().IsRegular() {
+			return nil
+		}
+		relPath := strings.TrimPrefix(sourcePath, builtinStaticDir+"/")
+		asset, err := buildAssetEntry(website, BuiltinAsset, relPath, func(string) (string, error) {
+			return sourcePath, nil
+		})
+		if err != nil {
+			return err
+		}
+		assets = append(assets, asset)
+		return nil
+	})
+	return assets, err
 }
 
 func buildAssetEntry(website *Website, source AssetSource, relPath string, sourcePath func(string) (string, error)) (Asset, error) {

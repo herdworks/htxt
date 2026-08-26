@@ -3,6 +3,8 @@
 <link ht-apply rel='icon' type='image/jpeg' href='${ site.favicon.href, "/favicon.ico" }' sizes='${ site.favicon.size, "32x32"}'>
 <link ht-each='link in ${ site.links }' ht-attrs='${ link }' ht-if='${ link.rel }' ht-if='${ link.href }'>
 <link ht-each='link in ${ page.links }' ht-attrs='${ link }' ht-if='${ link.rel }' ht-if='${ link.href }'>
+<link ht-each='feed in ${ site.feeds.keys() }' rel='alternate' type='application/atom+xml' href='${ site.config.feed_path }/${ feed }.xml'>
+<link ht-apply rel='stylesheet' href='/css/chroma-palette.css?v=${ site.version, build.id }'>
 <meta ht-apply ht-if='${ page.redirect }' http-equiv="refresh" content='0; url=${ page.redirect }' />
 <meta ht-apply name='generator' content='${ site.generator, "hypertexting" }'>
 <meta ht-each='property in ${ site.metadata }' ht-attrs='${ property }' ht-if='${ property.name,property.property }' ht-if='${ property.content }'>

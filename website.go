@@ -164,7 +164,8 @@ func (website *Website) Load(verbose bool, configOverrides *WebsiteConfig, w io.
 	}
 	website.ResolveEnvironments()
 	website.Theme.URI = website.ThemeURI()
-	if err = website.Theme.Parse(w); err != nil {
+	hydrateThemeBuiltins(&website.Theme)
+	if err = website.Theme.Load(w); err != nil {
 		return err
 	}
 	if err = website.DiscoverAssets(verbose, w); err != nil {
@@ -819,13 +820,14 @@ func (website *Website) LoadTagPages() error {
 		if website.pages.PageByPath(path) != nil {
 			continue
 		}
+		title, description := tagFeedIdentity(tag)
 		page := &Page{
 			URI:          &url.URL{Path: filepath.Join(website.ContentDirPath(), strings.Trim(path, "/"), "index.md")},
 			CreatedAt:    website.CreatedAt,
 			LayoutRef:    website.Config.TagLayout,
 			Path:         path,
-			Title:        "#" + tag,
-			Description:  "Everything tagged with #" + tag,
+			Title:        title,
+			Description:  description,
 			Feeds:        FeedDataset{TagFeed: {"tag": {Tag: tag}}},
 			TemplateData: httt.TemplateData{},
 		}
@@ -870,7 +872,7 @@ func (website *Website) ListThemes(w io.Writer) (themes []httheme.Theme, err err
 		return nil, err
 	}
 	for theme := range discovered {
-		if err = discovered[theme].Parse(w); err != nil {
+		if err = discovered[theme].Load(w); err != nil {
 			fmt.Fprintf(w, "warning: %s\n", err)
 			continue
 		}

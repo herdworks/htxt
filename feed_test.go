@@ -1,6 +1,7 @@
 package htxt
 
 import (
+	"encoding/xml"
 	"net/url"
 	"slices"
 	"strings"
@@ -9,6 +10,78 @@ import (
 	"github.com/herdworks/httt"
 	"gopkg.in/yaml.v3"
 )
+
+func TestFeedConfigMetadataUnmarshalsAndOverridesWebsiteDefaults(t *testing.T) {
+	var configs FeedConfigs
+	if err := yaml.Unmarshal([]byte("blog:\n  metadata:\n    title: Blog\n    description: Recent writing\n    author: Feed Author\n    email: author@example.com\n    favicon: /feed-icon.png\n"), &configs); err != nil {
+		t.Fatal(err)
+	}
+	website := &Website{
+		BaseURL:     "https://example.com/",
+		Title:       "Site Title",
+		Description: "Site Description",
+		Byline:      Byline{Name: "Site Author", Email: "site@example.com", Favicon: "/site-icon.png"},
+		Config:      WebsiteConfig{FeedPath: "/feeds"},
+	}
+	feed := website.Feed(UserFeed, "blog", configs["blog"])
+	if got, want := feed.Metadata, (FeedMeta{Title: "Blog", Description: "Recent writing", Author: "Feed Author", Email: "author@example.com", Favicon: "/feed-icon.png"}); got != want {
+		t.Fatalf("feed metadata = %#v, want %#v", got, want)
+	}
+	feed = website.Feed(UserFeed, "main", FeedConfig{})
+	if got, want := feed.Metadata, (FeedMeta{Title: "Site Title", Description: "Site Description", Author: "Site Author", Email: "site@example.com", Favicon: "/site-icon.png"}); got != want {
+		t.Fatalf("default metadata = %#v, want %#v", got, want)
+	}
+}
+
+func TestFeedAtomIncludesResolvedMetadata(t *testing.T) {
+	website := &Website{BaseURL: "https://example.com/"}
+	feed := Feed{
+		Metadata: FeedMeta{Title: "Blog", Description: "Recent writing", Author: "Feed Author", Email: "author@example.com", Favicon: "/feed-icon.png"},
+		URL:      url.URL{Scheme: "https", Host: "example.com", Path: "/feeds/blog.xml"},
+	}
+	bytes, err := xml.Marshal(feed.Atom(website))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<title>Blog</title>", "<subtitle>Recent writing</subtitle>", "<author><name>Feed Author</name><hypergraph:favicon>https://example.com/feed-icon.png</hypergraph:favicon><email>author@example.com</email></author>"} {
+		if !strings.Contains(string(bytes), want) {
+			t.Errorf("Atom output missing %q:\n%s", want, bytes)
+		}
+	}
+}
+
+func TestFeedURLsAndTagMetadataUseXMLAndTagPageIdentity(t *testing.T) {
+	website := &Website{
+		BaseURL:     "https://example.com/",
+		Title:       "Site",
+		Description: "Site description",
+		Byline:      Byline{Name: "Site Author", Email: "site@example.com", Favicon: "/favicon.png"},
+		Config:      WebsiteConfig{FeedPath: "/feeds", TagPath: "/tags"},
+	}
+	if got, want := website.Feed(UserFeed, "main", FeedConfig{}).URL.Path, "/feeds/main.xml"; got != want {
+		t.Fatalf("user feed URL = %q, want %q", got, want)
+	}
+	tagFeed := website.Feed(TagFeed, "news", FeedConfig{})
+	if got, want := tagFeed.URL.Path, "/feeds/tags/news.xml"; got != want {
+		t.Fatalf("tag feed URL = %q, want %q", got, want)
+	}
+	if got, want := tagFeed.Metadata, (FeedMeta{Title: "#news", Description: "Everything tagged with #news", Author: "Site Author", Email: "site@example.com", Favicon: "/favicon.png"}); got != want {
+		t.Fatalf("tag metadata = %#v, want %#v", got, want)
+	}
+}
+
+func TestFeedMetadataMakesSingleTagFeedDistinct(t *testing.T) {
+	website := &Website{Config: WebsiteConfig{TagPath: "/tags"}}
+	configs := FeedConfigs{
+		"news": {
+			Include:  []FeedSelector{{Tags: []string{"news"}}},
+			Metadata: FeedMeta{Title: "Newsletters"},
+		},
+	}
+	if err := configs.Validate(website); err != nil {
+		t.Fatalf("FeedConfigs.Validate() error = %v", err)
+	}
+}
 
 func TestFeedDatasetUnmarshalsFlatAliases(t *testing.T) {
 	var dataset FeedDataset
@@ -44,7 +117,7 @@ func TestFeedDatasetDefaultSourceMustBeConfigured(t *testing.T) {
 }
 
 func TestFeedDatasetMarshalsFlatAliasesWithoutRuntimeData(t *testing.T) {
-	dataset := FeedDataset{UserFeed: {"latest": {Source: "blog", URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []httt.TemplateData{{"title": "one"}}}}, TagFeed: {"tasty": {Tag: "tasty"}}}
+	dataset := FeedDataset{UserFeed: {"latest": {Source: "blog", URL: url.URL{Path: "/feeds/blog.xml"}, Items: []httt.TemplateData{{"title": "one"}}}}, TagFeed: {"tasty": {Tag: "tasty"}}}
 	bytes, err := yaml.Marshal(dataset)
 	if err != nil {
 		t.Fatal(err)
@@ -144,13 +217,13 @@ func TestFeedItemsCloneWithoutFeeds(t *testing.T) {
 
 func TestFeedDataHydratesLimitedSharedItems(t *testing.T) {
 	website := &Website{BaseURL: "https://example.com/", Feeds: FeedConfigs{"blog": {}}}
-	website.feeds = Feeds{UserFeed: {"blog": {URL: url.URL{Path: "/feeds/blog.atom.xml"}, Items: []httt.TemplateData{{"title": "one"}, {"title": "two"}}}}, TagFeed: {}}
+	website.feeds = Feeds{UserFeed: {"blog": {URL: url.URL{Path: "/feeds/blog.xml"}, Items: []httt.TemplateData{{"title": "one"}, {"title": "two"}}}}, TagFeed: {}}
 	page := &Page{Feeds: FeedDataset{UserFeed: {"latest": {Source: "blog", Limit: 1}}}}
 	if err := page.HydrateFeeds(website); err != nil {
 		t.Fatal(err)
 	}
 	view := page.Feeds[UserFeed]["latest"]
-	if len(view.Items) != 1 || view.URL.Path != "/feeds/blog.atom.xml" {
+	if len(view.Items) != 1 || view.URL.Path != "/feeds/blog.xml" {
 		t.Fatalf("view = %#v", view)
 	}
 }
