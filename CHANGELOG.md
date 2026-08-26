@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.46.0 (2026-08-26)
+
 * **Added:** Configured `site.feeds` entries may set nested `metadata` overrides
   for Atom feed title, description, author, email, and favicon. Omitted values
   inherit the corresponding site title, description, and byline values.
