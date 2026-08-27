@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Updated `github.com/herdworks/httt` to v0.41.0 with improved `${ markdown(...) }` parsing
+
 ## v0.46.0 (2026-08-26)
 
 * **Added:** Configured `site.feeds` entries may set nested `metadata` overrides
