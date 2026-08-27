@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.47.0 (2026-08-27)
+
 * Updated `github.com/herdworks/httt` to v0.41.0 with improved `${ markdown(...) }` parsing
 
 ## v0.46.0 (2026-08-26)
