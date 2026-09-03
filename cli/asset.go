@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -120,14 +121,15 @@ func assetAddHandler(execution *clic.Execution) error {
 }
 
 func assetListHandler(execution *clic.Execution) error {
-	website, pages, err := assetPages(execution)
+	website, err := assetWebsite(execution)
 	if err != nil {
 		return err
 	}
-	assets, err := htxt.AssetEntries(&website.Theme, website, pages)
+	candidates, err := website.AssetCandidates(execution.Context)
 	if err != nil {
 		return err
 	}
+	assets := candidates.Resolved()
 	return clic.WriteList(execution.Stdout, clic.ColumnarFormat, assetList{assets: assets, website: website},
 		clic.Field{Key: "Source", Header: "Source"},
 		clic.Field{Key: "Path", Header: "Path"},
@@ -135,52 +137,36 @@ func assetListHandler(execution *clic.Execution) error {
 }
 
 func assetLookupHandler(execution *clic.Execution) error {
-	website, pages, err := assetPages(execution)
+	website, err := assetWebsite(execution)
 	if err != nil {
 		return err
 	}
 	query := execution.Command.State.Arguments[0]
-	assets, err := htxt.AssetCandidates(&website.Theme, website, pages)
+	publicPath, err := website.AssetPublicPath(strings.TrimPrefix(query, "/"))
 	if err != nil {
 		return err
 	}
-	matches := htxt.Assets{}
-	for _, asset := range assets {
-		if asset.RelPath == strings.TrimPrefix(query, "/") {
-			matches = append(matches, asset)
-		}
-	}
+	asset, candidates, err := website.LookupAsset(execution.Context, publicPath)
 	if _, err = fmt.Fprintf(execution.Stdout, "asset %q lookup\n", query); err != nil {
 		return err
 	}
-	if len(matches) == 0 {
+	if errors.Is(err, htxt.ErrAssetNotFound) {
 		_, err = fmt.Fprintf(execution.Stdout, "asset %q not found\n", query)
 		return err
 	}
-	for _, asset := range matches {
-		if _, err = fmt.Fprintf(execution.Stdout, "asset %q candidate %q\n", query, website.RelativePath(asset.SourcePath)); err != nil {
+	if err != nil {
+		return err
+	}
+	for _, candidate := range candidates {
+		if _, err = fmt.Fprintf(execution.Stdout, "asset %q candidate %q\n", query, website.RelativePath(candidate.SourcePath)); err != nil {
 			return err
 		}
 	}
-	_, err = fmt.Fprintf(execution.Stdout, "asset %q source %q\n", query, website.RelativePath(matches[len(matches)-1].SourcePath))
+	_, err = fmt.Fprintf(execution.Stdout, "asset %q source %q\n", query, website.RelativePath(asset.SourcePath))
 	return err
 }
 
 func assetWebsite(execution *clic.Execution) (*htxt.Website, error) {
 	website := &htxt.Website{URI: &href.Href{URL: url.URL{Path: execution.Options["config"].StringValue()}}}
 	return website, website.Load(false, nil, nil)
-}
-func assetPages(execution *clic.Execution) (*htxt.Website, htxt.Pages, error) {
-	website, err := assetWebsite(execution)
-	if err != nil {
-		return nil, nil, err
-	}
-	pages, err := htxt.GetPages(website, website.ContentDirPath())
-	if err != nil {
-		return nil, nil, err
-	}
-	if err = htxt.LoadPages(execution.Context, website, pages, nil, false, nil); err != nil {
-		return nil, nil, err
-	}
-	return website, pages, nil
 }

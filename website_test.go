@@ -1,18 +1,84 @@
 package htxt
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	hsync "github.com/herdworks/hsync"
 	"github.com/herdworks/httt"
 	"github.com/herdworks/htup"
 )
+
+func TestWebsiteLookupAssetReturnsResolvedAssetAndCandidates(t *testing.T) {
+	website, _ := testWebsite(t)
+	withBuiltinAssetsFS(t, &website.Theme, fstest.MapFS{
+		"builtins/static/shared.css": {Data: []byte("builtin")},
+	})
+	website.Theme.Assets = []string{"shared.css"}
+	website.Assets = []string{"shared.css", "site.css"}
+	for _, filename := range []string{
+		filepath.Join(website.Theme.StaticDirPath(), "shared.css"),
+		filepath.Join(website.StaticDirPath(), "shared.css"),
+		filepath.Join(website.StaticDirPath(), "site.css"),
+		filepath.Join(website.ContentDirPath(), "shared.css"),
+	} {
+		writeAssetTestFile(t, filename)
+	}
+	pagePath := filepath.Join(website.ContentDirPath(), "index.md")
+	if err := os.WriteFile(pagePath, []byte("---\ntitle: Home\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := website.AssetCandidates(context.Background())
+	if err != nil {
+		t.Fatalf("AssetCandidates() error = %v", err)
+	}
+	if got, want := len(candidates), 5; got != want {
+		t.Fatalf("candidate count = %d, want %d", got, want)
+	}
+	entries, err := website.AssetCandidates(context.Background())
+	if err != nil {
+		t.Fatalf("AssetCandidates() error = %v", err)
+	}
+	entries = entries.Resolved()
+	if got, want := len(entries), 2; got != want {
+		t.Fatalf("resolved asset count = %d, want %d", got, want)
+	}
+
+	asset, candidates, err := website.LookupAsset(context.Background(), "/shared.css")
+	if err != nil {
+		t.Fatalf("LookupAsset() error = %v", err)
+	}
+	if got, want := asset.Source, PageAsset; got != want {
+		t.Fatalf("resolved asset source = %q, want %q", got, want)
+	}
+	if got, want := len(candidates), 4; got != want {
+		t.Fatalf("candidate count = %d, want %d", got, want)
+	}
+	for index, want := range []AssetSource{BuiltinAsset, ThemeAsset, WebsiteAsset, PageAsset} {
+		if got := candidates[index].Source; got != want {
+			t.Fatalf("candidate %d source = %q, want %q", index, got, want)
+		}
+	}
+
+	_, single, err := website.LookupAsset(context.Background(), "/site.css")
+	if err != nil {
+		t.Fatalf("single candidate LookupAsset() error = %v", err)
+	}
+	if got, want := len(single), 1; got != want {
+		t.Fatalf("single candidate count = %d, want %d", got, want)
+	}
+	if _, _, err := website.LookupAsset(context.Background(), "/missing.css"); !errors.Is(err, ErrAssetNotFound) {
+		t.Fatalf("missing asset error = %v, want ErrAssetNotFound", err)
+	}
+}
 
 func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
 	website := &Website{}

@@ -32,12 +32,30 @@ const (
 	PageAsset    AssetSource = "page"
 )
 
+var ErrAssetNotFound = errors.New("asset not found")
+
 func (assets Assets) PublicPaths() []string {
 	paths := make([]string, 0, len(assets))
 	for _, asset := range assets {
 		paths = append(paths, asset.PublicPath)
 	}
 	return paths
+}
+
+// Resolved returns one asset per public path, with later candidates replacing
+// earlier ones while retaining the original public-path order.
+func (assets Assets) Resolved() Assets {
+	resolved := Assets{}
+	indexes := map[string]int{}
+	for _, asset := range assets {
+		if index, exists := indexes[asset.PublicPath]; exists {
+			resolved[index] = asset
+			continue
+		}
+		indexes[asset.PublicPath] = len(resolved)
+		resolved = append(resolved, asset)
+	}
+	return resolved
 }
 
 // ColumnValues returns the source and published-path values for assets.
@@ -63,23 +81,19 @@ func (assets Assets) FilterSource(source AssetSource) Assets {
 	return filtered
 }
 
-func (asset Asset) BuildPath(build *Build) (string, error) {
-	return build.Website.AssetBuildPath(build, asset.RelPath)
-}
-
 // AssetPublicPaths returns public URL paths for discovered builtin, theme, website, and page assets.
 func AssetPublicPaths(theme *httheme.Theme, website *Website, pages Pages) ([]string, error) {
-	assets, err := AssetEntries(theme, website, pages)
+	candidates, err := AssetCandidates(theme, website, pages)
 	if err != nil {
 		return nil, err
 	}
-	return assets.PublicPaths(), nil
+	return candidates.Resolved().PublicPaths(), nil
 }
 
 // AssetCandidates returns the full, un-collapsed list of builtin, theme,
-// website, and page asset entries in precedence order. Entries that share a
-// public path are preserved so callers can inspect every contributor; use
-// AssetEntries for the collapsed view.
+// website, and page assets in precedence order. Entries that share a public
+// path are preserved so callers can inspect every contributor; use Resolved
+// for the collapsed view.
 func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Assets, error) {
 	if website == nil {
 		return nil, fmt.Errorf("website is required")
@@ -129,26 +143,6 @@ func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Asset
 		}
 	}
 	return candidates, nil
-}
-
-// AssetEntries combines builtin, theme, website, and page assets into resolved asset entries.
-// Later sources replace earlier entries with the same public path.
-func AssetEntries(theme *httheme.Theme, website *Website, pages Pages) (Assets, error) {
-	candidates, err := AssetCandidates(theme, website, pages)
-	if err != nil {
-		return nil, err
-	}
-	assets := Assets{}
-	indexes := map[string]int{}
-	for _, asset := range candidates {
-		if index, exists := indexes[asset.PublicPath]; exists {
-			assets[index] = asset
-			continue
-		}
-		indexes[asset.PublicPath] = len(assets)
-		assets = append(assets, asset)
-	}
-	return assets, nil
 }
 
 func builtinAssetEntries(theme *httheme.Theme, website *Website) (assets Assets, err error) {

@@ -481,10 +481,6 @@ func (website *Website) AssetPublicPath(relPath string) (string, error) {
 	return "/" + relPath, nil
 }
 
-func (website *Website) AssetBuildPath(build *Build, relPath string) (string, error) {
-	return build.AbsolutePath(relPath)
-}
-
 func (website *Website) ResolveConfig(overrides *WebsiteConfig) {
 	website.Config.Resolve(overrides)
 	if website.Config.FeedPath == "" {
@@ -786,6 +782,40 @@ func (website *Website) GetContentTypeByName(name string, verbose bool, w io.Wri
 
 func (website *Website) ListPages() (Pages, error) {
 	return GetPages(website, website.ContentDirPath())
+}
+
+// AssetCandidates loads website pages and returns every asset candidate in
+// precedence order.
+func (website *Website) AssetCandidates(ctx context.Context) (Assets, error) {
+	pages, err := website.ListPages()
+	if err != nil {
+		return nil, err
+	}
+	if err := LoadPages(ctx, website, pages, nil, false, nil); err != nil {
+		return nil, err
+	}
+	return AssetCandidates(&website.Theme, website, pages)
+}
+
+// LookupAsset loads website pages and returns the resolved asset and candidates
+// for publicPath.
+func (website *Website) LookupAsset(ctx context.Context, publicPath string) (Asset, []Asset, error) {
+	candidates, err := website.AssetCandidates(ctx)
+	if err != nil {
+		return Asset{}, nil, err
+	}
+	matches := Assets{}
+	for _, candidate := range candidates {
+		if candidate.PublicPath == publicPath {
+			matches = append(matches, candidate)
+		}
+	}
+	for _, asset := range candidates.Resolved() {
+		if asset.PublicPath == publicPath {
+			return asset, matches, nil
+		}
+	}
+	return Asset{}, nil, fmt.Errorf("%w: %q", ErrAssetNotFound, publicPath)
 }
 
 func (website *Website) LoadPages(ctx context.Context, verbose bool, w io.Writer) error {

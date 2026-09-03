@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** `Website.AssetCandidates` and `Website.LookupAsset`, which load
+  page-owned assets and return candidates in builtin, theme, website, and page
+  precedence order. `Assets.Resolved` collapses candidates to their winners.
+* **Added:** `Build.AssetPath` for resolved asset output paths.
+* **Changed:** `website asset ls` and `website asset lookup` now share the
+  website-level asset inventory and resolution APIs.
+* **Removed:** `AssetEntries` and `Website.AssetEntries`; callers now make the
+  explicit `AssetCandidates(...).Resolved()` flow.
+
 ## v0.47.0 (2026-08-27)
 
 * Updated `github.com/herdworks/httt` to v0.41.0 with improved `${ markdown(...) }` parsing

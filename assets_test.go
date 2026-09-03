@@ -107,12 +107,12 @@ func TestWebsiteAssetPaths(t *testing.T) {
 				t.Fatalf("AssetPublicPath = %q, want %q", publicPath, tc.publicPath)
 			}
 
-			buildPath, err := website.AssetBuildPath(build, tc.relPath)
+			buildPath, err := build.AssetPath(Asset{RelPath: tc.relPath})
 			if err != nil {
-				t.Fatalf("AssetBuildPath returned error: %v", err)
+				t.Fatalf("AssetPath returned error: %v", err)
 			}
 			if buildPath != tc.buildPath {
-				t.Fatalf("AssetBuildPath = %q, want %q", buildPath, tc.buildPath)
+				t.Fatalf("AssetPath = %q, want %q", buildPath, tc.buildPath)
 			}
 		})
 	}
@@ -155,10 +155,11 @@ func TestWebsiteAssetEntriesUseWinningAssetSource(t *testing.T) {
 	writeAssetTestFile(t, filepath.Join(website.StaticDirPath(), "shared.css"))
 	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "shared.css"))
 
-	got, err := AssetEntries(&website.Theme, website, Pages{page})
+	got, err := AssetCandidates(&website.Theme, website, Pages{page})
 	if err != nil {
-		t.Fatalf("AssetEntries returned error: %v", err)
+		t.Fatalf("AssetCandidates returned error: %v", err)
 	}
+	got = got.Resolved()
 	var shared Asset
 	for _, asset := range got {
 		if asset.RelPath == "shared.css" {
@@ -199,10 +200,11 @@ func TestBuiltinAssetsPreservePathsAndPrecedence(t *testing.T) {
 	if got, want := []AssetSource{candidates[0].Source, candidates[1].Source, candidates[2].Source, candidates[3].Source, candidates[4].Source}, []AssetSource{BuiltinAsset, BuiltinAsset, ThemeAsset, WebsiteAsset, PageAsset}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("asset candidate sources = %#v, want %#v", got, want)
 	}
-	assets, err := AssetEntries(&website.Theme, website, Pages{page})
+	assets, err := AssetCandidates(&website.Theme, website, Pages{page})
 	if err != nil {
-		t.Fatalf("AssetEntries returned error: %v", err)
+		t.Fatalf("AssetCandidates returned error: %v", err)
 	}
+	assets = assets.Resolved()
 	if got, want := assets.PublicPaths(), []string{"/css/nested.css", "/shared.css"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("AssetEntries public paths = %#v, want %#v", got, want)
 	}
@@ -217,10 +219,11 @@ func TestBuiltinAssetsPreservePathsAndPrecedence(t *testing.T) {
 func TestBuildCopyBuiltinAsset(t *testing.T) {
 	website, build := testWebsite(t)
 	build.Config.ID = "test"
-	assets, err := AssetEntries(&website.Theme, website, nil)
+	assets, err := AssetCandidates(&website.Theme, website, nil)
 	if err != nil {
-		t.Fatalf("AssetEntries returned error: %v", err)
+		t.Fatalf("AssetCandidates returned error: %v", err)
 	}
+	assets = assets.Resolved()
 	asset := assets[0]
 	if asset.Source != BuiltinAsset || asset.RelPath != "css/chroma-palette.css" {
 		t.Fatalf("builtin asset = %#v, want chroma palette", asset)
@@ -388,8 +391,8 @@ func TestAssetPathRejectsAbsolutePath(t *testing.T) {
 	if _, err := website.AssetPublicPath("/etc/passwd"); err == nil {
 		t.Fatal("AssetPublicPath accepted absolute path")
 	}
-	if _, err := website.AssetBuildPath(build, "../secrets.txt"); err == nil {
-		t.Fatal("AssetBuildPath accepted parent traversal")
+	if _, err := build.AssetPath(Asset{RelPath: "../secrets.txt"}); err == nil {
+		t.Fatal("AssetPath accepted parent traversal")
 	}
 	if _, err := website.ResourcePath(website.StaticDirPath(), "/etc/passwd"); err == nil {
 		t.Fatal("ResourcePath accepted absolute path")

@@ -431,10 +431,11 @@ func (build *Build) WriteAssets(ctx context.Context, w io.Writer) (err error) {
 	}
 
 	assetPages := build.buildPages(*build.Pages)
-	assets, err := AssetEntries(&build.Website.Theme, build.Website, assetPages)
+	assets, err := AssetCandidates(&build.Website.Theme, build.Website, assetPages)
 	if err != nil {
 		return err
 	}
+	assets = assets.Resolved()
 	if build.Config.Incremental {
 		assets = assets.FilterSource(PageAsset)
 	}
@@ -485,7 +486,7 @@ func (build *Build) copyAsset(asset Asset, w io.Writer) (err error) {
 	var dstPath string
 	var dstFile *os.File
 	var dstFileBytesWritten int64
-	if dstPath, err = build.Website.AssetBuildPath(build, asset.RelPath); err != nil {
+	if dstPath, err = build.AssetPath(asset); err != nil {
 		return err
 	}
 	dstRelPath, err := build.RelativePath(dstPath)
@@ -670,6 +671,11 @@ func (build *Build) BuildPath(page *Page) string {
 		return relPath
 	}
 	return filePath
+}
+
+// AssetPath returns the build output path for asset.
+func (build *Build) AssetPath(asset Asset) (string, error) {
+	return build.AbsolutePath(asset.RelPath)
 }
 
 func (build *Build) AbsolutePath(relPath string) (string, error) {
