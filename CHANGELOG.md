@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.47.1 (2026-09-02)
+
 * **Added:** `Website.AssetCandidates` and `Website.LookupAsset`, which load
   page-owned assets and return candidates in builtin, theme, website, and page
   precedence order. `Assets.Resolved` collapses candidates to their winners.
