@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.48.0 (2026-09-07)
+
 * **BREAKING:** Replaced the physical `Page.URI` with runtime-only
   `Page.Source` (`PageSource{Directory, Path, Filename}`), which derives the
   current source-file URI and never appears in page front matter or template
