@@ -38,10 +38,10 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 					Description: "stale description should disappear after shorter save",
 				},
 				Spec: ContentTypeSpecification{
-					Layout:      "default",
-					Path:        "articles-with-longer-path",
-					URIResolver: TitleKabobURIResolver,
-					Format:      "markdown",
+					Layout:       "default",
+					Path:         "articles-with-longer-path",
+					PathResolver: TitleKabobPathResolver,
+					Format:       "markdown",
 				},
 			}
 			if err := first.Save(website, io.Discard); err != nil {
@@ -52,10 +52,10 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 				URI:      uri,
 				Metadata: ContentTypeMetadata{Name: "Article"},
 				Spec: ContentTypeSpecification{
-					Layout:      "default",
-					Path:        "a",
-					URIResolver: TitleKabobURIResolver,
-					Format:      "markdown",
+					Layout:       "default",
+					Path:         "a",
+					PathResolver: TitleKabobPathResolver,
+					Format:       "markdown",
 				},
 			}
 			if err := second.Save(website, io.Discard); err != nil {
@@ -94,12 +94,12 @@ func TestContentTypeSaveUsesSpecPromptsAndPatches(t *testing.T) {
 		URI:      &href.Href{URL: url.URL{Path: path}},
 		Metadata: ContentTypeMetadata{Name: "Prompted"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			Path:        "posts",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "markdown",
-			Prompts:     htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
-			Patches:     htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
+			Layout:       "default",
+			Path:         "posts",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "markdown",
+			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
+			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Runtime Title"}},
 	}
@@ -168,12 +168,12 @@ func TestContentTypeSaveDoesNotSerializeStateUserData(t *testing.T) {
 		URI:      &href.Href{URL: url.URL{Path: path}},
 		Metadata: ContentTypeMetadata{Name: "Prompted"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			Path:        "posts",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "markdown",
-			Prompts:     htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
-			Patches:     htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
+			Layout:       "default",
+			Path:         "posts",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "markdown",
+			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
+			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Runtime Title"}},
 	}
@@ -190,23 +190,48 @@ func TestContentTypeSaveDoesNotSerializeStateUserData(t *testing.T) {
 	}
 }
 
-func TestContentTypeLoadRequiresURIResolver(t *testing.T) {
+func TestContentTypeLoadRequiresPathResolver(t *testing.T) {
 	website, _ := testWebsite(t)
 	path := filepath.Join(website.Theme.ContentTypesDirPath(), "article.yaml")
 	writePageTestFile(t, path, "metadata:\n  name: Article\nspec:\n  layout: default\n  path: posts\n  format: markdown\n")
 	contenttype := &ContentType{URI: &href.Href{URL: url.URL{Path: path}}}
 
 	err := contenttype.Load()
-	if err == nil || !strings.Contains(err.Error(), "content-type spec.uri_resolver is required") {
-		t.Fatalf("Load() error = %v, want uri_resolver requirement", err)
+	if err == nil || !strings.Contains(err.Error(), "content-type spec.path_resolver is required") {
+		t.Fatalf("Load() error = %v, want path_resolver requirement", err)
+	}
+}
+
+func TestContentTypeLoadRejectsLegacyURIResolver(t *testing.T) {
+	website, _ := testWebsite(t)
+	path := filepath.Join(website.Theme.ContentTypesDirPath(), "article.yaml")
+	writePageTestFile(t, path, "metadata:\n  name: Article\nspec:\n  layout: default\n  path: posts\n  uri_resolver: timestamp\n  format: markdown\n")
+	contenttype := &ContentType{URI: &href.Href{URL: url.URL{Path: path}}}
+
+	err := contenttype.Load()
+	if err == nil || !strings.Contains(err.Error(), "spec.uri_resolver is no longer supported; use spec.path_resolver") {
+		t.Fatalf("Load() error = %v, want legacy uri_resolver migration error", err)
+	}
+}
+
+func TestContentTypePagePathUsesIndexFileForUglyRootPage(t *testing.T) {
+	page := Page{UglyURL: true}
+	contenttype := &ContentType{}
+
+	path, err := contentTypePublicURLPath(page, contenttype, "")
+	if err != nil {
+		t.Fatalf("contentTypePublicURLPath() error = %v", err)
+	}
+	if path != "/index.html" {
+		t.Fatalf("contentTypePublicURLPath() = %q, want /index.html", path)
 	}
 }
 
 func TestContentTypeSpecValidatesPathTemplateFunctions(t *testing.T) {
 	base := ContentTypeSpecification{
-		Layout:      "default",
-		URIResolver: TimestampURIResolver,
-		Format:      "markdown",
+		Layout:       "default",
+		PathResolver: TimestampPathResolver,
+		Format:       "markdown",
 	}
 	valid := base
 	valid.Path = "/blog/${year}/${month}/${day}/"
@@ -240,10 +265,10 @@ func TestContentTypeSpecValidatesPathTemplateFunctions(t *testing.T) {
 func TestContentTypeReadyValidatesDraftPageRequirements(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
-			Requires:    ContentTypeRequirements{Content: true},
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Requires:     ContentTypeRequirements{Content: true},
 		},
 	}
 	page := &Page{Visibility: DraftVisibility}
@@ -251,33 +276,48 @@ func TestContentTypeReadyValidatesDraftPageRequirements(t *testing.T) {
 	if err := contenttype.Ready(page); err == nil || !strings.Contains(err.Error(), "content-type requires page.content property") {
 		t.Fatalf("Ready() error = %v, want content requirement", err)
 	}
-	if err := contenttype.Validate(page); err != nil {
-		t.Fatalf("Validate() error = %v, want draft pages to skip validation", err)
+}
+
+func TestContentTypeReadyValidatesDescriptionRequirement(t *testing.T) {
+	contenttype := ContentType{
+		Spec: ContentTypeSpecification{
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Requires:     ContentTypeRequirements{Description: true},
+		},
+	}
+
+	if err := contenttype.Ready(&Page{}); err == nil || !strings.Contains(err.Error(), "content-type requires page.description property") {
+		t.Fatalf("Ready() error = %v, want description requirement", err)
+	}
+	if err := contenttype.Ready(&Page{Description: "Ready"}); err != nil {
+		t.Fatalf("Ready() error = %v, want nil", err)
 	}
 }
 
 func TestContentTypeReadyValidatesSlugInputs(t *testing.T) {
 	tests := []struct {
 		name     string
-		resolver PageURIResolverName
+		resolver PublicURLPathResolverKind
 		page     *Page
 		want     string
 	}{
 		{
 			name:     "manual slug",
-			resolver: ManualURIResolver,
+			resolver: ManualPathResolver,
 			page:     &Page{Content: "ready"},
 			want:     "content-type requires page.slug property",
 		},
 		{
 			name:     "title kabob slug",
-			resolver: TitleKabobURIResolver,
+			resolver: TitleKabobPathResolver,
 			page:     &Page{Content: "ready"},
 			want:     "content-type requires page.title property",
 		},
 		{
 			name:     "title snake slug",
-			resolver: TitleSnakeURIResolver,
+			resolver: TitleSnakePathResolver,
 			page:     &Page{Content: "ready"},
 			want:     "content-type requires page.title property",
 		},
@@ -285,7 +325,7 @@ func TestContentTypeReadyValidatesSlugInputs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			contenttype := ContentType{Spec: ContentTypeSpecification{Layout: "default", URIResolver: tc.resolver, Format: "markdown"}}
+			contenttype := ContentType{Spec: ContentTypeSpecification{Layout: "default", PathResolver: tc.resolver, Format: "markdown"}}
 			if err := contenttype.Ready(tc.page); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Ready() error = %v, want %q", err, tc.want)
 			}
@@ -296,10 +336,10 @@ func TestContentTypeReadyValidatesSlugInputs(t *testing.T) {
 func TestContentTypeReadyValidatesAttachmentKind(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
-			Requires:    ContentTypeRequirements{Attachment: AttachmentKindImage},
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Requires:     ContentTypeRequirements{Attachment: AttachmentKindImage},
 		},
 	}
 	page := &Page{
@@ -329,11 +369,11 @@ func TestContentTypeReadyValidatesAttachmentKind(t *testing.T) {
 func TestContentTypeValidateDefinitionChecksPatchPromptRefs(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
-			Prompts:     htprompt.Prompts{{ID: "tag", Type: htprompt.TypeText}},
-			Patches:     htpatch.Patches{{Op: "append", Path: "page.tags", ValueRef: "tag"}},
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Prompts:      htprompt.Prompts{{ID: "tag", Type: htprompt.TypeText}},
+			Patches:      htpatch.Patches{{Op: "append", Path: "page.tags", ValueRef: "tag"}},
 		},
 	}
 
@@ -374,9 +414,9 @@ func TestContentTypeSpecificationMIMEType(t *testing.T) {
 func TestContentTypeTemplateDataAppliesPatchesToSpecTemplateClone(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
 			TemplateData: httt.TemplateData{
 				"title": "Base Title",
 				"tags":  []string{"base"},
@@ -435,11 +475,11 @@ func TestContentTypeTemplateDataAppliesPatchesToSpecTemplateClone(t *testing.T) 
 func TestContentTypeTemplateDataUsesSeededPromptDefault(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
-			Prompts:     htprompt.Prompts{{ID: "title", Type: htprompt.TypeText, Default: "Default Title"}},
-			Patches:     htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText, Default: "Default Title"}},
+			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
 	}
 	contenttype.State.SeedDefaults(contenttype.Spec.Prompts)
@@ -456,9 +496,9 @@ func TestContentTypeTemplateDataUsesSeededPromptDefault(t *testing.T) {
 func TestContentTypeTemplateDataReadsStateUserDataDirectly(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
 			Prompts: htprompt.Prompts{
 				{ID: "title", Type: htprompt.TypeText},
 				{ID: "featured", Type: htprompt.TypeBoolean},
@@ -500,11 +540,11 @@ func TestContentTypeTemplateDataReadsStateUserDataDirectly(t *testing.T) {
 func TestContentTypeTemplateDataAddIgnoresPageDataAndReplaceRequiresSpecTemplate(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
-			Prompts:     htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
-			Patches:     htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
+			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Prompt Title"}},
 	}
@@ -530,9 +570,9 @@ func TestContentTypeTemplateDataAddIgnoresPageDataAndReplaceRequiresSpecTemplate
 func TestContentTypeOverlayPageUsesOverlayPrecedenceWithoutMutatingPage(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
 			TemplateData: httt.TemplateData{
 				"title":   "Spec Title",
 				"summary": "Spec summary",
@@ -601,12 +641,12 @@ func TestContentTypeOverlayPageUsesOverlayPrecedenceWithoutMutatingPage(t *testi
 func TestContentTypeCandidateReadyUsesOverlayWithoutMutatingPage(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      "markdown",
-			Requires:    ContentTypeRequirements{Title: true},
-			Prompts:     htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
-			Patches:     htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Requires:     ContentTypeRequirements{Title: true},
+			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
+			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Prompt Title"}},
 	}

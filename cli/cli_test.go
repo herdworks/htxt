@@ -27,8 +27,8 @@ func TestCLIComposesWebsiteCommands(t *testing.T) {
 			t.Errorf("CLI command key = %q, want %q", command.Spec.Key, key)
 		}
 	}
-	if _, ok := PageCommand().SubCommand("new"); !ok {
-		t.Fatal("page new command is not registered")
+	if _, ok := PageCommand().SubCommand("new"); ok {
+		t.Fatal("page new command is registered")
 	}
 }
 

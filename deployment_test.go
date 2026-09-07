@@ -123,6 +123,13 @@ func TestDeploymentAllowsPreviewBuild(t *testing.T) {
 	}
 }
 
+func TestDeploymentRejectsDraftsDirectory(t *testing.T) {
+	deployment := &Deployment{Config: DeploymentConfig{Build: BuildConfig{DraftsDirectory: "drafts"}}}
+	if err := deployment.Execute(t.Context()); err == nil || !strings.Contains(err.Error(), "does not support build.config.drafts_dir") {
+		t.Fatalf("Deployment.Execute() error = %v, want drafts directory rejection", err)
+	}
+}
+
 func TestDeploymentWritesBuildRelativeLog(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	writeBuildSelectionFile(t, fixture.sitePath, `base_url: https://example.com/

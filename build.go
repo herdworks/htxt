@@ -53,6 +53,11 @@ type BuildConfig struct {
 	DataFile    string   `json:"data_file,omitempty" yaml:"data_file,omitempty"`
 	LogFile     string   `json:"log_file,omitempty" yaml:"log_file,omitempty"`
 	Verbose     bool     `json:"verbose,omitempty" yaml:"verbose,omitempty"`
+
+	// DraftsDirectory is an optional website-root-relative source directory
+	// layered over content_dir for preview builds. It is deliberately not a
+	// WebsiteConfig setting: draft ownership belongs to the calling app.
+	DraftsDirectory string `json:"drafts_dir,omitempty" yaml:"drafts_dir,omitempty"`
 }
 
 type BuildStatus struct {
@@ -238,7 +243,6 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 			return err
 		}
 	}
-
 	if err = build.Environment.Load(); err != nil {
 		return err
 	}
@@ -251,7 +255,7 @@ func (build *Build) LoadContext(ctx context.Context, w io.Writer) (err error) {
 	if build.Website.Theme.TemplateData, err = ThemeTemplateData(build.Website, build.Website.Config.Markdown, build.Config.Verbose, w); err != nil {
 		return err
 	}
-	if err = build.Website.LoadPages(ctx, build.Config.Verbose, w); err != nil {
+	if err = build.Website.LoadPages(ctx, build.Config.Verbose, w, build.sourceDirectories()...); err != nil {
 		return err
 	}
 	for _, page := range build.Website.pages {
@@ -309,24 +313,38 @@ func (build *Build) resolvePage() error {
 }
 
 func (build *Build) validateBuildScope() error {
-	if !build.Config.Incremental && build.Config.Page != "" {
-		return fmt.Errorf("build.config.page is only supported for incremental builds")
+	if build.Config.DraftsDirectory != "" {
+		if !build.Config.Preview {
+			return fmt.Errorf("build.config.drafts_dir is only supported for preview builds")
+		}
+		if _, err := htfiles.CleanRelativePath(build.Config.DraftsDirectory); err != nil {
+			return fmt.Errorf("build.config.drafts_dir must be a clean website-root-relative path")
+		}
 	}
-	if build.Config.Page == "" {
-		if build.Config.Incremental {
-			return fmt.Errorf("build.config.page is required for incremental builds")
+	if !build.Config.Incremental {
+		if build.Config.Page != "" {
+			return fmt.Errorf("build.config.page is only supported for incremental builds")
 		}
 		return nil
+	}
+	if build.Config.Page == "" {
+		return fmt.Errorf("build.config.page is required for incremental builds")
 	}
 	if filepath.IsAbs(build.Config.Page) {
 		return fmt.Errorf("build.config.page must be relative to the website root: %s", build.Config.Page)
 	}
-	relative, err := htfiles.CleanRelativePath(build.Config.Page)
-	if err != nil {
+	if _, err := htfiles.CleanRelativePath(build.Config.Page); err != nil {
 		return fmt.Errorf("build.config.page must be relative to the website root: %w", err)
 	}
-	build.Config.Page = relative
 	return nil
+}
+
+func (build *Build) sourceDirectories() (directories []string) {
+	directories = []string{build.Website.ContentDirPath()}
+	if build.Config.DraftsDirectory != "" {
+		directories = append(directories, filepath.Join(build.Website.RootDir(), build.Config.DraftsDirectory))
+	}
+	return directories
 }
 
 // Context returns the unified template context that page templates
@@ -610,7 +628,7 @@ func (build *Build) WritePage(page *Page, w io.Writer) (err error) {
 	var filePath string = build.BuildPath(page)
 	var fileBytes []byte
 	if fileBytes, err = RenderPage(build, build.Website, page, w); err != nil {
-		return fmt.Errorf("failed to generate %q with error: %w", build.Website.RelativePath(page.URI.Path), err)
+		return fmt.Errorf("failed to generate %q with error: %w", build.Website.RelativePath(page.Source.URI().Path), err)
 	}
 	if err = os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err
@@ -648,9 +666,9 @@ func (build *Build) WriteFile(fileName string, fileBytes []byte, w io.Writer) (e
 }
 
 func (build *Build) BuildPath(page *Page) string {
-	publicPath := page.Path
-	if publicPath == "" && build.Website != nil && page.URI != nil {
-		publicPath = PagePath(build.Website, page.URI)
+	publicPath := page.PublicURL.Path
+	if publicPath == "" {
+		publicPath = page.Source.PublicURLPath(page.UglyURL)
 	}
 	publicPath = strings.TrimPrefix(strings.ToLower(filepath.ToSlash(publicPath)), "/")
 	var relPath string
@@ -973,7 +991,7 @@ func RenderPage(build *Build, website *Website, page *Page, w io.Writer) (pageBy
 		return nil, err
 	}
 	if page.Static {
-		return os.ReadFile(page.URI.Path) // return static HTML file bytes without processing template
+		return os.ReadFile(page.Source.URI().Path) // return static HTML file bytes without processing template
 	}
 	if doc, err = NewTemplateDocument(website, page); err != nil {
 		return nil, err

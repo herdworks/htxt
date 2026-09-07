@@ -33,6 +33,9 @@ func (d *Deployment) Execute(ctx context.Context) (err error) {
 	if d == nil {
 		return fmt.Errorf("deployment is required")
 	}
+	if d.Config.Build.DraftsDirectory != "" {
+		return fmt.Errorf("deployment does not support build.config.drafts_dir")
+	}
 	d.Build = &Build{Config: d.Config.Build}
 	if err := d.Build.Execute(ctx); err != nil {
 		return err

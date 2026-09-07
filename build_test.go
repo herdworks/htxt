@@ -194,7 +194,7 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 func (fixture buildSelectionFixture) build(page *Page, incremental bool) *Build {
 	pagePath := ""
 	if page != nil {
-		pagePath, _ = filepath.Rel(fixture.root, page.URI.Path)
+		pagePath, _ = filepath.Rel(fixture.root, page.Source.URI().Path)
 	}
 	return &Build{
 		Config: BuildConfig{
@@ -222,7 +222,7 @@ func (fixture buildExecutionFixture) build() *Build {
 func TestBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	build := fixture.build(nil, false)
-	build.Pages = &Pages{{URI: &url.URL{Path: "/stale-output/"}}}
+	build.Pages = &Pages{&Page{Source: PageSource{Directory: "/", Filename: "stale-output"}}}
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("LoadContext() error = %v", err)
 	}
@@ -234,6 +234,150 @@ func TestBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	}
 }
 
+func TestBuildPreviewDraftsDirectoryOverridesCanonicalPage(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "content", "about", "index.md"), "---\nlayout: default\ntitle: Canonical\n---\n")
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "drafts", "about", "index.md"), "---\nlayout: default\ntitle: Draft\n---\n")
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig:   WebsiteConfig{Path: fixture.sitePath},
+		ID:              "drafts",
+		Preview:         true,
+		DraftsDirectory: "drafts",
+	}}
+	build.Website = &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}}
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("Build.LoadContext() error = %v", err)
+	}
+	page := build.Website.pages.ByPublicURLPath("/about/")
+	if page == nil || page.Title != "Draft" {
+		t.Fatalf("draft override = %#v, want Draft page", page)
+	}
+	if got := page.Source.Directory; got != filepath.Join(fixture.root, "drafts") {
+		t.Fatalf("draft source directory = %q", got)
+	}
+}
+
+func TestBuildRejectsDraftsDirectoryOutsidePreview(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig:   WebsiteConfig{Path: fixture.sitePath},
+		ID:              "drafts-rejected",
+		DraftsDirectory: "drafts",
+	}}
+	if err := build.Execute(context.Background()); err == nil || !strings.Contains(err.Error(), "only supported for preview") {
+		t.Fatalf("Build.Execute() error = %v, want drafts preview-only error", err)
+	}
+}
+
+func TestBuildRejectsUnsafeDraftsDirectory(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig:   WebsiteConfig{Path: fixture.sitePath},
+		ID:              "drafts-unsafe",
+		Preview:         true,
+		DraftsDirectory: "../drafts",
+	}}
+	if err := build.Execute(context.Background()); err == nil || !strings.Contains(err.Error(), "must be a clean website-root-relative path") {
+		t.Fatalf("Build.Execute() error = %v, want unsafe drafts directory error", err)
+	}
+}
+
+func TestBuildPreviewDraftsDirectoryCarriesOverrideThroughCatalogs(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	writeBuildSelectionFile(t, fixture.sitePath, `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+feeds:
+  updates:
+    include:
+      - path: "**"
+`)
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "content", "about", "index.md"), "---\nlayout: default\ntitle: Canonical\ntags:\n  - canonical\n---\n")
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "drafts", "about", "index.md"), "---\nlayout: default\ntitle: Draft\ntags:\n  - draft\n---\n")
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "drafts", "about", "photo.jpg"), "draft image")
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig:   WebsiteConfig{Path: fixture.sitePath},
+		ID:              "draft-catalogs",
+		Preview:         true,
+		DraftsDirectory: "drafts",
+	}}
+	build.Website = &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}}
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("Build.LoadContext() error = %v", err)
+	}
+	page := build.Website.pages.ByPublicURLPath("/about/")
+	if page == nil || page.Title != "Draft" {
+		t.Fatalf("draft override = %#v, want Draft page", page)
+	}
+	if got, want := page.Assets, []string{"about/photo.jpg"}; !slices.Equal(got, want) {
+		t.Fatalf("draft page assets = %#v, want %#v", got, want)
+	}
+	if build.Website.pages.ByPublicURLPath("/tags/canonical/") != nil {
+		t.Fatal("canonical tag page survived draft override")
+	}
+	if build.Website.pages.ByPublicURLPath("/tags/draft/") == nil {
+		t.Fatal("draft tag page is missing")
+	}
+	updates, ok := build.Website.feeds.Feed(UserFeed, "updates")
+	if !ok || !updates.Pages.Contains(page) {
+		t.Fatalf("updates feed = %#v, want draft page", updates)
+	}
+	pages, ok := build.Website.TemplateData.Get("pages").([]httt.TemplateData)
+	if !ok || !slices.ContainsFunc(pages, func(data httt.TemplateData) bool { return data.Get("title") == "Draft" }) {
+		t.Fatalf("site.pages = %#v, want draft page", build.Website.TemplateData.Get("pages"))
+	}
+}
+
+func TestBuildPreviewIncrementalBuildSelectsDraftSource(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	draftPath := filepath.Join(fixture.root, "drafts", "about", "index.md")
+	writeBuildSelectionFile(t, draftPath, "---\nlayout: default\ntitle: Draft\n---\n")
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig:   WebsiteConfig{Path: fixture.sitePath},
+		ID:              "draft-incremental",
+		Preview:         true,
+		Incremental:     true,
+		Page:            filepath.Join("drafts", "about", "index.md"),
+		DraftsDirectory: "drafts",
+	}}
+	build.Website = &Website{URI: &href.Href{URL: url.URL{Path: fixture.sitePath}}}
+	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
+		t.Fatalf("Build.LoadContext() error = %v", err)
+	}
+	if got, want := len(*build.Pages), 1; got != want {
+		t.Fatalf("selected page count = %d, want %d", got, want)
+	}
+	if got := (*build.Pages)[0].Source.URI().Path; got != draftPath {
+		t.Fatalf("selected page source = %q, want %q", got, draftPath)
+	}
+}
+
+func TestBuildPreviewDraftsDirectoryWritesDraftPageAndAsset(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "drafts", "index.html"), "<h1>Draft</h1>")
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "drafts", "photo.jpg"), "draft image")
+	build := &Build{Config: BuildConfig{
+		WebsiteConfig:   WebsiteConfig{Path: fixture.sitePath},
+		URI:             &url.URL{Path: fixture.buildPath},
+		ID:              "draft-output",
+		Preview:         true,
+		DraftsDirectory: "drafts",
+	}}
+	if err := build.Execute(context.Background()); err != nil {
+		t.Fatalf("Build.Execute() error = %v", err)
+	}
+	if bytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "index.html")); err != nil || string(bytes) != "<h1>Draft</h1>" {
+		t.Fatalf("draft page output = %q, %v", bytes, err)
+	}
+	if bytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "photo.jpg")); err != nil || string(bytes) != "draft image" {
+		t.Fatalf("draft asset output = %q, %v", bytes, err)
+	}
+}
+
 func TestBuildGeneratedTagPageUsesTagFeedAlias(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	writeBuildSelectionFile(t, fixture.pages[0], "---\nlayout: default\ntags:\n  - news\ntitle: One\n---\n\none")
@@ -241,7 +385,7 @@ func TestBuildGeneratedTagPageUsesTagFeedAlias(t *testing.T) {
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("LoadContext() error = %v", err)
 	}
-	page := build.Pages.PageByPath("/tags/news/")
+	page := build.Pages.ByPublicURLPath("/tags/news/")
 	if page == nil {
 		t.Fatal("generated tag page is missing")
 	}
@@ -267,10 +411,10 @@ func TestBuildLoadsTagPagesIntoWebsiteCatalogBeforeSelection(t *testing.T) {
 	if _, ok := build.Feeds.Feed(TagFeed, "news"); !ok {
 		t.Fatal("Build.Feeds is missing the complete tag catalog")
 	}
-	if feed, _ := build.Feeds.Feed(TagFeed, "news"); len(feed.Pages) != 1 || feed.Pages[0].Path != "/one/" {
+	if feed, _ := build.Feeds.Feed(TagFeed, "news"); len(feed.Pages) != 1 || feed.Pages[0].PublicURL.Path != "/one/" {
 		t.Fatalf("tag feed pages = %#v, want authored source page only", feed.Pages)
 	}
-	if page := build.Website.pages.PageByPath("/tags/news/"); page == nil || page.TemplateData.Get("feeds.tag.items") == nil {
+	if page := build.Website.pages.ByPublicURLPath("/tags/news/"); page == nil || page.TemplateData.Get("feeds.tag.items") == nil {
 		t.Fatalf("generated tag page = %#v, want hydrated page.feeds.tag", page)
 	}
 }
@@ -278,29 +422,29 @@ func TestBuildLoadsTagPagesIntoWebsiteCatalogBeforeSelection(t *testing.T) {
 func TestIncrementalBuildSelectsGeneratedButNotAuthoredTagRenderers(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	writeBuildSelectionFile(t, fixture.pages[0], "---\nlayout: default\ntags:\n  - news\ntitle: One\n---\n\none")
-	requested := &Page{URI: &url.URL{Path: fixture.pages[0]}}
+	requested := pageWithURI(&url.URL{Path: fixture.pages[0]}, Page{})
 	build := fixture.build(requested, true)
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("generated LoadContext() error = %v", err)
 	}
-	if page := build.Pages.PageByPath("/tags/news/"); page == nil {
+	if page := build.Pages.ByPublicURLPath("/tags/news/"); page == nil {
 		t.Fatal("incremental build did not select generated tag renderer")
 	}
 
 	writeBuildSelectionFile(t, filepath.Join(fixture.root, "content", "tags", "news", "index.md"), "---\nlayout: default\ntitle: Authored tag page\n---\n\nauthored")
-	requested = &Page{URI: &url.URL{Path: fixture.pages[0]}}
+	requested = pageWithURI(&url.URL{Path: fixture.pages[0]}, Page{})
 	build = fixture.build(requested, true)
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("authored LoadContext() error = %v", err)
 	}
-	if page := build.Pages.PageByPath("/tags/news/"); page != nil {
+	if page := build.Pages.ByPublicURLPath("/tags/news/"); page != nil {
 		t.Fatalf("incremental build selected authored tag page without binding: %#v", page)
 	}
 }
 
 func TestBuildLoadContextFullBuildRejectsPage(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, false)
+	build := fixture.build(pageWithURI(&url.URL{Path: fixture.pages[0]}, Page{}), false)
 
 	err := build.LoadContext(context.Background(), io.Discard)
 	if err == nil {
@@ -334,7 +478,7 @@ func TestBuildLoadContextIncrementalBuildRequiresPage(t *testing.T) {
 
 func TestBuildLoadContextIncrementalBuildSelectsRequestedPage(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, true)
+	build := fixture.build(pageWithURI(&url.URL{Path: fixture.pages[0]}, Page{}), true)
 
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("LoadContext() error = %v", err)
@@ -342,7 +486,7 @@ func TestBuildLoadContextIncrementalBuildSelectsRequestedPage(t *testing.T) {
 	if got, want := len(*build.Pages), 1; got != want {
 		t.Fatalf("len(build.Pages) = %d, want %d", got, want)
 	}
-	if got, want := (*build.Pages)[0].URI.Path, fixture.pages[0]; got != want {
+	if got, want := (*build.Pages)[0].Source.URI().Path, fixture.pages[0]; got != want {
 		t.Fatalf("build.Pages[0].URI.Path = %q, want %q", got, want)
 	}
 }
@@ -355,7 +499,7 @@ func TestBuildLoadContextIncrementalBuildValidatesAllPageFeeds(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			writeBuildSelectionFile(t, fixture.pages[1], "---\n"+source+"---\n\nunselected")
-			build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, true)
+			build := fixture.build(pageWithURI(&url.URL{Path: fixture.pages[0]}, Page{}), true)
 			if err := build.LoadContext(context.Background(), io.Discard); err == nil {
 				t.Fatal("LoadContext() accepted invalid feeds on an unselected page")
 			}
@@ -382,7 +526,7 @@ func TestBuildLoadContextCanRebuildFullSelection(t *testing.T) {
 
 func TestBuildLoadContextCanRebuildIncrementalSelection(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
-	build := fixture.build(&Page{URI: &url.URL{Path: fixture.pages[0]}}, true)
+	build := fixture.build(pageWithURI(&url.URL{Path: fixture.pages[0]}, Page{}), true)
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("first LoadContext() error = %v", err)
 	}
@@ -390,7 +534,7 @@ func TestBuildLoadContextCanRebuildIncrementalSelection(t *testing.T) {
 	if err := build.LoadContext(context.Background(), io.Discard); err != nil {
 		t.Fatalf("second LoadContext() error = %v", err)
 	}
-	if got, want := (*build.Pages)[0].URI.Path, fixture.pages[1]; got != want {
+	if got, want := (*build.Pages)[0].Source.URI().Path, fixture.pages[1]; got != want {
 		t.Fatalf("incremental root page after reload = %q, want %q", got, want)
 	}
 }
@@ -415,7 +559,7 @@ func TestBuildLoadContextUsesBuildConfig(t *testing.T) {
 	if build.Pages == nil || len(*build.Pages) != 1 {
 		t.Fatalf("len(Build.Pages) = %v, want 1", build.Pages)
 	}
-	if got := (*build.Pages)[0].URI.Path; !strings.Contains(got, "custom-content") {
+	if got := (*build.Pages)[0].Source.URI().Path; !strings.Contains(got, "custom-content") {
 		t.Fatalf("page URI = %q, want custom content directory", got)
 	}
 }
@@ -611,12 +755,14 @@ func TestBuildRejectsAbsolutePageExpression(t *testing.T) {
 func TestBuildWritersEnforceVisibilityOnSelectedDependencies(t *testing.T) {
 	root := t.TempDir()
 	page := &Page{
-		URI:          &url.URL{Path: filepath.Join(root, "content", "feed", "index.html")},
-		Path:         "/feed/",
+		PublicURL:    url.URL{Path: "/feed/"},
 		Visibility:   NoVisibility,
 		Static:       true,
 		TemplateData: map[string]any{},
 	}
+	page.Source.Directory = filepath.Join(root, "content")
+	page.Source.Path = "feed"
+	page.Source.Filename = "index.html"
 	pages := Pages{page}
 	build := &Build{
 		Config:  BuildConfig{URI: &url.URL{Path: filepath.Join(root, "builds", "test")}, Incremental: true},

@@ -80,6 +80,40 @@ func TestWebsiteLookupAssetReturnsResolvedAssetAndCandidates(t *testing.T) {
 	}
 }
 
+func TestWebsiteListPagesUsesExplicitSourceDirectories(t *testing.T) {
+	fixture := newBuildSelectionFixture(t)
+	contentDirectory := filepath.Join(fixture.root, "content")
+	draftsDirectory := filepath.Join(fixture.root, "drafts")
+	writeBuildSelectionFile(t, filepath.Join(contentDirectory, "about", "index.md"), "---\nlayout: default\ntitle: Canonical\n---\n")
+	writeBuildSelectionFile(t, filepath.Join(draftsDirectory, "about", "index.md"), "---\nlayout: default\ntitle: Draft\n---\n")
+	website := &Website{URI: mustHref(t, fixture.sitePath)}
+	if err := website.Load(false, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	pages, err := website.ListPages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = LoadPages(context.Background(), website, pages, nil, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if page := pages.ByPublicURLPath("/about/"); page == nil || page.Title != "Canonical" {
+		t.Fatalf("canonical page = %#v, want Canonical", page)
+	}
+
+	pages, err = website.ListPages(contentDirectory, draftsDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = LoadPages(context.Background(), website, pages, nil, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if page := pages.ByPublicURLPath("/about/"); page == nil || page.Title != "Draft" {
+		t.Fatalf("draft overlay page = %#v, want Draft", page)
+	}
+}
+
 func TestWebsite_ResolveEnvironmentsDefaultsToDefaultProvider(t *testing.T) {
 	website := &Website{}
 
@@ -281,6 +315,24 @@ func TestWebsiteFilePathsListsManagedFilesOnly(t *testing.T) {
 	}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("FilePaths() = %#v, want %#v", paths, want)
+	}
+}
+
+func TestWebsiteFilePathsIncludesExplicitDraftsDirectory(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	website := &Website{URI: mustHref(t, fixture.sitePath)}
+	if err := website.Load(false, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	draftsDirectory := filepath.Join(fixture.root, "drafts")
+	writeBuildSelectionFile(t, filepath.Join(draftsDirectory, "about", "index.md"), "---\ntitle: Draft\n---\n")
+
+	paths, err := website.FilePaths(website.ContentDirPath(), draftsDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(paths, "drafts/about/index.md") {
+		t.Fatalf("FilePaths() = %#v, want draft page", paths)
 	}
 }
 

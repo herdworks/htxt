@@ -136,7 +136,7 @@ func TestFeedDatasetMarshalsFlatAliasesWithoutRuntimeData(t *testing.T) {
 }
 
 func TestFeedSelectorUsesPathAndTagsAsAlternatives(t *testing.T) {
-	page := &Page{Path: "/blog/post/", Tags: []string{"featured"}}
+	page := &Page{PublicURL: url.URL{Path: "/blog/post/"}, Tags: []string{"featured"}}
 	for _, selector := range []FeedSelector{{Path: "/blog/**"}, {Tags: []string{"featured"}}} {
 		if !selector.Matches(page) {
 			t.Fatalf("selector %#v did not match page", selector)
@@ -168,7 +168,7 @@ func TestVisibilityControlsWebsiteFeedsAndOutput(t *testing.T) {
 
 func TestPageParseRejectsLegacyFeedAndVisibilityFields(t *testing.T) {
 	for _, key := range []string{"draft: true", "unlisted: true", "feed: {}"} {
-		page := &Page{URI: &url.URL{Path: "/content/index.md"}, TemplateData: httt.TemplateData{}}
+		page := pageWithURI(&url.URL{Path: "/content/index.md"}, Page{TemplateData: httt.TemplateData{}})
 		data := httt.TemplateData{}
 		if err := yaml.Unmarshal([]byte(key), &data); err != nil {
 			t.Fatal(err)
@@ -181,9 +181,10 @@ func TestPageParseRejectsLegacyFeedAndVisibilityFields(t *testing.T) {
 
 func TestPageScreenAllowsCustomNonBooleanLegacyNamesWithoutMutationOnReject(t *testing.T) {
 	page := &Page{
-		URI:          &url.URL{Path: "/content/index.md"},
 		TemplateData: httt.TemplateData{"existing": "value"},
 	}
+	page.Source.Directory = "/content"
+	page.Source.Filename = "index.md"
 	for _, data := range []httt.TemplateData{{"draft": "custom"}, {"unlisted": map[string]any{"custom": true}}} {
 		if err := page.Parse(data); err != nil {
 			t.Fatalf("Page.Parse(%#v) error = %v", data, err)
@@ -234,16 +235,18 @@ func TestWebsiteSelectsFeedsAndRenderersFromCompleteCatalog(t *testing.T) {
 		Config:  WebsiteConfig{FeedPath: "/feeds", TagPath: "/tags"},
 		Feeds:   FeedConfigs{"blog": {}},
 	}
-	source := &Page{URI: &url.URL{Path: "/content/post/index.md"}, Path: "/post/", Tags: []string{"news"}, TemplateData: httt.TemplateData{"title": "Post"}}
+	source := pageWithURI(&url.URL{Path: "/content/post/index.md"}, Page{PublicURL: url.URL{Path: "/post/"}, Tags: []string{"news"}, TemplateData: httt.TemplateData{"title": "Post"}})
 	renderer := &Page{
-		URI:          &url.URL{Path: "/content/blog/index.md"},
-		Path:         "/blog/",
+		PublicURL:    url.URL{Path: "/blog/"},
 		TemplateData: httt.TemplateData{},
 		Feeds: FeedDataset{
 			UserFeed: {"latest": {Source: "blog"}},
 			TagFeed:  {"headlines": {Tag: "news"}},
 		},
 	}
+	renderer.Source.Directory = "/content"
+	renderer.Source.Path = "blog"
+	renderer.Source.Filename = "index.md"
 	website.pages = Pages{source, renderer}
 	if err := website.HydrateFeeds(); err != nil {
 		t.Fatal(err)

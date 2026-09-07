@@ -15,7 +15,10 @@ func cloneURL(u *url.URL) *url.URL {
 	return &clone
 }
 
-func cleanRelativeURIPath(value string) (string, error) {
+// cleanRelativePath normalizes a slash-delimited relative path for safe use
+// beneath a managed root. It rejects absolute paths and parent traversal that
+// could escape that root.
+func cleanRelativePath(value string) (string, error) {
 	if value == "" {
 		return "", nil
 	}

@@ -120,7 +120,6 @@ func Apply(data httt.TemplateData, patches Patches, values Values) error {
 func ProtectedPath(path string) bool {
 	protected := []string{
 		"page.uri",
-		"page.cache",
 		"page.path",
 		"page.assets",
 		"page.canonical_url",

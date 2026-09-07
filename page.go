@@ -27,14 +27,16 @@ import (
 // Page objects do the heavy lifting to parse content data files
 // and convert them into rendered pages.
 type Page struct {
-	// Internal properties
-	URI    *url.URL   `json:"-" yaml:"-"`
-	Slug   string     `json:"slug,omitempty" yaml:"slug,omitempty"`
-	Cache  *PageCache `json:"-" yaml:"-"`
-	Loaded bool       `json:"-" yaml:"-"`
+	// Source provenance is runtime-only. It never appears in page front matter
+	// or template data, but callers may construct custom pages with it.
+	// Format is supplied by a content type or inferred from Source.Filename.
+	// It may differ from Source.Filename's extension until persistence succeeds.
+	Source    PageSource `json:"-" yaml:"-"`
+	PublicURL url.URL    `json:"-" yaml:"-"`
+	Format    string     `json:"-" yaml:"-"`
 
 	// Template data properties
-	CreatedAt    string             `json:"created_at" yaml:"created_at" jsonschema:"format=date-time,description=Defaults to 'site.created_at'."`
+	CreatedAt    string             `json:"created_at" yaml:"created_at" jsonschema:"format=date-time,description=Set when the page is finalized."`
 	UpdatedAt    string             `json:"updated_at" yaml:"updated_at" jsonschema:"format=date-time"`
 	LayoutRef    string             `json:"layout" yaml:"layout" jsonschema:"default=default,description=Defaults to 'default'."`
 	Title        string             `json:"title,omitempty" yaml:"title,omitempty"`
@@ -48,18 +50,25 @@ type Page struct {
 	Metadata     []HTMLMeta         `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Links        []HTMLLink         `json:"links,omitempty" yaml:"links,omitempty"`
 	Tags         []string           `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Visibility   PageVisibilityKind `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"default=public,description=Controls page visibility."`
-	UglyURL      bool               `json:"ugly_url,omitempty" yaml:"ugly_url,omitempty"`
-	Redirect     string             `json:"redirect,omitempty" yaml:"redirect,omitempty" jsonschema:"format=uri-reference,description=The URI reference written into the page refresh redirect target."`
 	Feeds        FeedDataset        `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named feeds rendered by this page."`
+	Visibility   PageVisibilityKind `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"default=public,description=Controls page visibility."`
+	Redirect     string             `json:"redirect,omitempty" yaml:"redirect,omitempty" jsonschema:"format=uri-reference,description=The URI reference written into the page refresh redirect target."`
+	Slug         string             `json:"slug,omitempty" yaml:"slug,omitempty"`
+	UglyURL      bool               `json:"ugly_url,omitempty" yaml:"ugly_url,omitempty"`
 
 	// Computed properties
 	TemplateData httt.TemplateData `json:"-" yaml:"-"`
-	Path         string            `json:"-" yaml:"-"`
-	Assets       []string          `json:"-" yaml:"-"` // paths relative to website.ContentDirName()
+	Assets       []string          `json:"-" yaml:"-"` // paths relative to Source.Directory
 	Static       bool              `json:"-" yaml:"-"`
+	Loaded       bool              `json:"-" yaml:"-"`
 }
 type Pages []*Page
+
+type PageSource struct {
+	Directory string
+	Path      string
+	Filename  string
+}
 
 type PageVisibilityKind string
 
@@ -121,14 +130,19 @@ func (page *Page) Parse(data httt.TemplateData) (err error) {
 
 // Screen page TemplateData for unsupported parameters (e.g. page.draft, page.unlisted, and page.feed)
 func (page *Page) Screen(data httt.TemplateData) error {
+	uri := page.Source.URI()
+	uriPath := ""
+	if uri != nil {
+		uriPath = uri.Path
+	}
 	if _, ok := data.Get("draft").(bool); ok {
-		return fmt.Errorf("page %q screened: page.draft is no longer supported; use page.visibility = \"draft\"", page.URI.Path)
+		return fmt.Errorf("page %q screened: page.draft is no longer supported; use page.visibility = \"draft\"", uriPath)
 	}
 	if _, ok := data.Get("unlisted").(bool); ok {
-		return fmt.Errorf("page %q screened: page.unlisted is no longer supported; use page.visibility = \"unlisted\"", page.URI.Path)
+		return fmt.Errorf("page %q screened: page.unlisted is no longer supported; use page.visibility = \"unlisted\"", uriPath)
 	}
 	if data.Get("feed") != nil {
-		return fmt.Errorf("page %q screened: page.feed is no longer supported; use page.feeds", page.URI.Path)
+		return fmt.Errorf("page %q screened: page.feed is no longer supported; use page.feeds", uriPath)
 	}
 	return nil
 }
@@ -137,20 +151,21 @@ func (page *Page) Screen(data httt.TemplateData) error {
 //
 // Validates that the page has all properties required for processing.
 func (page *Page) Validate() (err error) {
-	if page.URI == nil {
-		return fmt.Errorf("page.uri missing")
+	uri := page.Source.URI()
+	if uri == nil {
+		return fmt.Errorf("page source state missing")
 	}
-	if len(page.CreatedAt) == 0 {
-		return fmt.Errorf("page.created_at missing (%s)", page.URI.Path)
+	if page.CreatedAt == "" && page.UpdatedAt == "" {
+		return fmt.Errorf("page.created_at or page.updated_at missing (%s)", uri.Path)
 	}
 	if len(page.LayoutRef) == 0 {
-		return fmt.Errorf("page.layout missing (%s)", page.URI.Path)
+		return fmt.Errorf("page.layout missing (%s)", uri.Path)
 	}
 	if strings.Contains(page.Slug, "/") {
 		return fmt.Errorf("page.slug cannot contain a slash (%s)", page.Slug)
 	}
 	if page.Byline != nil && !page.Byline.Ready() {
-		return fmt.Errorf("page.byline invalid (%s)", page.URI.Path)
+		return fmt.Errorf("page.byline invalid (%s)", uri.Path)
 	}
 	if err := page.validateTagNames(); err != nil {
 		return err
@@ -161,33 +176,49 @@ func (page *Page) Validate() (err error) {
 	return nil
 }
 
-func (page *Page) validateTagNames() error {
-	for _, tag := range page.Tags {
-		if err := ValidateTagName(tag); err != nil {
-			return fmt.Errorf("page.tags: %w", err)
-		}
+func (page *Page) Clone() *Page {
+	if page == nil {
+		return nil
 	}
-	return nil
+	clone := *page
+	clone.Byline = page.Byline.Clone()
+	clone.Contributors = page.Contributors.Clone()
+	clone.Attachments = page.Attachments.Clone()
+	clone.Metadata = append([]HTMLMeta(nil), page.Metadata...)
+	clone.Links = append([]HTMLLink(nil), page.Links...)
+	clone.Tags = append([]string(nil), page.Tags...)
+	clone.Feeds = page.Feeds.Clone()
+	clone.Assets = append([]string(nil), page.Assets...)
+	if page.TemplateData != nil {
+		clone.TemplateData = page.TemplateData.Clone()
+	}
+	return &clone
 }
 
 // Page.Delete()
 //
 // Deletes the page from disk. If the page has child pages, the page files are
 // deleted but the directory is retained.
+// TODO: Make deletion website-scoped so it can validate page sources before
+// removing files.
 func (page *Page) Delete(w io.Writer) (err error) {
 	if w == nil {
 		w = os.Stdout
 	}
 
-	fmt.Fprintf(w, "page \"%s\" delete\n", page.URI.Path)
+	uri := page.Source.URI()
+	if uri == nil {
+		return fmt.Errorf("page.delete requires page source state")
+	}
+	fmt.Fprintf(w, "page \"%s\" delete\n", uri.Path)
 	if page.HasChildPages() {
-		fmt.Fprintf(w, "page \"%s\" files will be deleted (descendents will be preserved)\n", filepath.Dir(page.URI.Path))
+		fmt.Fprintf(w, "page \"%s\" files will be deleted (descendents will be preserved)\n", filepath.Dir(uri.Path))
 		if err = page.DeleteFiles(w); err != nil {
 			return err
 		}
 	} else {
-		fmt.Fprintf(w, "page \"%s\" directory will be deleted (no descendents to be preserved)\n", filepath.Dir(page.URI.Path))
-		if err := os.RemoveAll(filepath.Dir(page.URI.Path)); err != nil {
+		fmt.Fprintf(w, "page \"%s\" directory will be deleted (no descendents to be preserved)\n", filepath.Dir(uri.Path))
+		if err := os.RemoveAll(filepath.Dir(uri.Path)); err != nil {
 			return err
 		}
 	}
@@ -198,13 +229,17 @@ func (page *Page) DeleteFiles(w io.Writer) (err error) {
 		w = os.Stdout
 	}
 
+	uri := page.Source.URI()
+	if uri == nil {
+		return fmt.Errorf("page.delete requires page source state")
+	}
 	var entries []os.DirEntry
-	if entries, err = os.ReadDir(filepath.Dir(page.URI.Path)); err != nil {
+	if entries, err = os.ReadDir(filepath.Dir(uri.Path)); err != nil {
 		return err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
-			filePath := filepath.Join(filepath.Dir(page.URI.Path), entry.Name())
+			filePath := filepath.Join(filepath.Dir(uri.Path), entry.Name())
 			fmt.Fprintf(w, "file \"%s\" delete\n", filePath)
 			if err := os.Remove(filePath); err != nil {
 				return err
@@ -215,14 +250,13 @@ func (page *Page) DeleteFiles(w io.Writer) (err error) {
 }
 
 func (page *Page) CanonicalURL(website *Website) (*url.URL, error) {
-	if page == nil || len(page.Path) == 0 || website == nil {
+	if page == nil || page.PublicURL.Path == "" || website == nil {
 		return nil, fmt.Errorf("page canonical URL requires page for page.path and website for website.URL()")
 	}
-	path, err := url.Parse(page.Path)
-	if err != nil {
-		return nil, err
+	if page.PublicURL.Scheme != "" || page.PublicURL.Opaque != "" || page.PublicURL.Host != "" || page.PublicURL.User != nil {
+		return nil, fmt.Errorf("page canonical URL requires a website-relative page public URL")
 	}
-	return website.URL().ResolveReference(path), nil
+	return website.URL().ResolveReference(&page.PublicURL), nil
 }
 
 // Page.ApplyComputedProperties()
@@ -292,8 +326,8 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	if len(page.More) > 0 {
 		page.TemplateData.Set("more", page.More)
 	}
-	if len(page.Path) > 0 {
-		page.TemplateData.Set("path", page.Path)
+	if page.PublicURL.Path != "" {
+		page.TemplateData.Set("path", page.PublicURL.Path)
 	}
 	if page.UglyURL {
 		page.TemplateData.Set("ugly_url", page.UglyURL)
@@ -333,6 +367,16 @@ func (page *Page) LastModified() (ts time.Time) {
 	return ts
 }
 
+func (page *Page) publishedAt() string {
+	if page == nil || page.CreatedAt == "" {
+		if page == nil {
+			return ""
+		}
+		return page.UpdatedAt
+	}
+	return page.CreatedAt
+}
+
 func (pages Pages) Add(incoming ...*Page) Pages {
 	for _, page := range incoming {
 		if page != nil && !pages.Contains(page) {
@@ -343,7 +387,7 @@ func (pages Pages) Add(incoming ...*Page) Pages {
 }
 
 func (pages Pages) Contains(page *Page) bool {
-	return page != nil && pages.PageByURI(page.URI) != nil
+	return page != nil && pages.PageByURI(page.Source.URI()) != nil
 }
 
 // PageByURI returns the page whose source URI path matches uri.Path.
@@ -352,7 +396,8 @@ func (pages Pages) PageByURI(uri *url.URL) *Page {
 		return nil
 	}
 	index := slices.IndexFunc(pages, func(page *Page) bool {
-		return page != nil && page.URI != nil && strings.EqualFold(page.URI.Path, uri.Path)
+		pageURI := page.Source.URI()
+		return pageURI != nil && strings.EqualFold(pageURI.Path, uri.Path)
 	})
 	if index > -1 {
 		return pages[index]
@@ -360,10 +405,10 @@ func (pages Pages) PageByURI(uri *url.URL) *Page {
 	return nil
 }
 
-// PageByPath returns the page whose public website path matches path.
-func (pages Pages) PageByPath(path string) *Page {
+// ByPublicURLPath returns the page whose declarative public URL path matches path.
+func (pages Pages) ByPublicURLPath(path string) *Page {
 	index := slices.IndexFunc(pages, func(page *Page) bool {
-		return page != nil && strings.EqualFold(page.Path, path)
+		return page != nil && strings.EqualFold(page.PublicURL.Path, path)
 	})
 	if index > -1 {
 		return pages[index]
@@ -395,10 +440,27 @@ func (page *Page) ComparedBy(field string) string {
 	case "Title", "title":
 		return page.Title
 	case "Path", "path":
-		return page.Path
+		return page.PublicURL.Path
 	default:
 		return page.LastModified().Format(time.RFC3339)
 	}
+}
+
+func (page *Page) HasChildPages() bool {
+	uri := page.Source.URI()
+	if uri == nil {
+		return false
+	}
+	entries, err := os.ReadDir(filepath.Dir(uri.Path))
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 func (pages Pages) ColumnValues(field string) []string {
@@ -406,7 +468,7 @@ func (pages Pages) ColumnValues(field string) []string {
 	for i := range pages {
 		switch field {
 		case "Path", "path":
-			values = append(values, pages[i].Path)
+			values = append(values, pages[i].PublicURL.Path)
 		case "Title", "title":
 			values = append(values, pages[i].Title)
 		case "LastModified", "lastmod":
@@ -432,19 +494,6 @@ func (pages Pages) FilterDraft(draft bool) Pages {
 		}
 	}
 	return filtered
-}
-
-func (page *Page) HasChildPages() bool {
-	entries, err := os.ReadDir(filepath.Dir(page.URI.Path))
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			return true
-		}
-	}
-	return false
 }
 
 func (pages Pages) TemplateData() (data []httt.TemplateData) {
@@ -480,28 +529,21 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool, w io.Writer) er
 		w = os.Stdout
 	}
 
-	exclude := "(index|page)\\.(md|yaml|json|html)$"
-	exclude += "|(site)\\.(yaml|json)$"
-	exclude += "|theme\\.json$"
-	pageDir := filepath.Dir(page.URI.Path)
-	files, err := htfiles.ListByPattern(pageDir, false, "", exclude)
+	uri := page.Source.URI()
+	if uri == nil {
+		return fmt.Errorf("page.assets requires page source state")
+	}
+	pageDir := filepath.Dir(uri.Path)
+	files, err := htfiles.List(pageDir, false)
 	if err != nil {
 		return err
 	}
-	pageDirRel := ""
-	if pageDirAbs, err := filepath.Abs(pageDir); err != nil {
-		return err
-	} else if contentDirAbs, err := filepath.Abs(website.ContentDirPath()); err != nil {
-		return err
-	} else if pageDirAbs != contentDirAbs {
-		pageDirRel, err = htfiles.RelativePath(website.ContentDirPath(), pageDir)
-		if err != nil {
-			return err
-		}
-		pageDirRel = filepath.ToSlash(pageDirRel)
-	}
+	pageDirRel := filepath.ToSlash(page.Source.Path)
 	assets := []string{}
 	for _, file := range files {
+		if file == page.Source.Filename {
+			continue
+		}
 		relPath := filepath.ToSlash(filepath.Join(pageDirRel, file))
 		if _, err = htfiles.CleanRelativePath(relPath); err != nil {
 			return err
@@ -513,7 +555,7 @@ func (page *Page) DiscoverAssets(website *Website, verbose bool, w io.Writer) er
 		return nil
 	}
 	for _, asset := range page.Assets {
-		if srcPath, err := website.ResourcePath(website.ContentDirPath(), asset); err == nil {
+		if srcPath, err := website.ResourcePath(page.Source.Directory, asset); err == nil {
 			fmt.Fprintf(w, "asset \"%s\" discovered\n", website.RelativePath(srcPath))
 		}
 	}
@@ -549,7 +591,7 @@ func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
 		Title:        page.AtomEntryTitle(),
 		ID:           atomIDURL.String(),
 		Links:        atomLinks,
-		Published:    atom.TimeStamp(page.CreatedAt),
+		Published:    atom.TimeStamp(page.publishedAt()),
 		Updated:      atom.TimeStamp(page.UpdatedAt),
 		Authors:      []*atom.Author{atomAuthor},
 		Contributors: atomContributors,
@@ -596,14 +638,15 @@ func (Page) JSONSchemaDescription() string {
 }
 
 func (page *Page) AtomAttachmentLength(attachment *Attachment) uint {
-	if page == nil || page.URI == nil || page.URI.Path == "" || attachment == nil || attachment.Href == nil {
+	uri := page.Source.URI()
+	if uri == nil || attachment == nil || attachment.Href == nil {
 		return 0
 	}
 	ref := &attachment.Href.URL
 	if ref.IsAbs() || ref.Path == "" || strings.HasPrefix(ref.Path, "/") {
 		return 0
 	}
-	pageDir := filepath.Dir(page.URI.Path)
+	pageDir := filepath.Dir(uri.Path)
 	filePath := filepath.Clean(filepath.Join(pageDir, filepath.FromSlash(ref.Path)))
 	relPath, err := filepath.Rel(pageDir, filePath)
 	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) || filepath.IsAbs(relPath) {
@@ -647,9 +690,10 @@ func (page *Page) AtomSummary() (summary atom.Text) {
 			return atom.Text{Type: "html", Body: description}
 		}
 	}
-	ts, err := time.Parse(time.RFC3339, page.CreatedAt)
+	publishedAt := page.publishedAt()
+	ts, err := time.Parse(time.RFC3339, publishedAt)
 	if err != nil {
-		return atom.Text{Type: "html", Body: page.CreatedAt}
+		return atom.Text{Type: "html", Body: publishedAt}
 	}
 	return atom.Text{Type: "html", Body: ts.Format("Monday, January 2, 2006")}
 }
@@ -668,6 +712,182 @@ func (page *Page) MarshalYAML() (any, error) {
 		Page:  page,
 		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
 	}, nil
+}
+
+// Save persists page data at its resolved source destination. Format selects
+// the serialized data format and destination filename; Source is updated after
+// persistence succeeds.
+func (page *Page) Save(website *Website, w io.Writer) error {
+	return savePage(website, page, w)
+}
+
+// RenderData serializes page data using the requested format.
+//
+// RenderData mutates page by resolving struct fields into TemplateData, and by
+// setting TemplateData["content"] for JSON and YAML output. Clone the page first
+// when the original TemplateData must be preserved.
+func (page *Page) RenderData(website *Website, format string) (fileBytes []byte, err error) {
+	if page == nil {
+		return nil, fmt.Errorf("page.render requires page")
+	}
+
+	var frontmatter []byte // YAML frontmatter (for markdown format only)
+	page.ResolveTemplateData(website)
+	switch strings.ToLower(format) {
+	case "json":
+		page.TemplateData.Set("content", page.Content) // add content to template data
+		if fileBytes, err = json.Marshal(page.TemplateData); err != nil {
+			return nil, err
+		}
+	case "yaml", "yml":
+		page.TemplateData.Set("content", page.Content) // add content to template data
+		if fileBytes, err = yaml.Marshal(page.TemplateData); err != nil {
+			return nil, err
+		}
+	case "markdown", "md":
+		fallthrough
+	default:
+		if frontmatter, err = yaml.Marshal(OrderedTemplateData(page.TemplateData)); err != nil {
+			return nil, err
+		}
+		fileBytes = fmt.Appendf([]byte{}, "---\n%s---\n\n%s", frontmatter, page.Content)
+	}
+	return fileBytes, nil
+}
+
+// Update applies a content type's page-object transition through website
+// context. Persistence remains a separate Save operation.
+func (page *Page) Update(website *Website, contenttype *ContentType) error {
+	return updatePage(website, contenttype, page)
+}
+
+// ValidateContentType validates page against contenttype without writing it.
+func (page *Page) ValidateContentType(website *Website, contenttype *ContentType) error {
+	return validatePage(website, contenttype, page)
+}
+
+// Finalize validates and moves a page into the website's canonical content root.
+func (page *Page) Finalize(website *Website, contenttype *ContentType, createdAt string, w io.Writer) error {
+	return finalizePage(website, contenttype, page, createdAt, w)
+}
+
+func (page *Page) validateTagNames() error {
+	for _, tag := range page.Tags {
+		if err := ValidateTagName(tag); err != nil {
+			return fmt.Errorf("page.tags: %w", err)
+		}
+	}
+	return nil
+}
+
+func (page *Page) resolvePublicURLPageSource(directory string) (source PageSource) {
+	var publicURLPath, format, dstPath, dstFilename string
+	var err error
+	if strings.TrimSpace(directory) == "" {
+		directory = page.Source.Directory
+	}
+	if publicURLPath = page.PublicURL.Path; publicURLPath == "" {
+		publicURLPath = page.Source.PublicURLPath(page.UglyURL)
+	}
+	if publicURLPath == "/index.html" && page.UglyURL {
+		dstPath = ""
+	} else {
+		dstPath = filepath.FromSlash(strings.TrimSuffix(strings.Trim(publicURLPath, "/"), ".html"))
+	}
+	if format = page.Format; format == "" {
+		format = page.Source.FilenameFormat()
+	}
+	if dstFilename, err = pageDataFilename(format); err != nil {
+		dstFilename = "index.md"
+	}
+	return PageSource{
+		Directory: directory,
+		Path:      dstPath,
+		Filename:  dstFilename,
+	}
+}
+
+// URI returns the page's derived local source URI.
+func (source *PageSource) URI() *url.URL {
+	if source == nil || source.Directory == "" || source.Filename == "" {
+		return nil
+	}
+	return &url.URL{Path: filepath.Join(source.Directory, source.Path, source.Filename)}
+}
+
+// Dir returns the page's source directory.
+func (source *PageSource) Dir() string {
+	return filepath.Join(source.Directory, source.Path)
+}
+
+// FilenameFormat returns Filename's extension without its dot.
+func (source *PageSource) FilenameFormat() string {
+	if source == nil {
+		return ""
+	}
+	return strings.TrimPrefix(filepath.Ext(source.Filename), ".")
+}
+
+func (source PageSource) matches(other PageSource) bool {
+	return source.URI() != nil &&
+		other.URI() != nil &&
+		source.Dir() == other.Dir() &&
+		source.Filename == other.Filename
+}
+
+func (source PageSource) PublicURLPath(ugly bool) string {
+	urlPath := strings.TrimSuffix(path.Join("/", filepath.ToSlash(source.Path)), "/") + "/"
+	if !ugly {
+		return urlPath // the most common outcome
+	}
+	if urlPath == "/" {
+		return "/index.html" // only once per website
+	}
+	return strings.TrimSuffix(urlPath, "/") + ".html" // zero or more times per website
+}
+
+func (source *PageSource) Exists() (info os.FileInfo, exists bool, err error) {
+	var sourceURI *url.URL
+	if source == nil {
+		return nil, false, nil
+	}
+	if sourceURI = source.URI(); sourceURI == nil {
+		return nil, false, nil
+	}
+	if info, err = os.Stat(sourceURI.Path); os.IsNotExist(err) {
+		return nil, false, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, false, fmt.Errorf("source %q error: not a regular file", sourceURI.Path)
+	}
+	return info, true, nil
+}
+
+// Available reports whether source's directory is available for the source
+// data file. When allowSiblings is false, it requires the directory to contain
+// no direct regular files. When true, only the source data file itself must be
+// absent.
+func (source *PageSource) Available(allowSiblings bool) (available bool, err error) {
+	var sourceURI = source.URI()
+	var paths []string
+	if sourceURI == nil {
+		return false, fmt.Errorf("source state missing")
+	}
+	if allowSiblings {
+		if _, exists, err := source.Exists(); !exists {
+			return err == nil, err
+		}
+		return false, fmt.Errorf("source %q unavailable: page file exists at %s", source.Directory, sourceURI.Path)
+	}
+	if paths, err = htfiles.List(filepath.Dir(sourceURI.Path), false); err != nil {
+		return false, err
+	}
+	if len(paths) == 0 {
+		return true, nil
+	}
+	return false, fmt.Errorf("source %q unavailable: found %d file(s) (%s)", source.Directory, len(paths), strings.Join(paths, ", "))
 }
 
 func (visibility PageVisibilityKind) Validate() error {
@@ -697,529 +917,7 @@ func (visibility PageVisibilityKind) IsNone() bool {
 	return slices.Contains(NoVisibilityKinds, visibility)
 }
 
-// ============================================================================
-// Helper types, methods, and functions
-// ============================================================================
-type PageCache struct {
-	URI *url.URL
-}
-
-func (page *Page) Clone() *Page {
-	if page == nil {
-		return nil
-	}
-	clone := *page
-	clone.URI = cloneURL(page.URI)
-	clone.Cache = page.Cache.Clone()
-	clone.Byline = page.Byline.Clone()
-	clone.Contributors = page.Contributors.Clone()
-	clone.Attachments = page.Attachments.Clone()
-	clone.Metadata = append([]HTMLMeta(nil), page.Metadata...)
-	clone.Links = append([]HTMLLink(nil), page.Links...)
-	clone.Tags = append([]string(nil), page.Tags...)
-	clone.Feeds = page.Feeds.Clone()
-	clone.Assets = append([]string(nil), page.Assets...)
-	if page.TemplateData != nil {
-		clone.TemplateData = page.TemplateData.Clone()
-	}
-	return &clone
-}
-
-func (cache *PageCache) Clone() *PageCache {
-	if cache == nil {
-		return nil
-	}
-	clone := *cache
-	clone.URI = cloneURL(cache.URI)
-	return &clone
-}
-
-// CreatePage(website *Website, page *Page, contenttype *ContentType)
-//
-// Persists the page content file to disk according to specifications provided
-// by contenttype, and updates page.URI.
-func CreatePage(website *Website, page *Page, contenttype *ContentType, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	if page == nil {
-		return fmt.Errorf("page.create requires page")
-	}
-	if page.URI != nil {
-		return fmt.Errorf("page.create requires page.uri to be empty; use page.update to modify an existing page")
-	}
-
-	// timestamp
-	timestamp := time.Now().Format(time.RFC3339)
-	if len(page.CreatedAt) == 0 {
-		page.CreatedAt = timestamp // only set created_at if it is empty
-	}
-	page.UpdatedAt = timestamp
-
-	// content-type
-	contenttype = pageContentType(contenttype)
-	if err = contenttype.Spec.Validate(); err != nil {
-		return err
-	}
-	applyContentTypePageDefaults(page, contenttype)
-	if !page.Visibility.IsDraft() {
-		if err = contenttype.Ready(page); err != nil {
-			return err
-		}
-	}
-	if page.URI, err = contenttype.ResolvePageURI(website, page, nil); err != nil {
-		return err
-	}
-	page.ResolvePath(website)
-	if err = assertPageCreateDestinationAvailable(page); err != nil {
-		return err
-	}
-
-	// write to disk
-	return WritePage(website, page, contenttype.Spec.Format, w)
-}
-
-// UpdatePage updates an existing persisted page. The input page.URI identifies
-// the current source file. Empty content types write in place using the source
-// file format. Real content types recompute the destination path from the
-// submitted page and content type, allowing content type, slug, and format
-// changes to rehome the page payload without touching nested page directories.
-func UpdatePage(website *Website, page *Page, contenttype *ContentType, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	if page == nil {
-		return fmt.Errorf("page.update requires page")
-	}
-	if page.URI == nil || page.URI.Path == "" {
-		return fmt.Errorf("page.update requires page.uri")
-	}
-
-	sourceURI := *page.URI
-	sourcePath := sourceURI.Path
-	sourceInfo, err := os.Stat(sourcePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("page.update source does not exist: %s", sourcePath)
-		}
-		return err
-	}
-	if sourceInfo.IsDir() || !sourceInfo.Mode().IsRegular() {
-		return fmt.Errorf("page.update source must be a regular file: %s", sourcePath)
-	}
-	// timestamp
-	timestamp := time.Now().Format(time.RFC3339)
-	if len(page.CreatedAt) == 0 {
-		existing := &Page{URI: &sourceURI}
-		if err = LoadPage(website, existing, false, w); err == nil && existing.CreatedAt != "" {
-			page.CreatedAt = existing.CreatedAt
-		}
-	}
-	if len(page.CreatedAt) == 0 {
-		page.CreatedAt = timestamp
-	}
-	page.UpdatedAt = timestamp
-
-	if contenttype.IsEmpty() {
-		format, err := pageUpdateSourceFormat(sourcePath)
-		if err != nil {
-			return err
-		}
-		page.URI = &sourceURI
-		page.ResolvePath(website)
-		return WritePage(website, page, format, w)
-	}
-
-	// content-type
-	contenttype = pageContentType(contenttype)
-	if err = contenttype.Spec.Validate(); err != nil {
-		return err
-	}
-	applyContentTypePageDefaults(page, contenttype)
-	if !page.Visibility.IsDraft() {
-		if err = contenttype.Ready(page); err != nil {
-			return err
-		}
-	}
-	if page.URI, err = contenttype.ResolvePageURI(website, page, &sourceURI); err != nil {
-		return err
-	}
-	page.ResolvePath(website)
-	if page.URI == nil || page.URI.Path == "" {
-		return fmt.Errorf("page.update failed to resolve destination page.uri")
-	}
-	destinationPath := page.URI.Path
-
-	if err = assertPageUpdateDestinationAvailable(sourcePath, destinationPath); err != nil {
-		return err
-	}
-	moves, err := pageRegularFileMoves(sourcePath, destinationPath)
-	if err != nil {
-		return err
-	}
-	if len(moves) > 0 {
-		if err = os.MkdirAll(filepath.Dir(destinationPath), 0755); err != nil {
-			return err
-		}
-		for _, move := range moves {
-			if err = os.Rename(move.sourcePath, move.destinationPath); err != nil {
-				return err
-			}
-		}
-	}
-
-	if err = WritePage(website, page, contenttype.Spec.Format, w); err != nil {
-		return err
-	}
-	if !sameCleanPath(sourcePath, destinationPath) {
-		if err = os.Remove(sourcePath); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err = removeDirectoryIfEmpty(filepath.Dir(sourcePath)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func FinalizePage(website *Website, page *Page, contenttype *ContentType, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-	if page == nil {
-		return fmt.Errorf("page.finalize requires page")
-	}
-	if page.URI == nil || page.URI.Path == "" {
-		return fmt.Errorf("page.finalize requires page.uri")
-	}
-
-	sourceURI := *page.URI
-	sourcePath := sourceURI.Path
-	sourceInfo, err := os.Stat(sourcePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("page.finalize source does not exist: %s", sourcePath)
-		}
-		return err
-	}
-	if sourceInfo.IsDir() || !sourceInfo.Mode().IsRegular() {
-		return fmt.Errorf("page.finalize source must be a regular file: %s", sourcePath)
-	}
-
-	timestamp := time.Now().Format(time.RFC3339)
-	freeform := contenttype.IsEmpty()
-	if len(page.CreatedAt) == 0 || (freeform && len(page.LayoutRef) == 0) {
-		existing := &Page{URI: &sourceURI}
-		if err = LoadPage(website, existing, false, w); err == nil {
-			if len(page.CreatedAt) == 0 {
-				page.CreatedAt = existing.CreatedAt
-			}
-			if freeform && len(page.LayoutRef) == 0 {
-				page.LayoutRef = existing.LayoutRef
-			}
-		}
-	}
-	if len(page.CreatedAt) == 0 {
-		page.CreatedAt = timestamp
-	}
-	page.UpdatedAt = timestamp
-	finalizePageDraftState(page)
-
-	if freeform {
-		format, err := pageUpdateSourceFormat(sourcePath)
-		if err != nil {
-			return err
-		}
-		page.URI = &sourceURI
-		page.ResolvePath(website)
-		if err = page.Validate(); err != nil {
-			return err
-		}
-		return WritePage(website, page, format, w)
-	}
-
-	contenttype = pageContentType(contenttype)
-	if err = contenttype.Spec.Validate(); err != nil {
-		return err
-	}
-	finalPage, err := contenttype.OverlayPage(page)
-	if err != nil {
-		return err
-	}
-	if contenttype.Spec.Visibility != "" {
-		finalPage.Visibility = contenttype.Spec.Visibility
-	}
-	finalizePageDraftState(finalPage)
-	if err = contenttype.Ready(finalPage); err != nil {
-		return err
-	}
-	if finalPage.URI, err = contenttype.ResolvePageURI(website, finalPage, &sourceURI); err != nil {
-		return err
-	}
-	finalPage.ResolvePath(website)
-	if finalPage.URI == nil || finalPage.URI.Path == "" {
-		return fmt.Errorf("page.finalize failed to resolve destination page.uri")
-	}
-	if err = finalPage.Validate(); err != nil {
-		return err
-	}
-	destinationPath := finalPage.URI.Path
-
-	if err = assertPageUpdateDestinationAvailable(sourcePath, destinationPath); err != nil {
-		return err
-	}
-	moves, err := pageRegularFileMoves(sourcePath, destinationPath)
-	if err != nil {
-		return err
-	}
-	if len(moves) > 0 {
-		if err = os.MkdirAll(filepath.Dir(destinationPath), 0755); err != nil {
-			return err
-		}
-		for _, move := range moves {
-			if err = os.Rename(move.sourcePath, move.destinationPath); err != nil {
-				return err
-			}
-		}
-	}
-
-	*page = *finalPage
-	if err = WritePage(website, page, contenttype.Spec.Format, w); err != nil {
-		return err
-	}
-	if !sameCleanPath(sourcePath, destinationPath) {
-		if err = os.Remove(sourcePath); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err = removeDirectoryIfEmpty(filepath.Dir(sourcePath)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type pageFileMove struct {
-	sourcePath      string
-	destinationPath string
-}
-
-func applyContentTypePageDefaults(page *Page, contenttype *ContentType) {
-	if page == nil || contenttype == nil {
-		return
-	}
-	if page.LayoutRef == "" {
-		page.LayoutRef = contenttype.Spec.Layout
-	}
-	if contenttype.Spec.Visibility != "" {
-		page.Visibility = contenttype.Spec.Visibility
-	}
-}
-
-func finalizePageDraftState(page *Page) {
-	if page == nil {
-		return
-	}
-	if page.Visibility.IsDraft() {
-		page.Visibility = PublicVisibility
-	}
-	if page.TemplateData != nil {
-		page.TemplateData.Delete("visibility")
-	}
-}
-
-func pageContentType(contenttype *ContentType) *ContentType {
-	if contenttype.IsEmpty() {
-		return &DefaultContentType
-	}
-	return contenttype
-}
-
-func pageUpdateSourceFormat(sourcePath string) (string, error) {
-	switch strings.ToLower(filepath.Ext(sourcePath)) {
-	case ".md", ".markdown":
-		return "markdown", nil
-	case ".json":
-		return "json", nil
-	case ".yaml", ".yml":
-		return "yaml", nil
-	default:
-		return "", fmt.Errorf("page.update auto content type does not support source file extension %q: %s", filepath.Ext(sourcePath), sourcePath)
-	}
-}
-
-func assertPageCreateDestinationAvailable(page *Page) error {
-	if page.URI == nil || page.URI.Path == "" {
-		return fmt.Errorf("page.create failed to resolve destination page.uri")
-	}
-	if _, exists, err := fileInfoIfExists(page.URI.Path); err != nil {
-		return err
-	} else if exists {
-		return fmt.Errorf("page.create conflict: page already exists at %s", page.URI.Path)
-	}
-	return nil
-}
-
-func assertPageUpdateDestinationAvailable(sourcePath string, destinationPath string) error {
-	if _, exists, err := fileInfoIfExists(destinationPath); err != nil {
-		return err
-	} else if exists && !sameExistingFile(sourcePath, destinationPath) {
-		return fmt.Errorf("page.update conflict: page already exists at %s", destinationPath)
-	}
-	return nil
-}
-
-func pageRegularFileMoves(sourcePagePath string, destinationPagePath string) ([]pageFileMove, error) {
-	sourceDir := filepath.Dir(sourcePagePath)
-	destinationDir := filepath.Dir(destinationPagePath)
-	if sameCleanPath(sourceDir, destinationDir) {
-		return nil, nil
-	}
-
-	entries, err := os.ReadDir(sourceDir)
-	if err != nil {
-		return nil, err
-	}
-	moves := []pageFileMove{}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil, err
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		sourcePath := filepath.Join(sourceDir, entry.Name())
-		if sameExistingFile(sourcePath, sourcePagePath) {
-			continue
-		}
-
-		destinationPath := filepath.Join(destinationDir, entry.Name())
-		if sameCleanPath(destinationPath, destinationPagePath) {
-			return nil, fmt.Errorf("page.update conflict: regular file %s would overwrite destination page file %s", sourcePath, destinationPagePath)
-		}
-		if _, exists, err := fileInfoIfExists(destinationPath); err != nil {
-			return nil, err
-		} else if exists {
-			return nil, fmt.Errorf("page.update conflict: regular file already exists at %s", destinationPath)
-		}
-		moves = append(moves, pageFileMove{sourcePath: sourcePath, destinationPath: destinationPath})
-	}
-	return moves, nil
-}
-
-func fileInfoIfExists(path string) (os.FileInfo, bool, error) {
-	info, err := os.Stat(path)
-	if err == nil {
-		return info, true, nil
-	}
-	if os.IsNotExist(err) {
-		return nil, false, nil
-	}
-	return nil, false, err
-}
-
-func sameExistingFile(a string, b string) bool {
-	if sameCleanPath(a, b) {
-		return true
-	}
-	aInfo, aErr := os.Stat(a)
-	bInfo, bErr := os.Stat(b)
-	return aErr == nil && bErr == nil && os.SameFile(aInfo, bInfo)
-}
-
-func sameCleanPath(a string, b string) bool {
-	aAbs, err := filepath.Abs(a)
-	if err == nil {
-		a = aAbs
-	}
-	bAbs, err := filepath.Abs(b)
-	if err == nil {
-		b = bAbs
-	}
-	return filepath.Clean(a) == filepath.Clean(b)
-}
-
-func removeDirectoryIfEmpty(path string) error {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if len(entries) > 0 {
-		return nil
-	}
-	return os.Remove(path)
-}
-
-// RenderData serializes page data using the requested format.
-//
-// RenderData mutates page by resolving struct fields into TemplateData, and by
-// setting TemplateData["content"] for JSON and YAML output. Clone the page first
-// when the original TemplateData must be preserved.
-func (page *Page) RenderData(website *Website, format string) (fileBytes []byte, err error) {
-	if page == nil {
-		return nil, fmt.Errorf("page.render requires page")
-	}
-
-	var frontmatter []byte // YAML frontmatter (for markdown format only)
-	page.ResolveTemplateData(website)
-	switch format {
-	case "json":
-		page.TemplateData.Set("content", page.Content) // add content to template data
-		if fileBytes, err = json.Marshal(page.TemplateData); err != nil {
-			return nil, err
-		}
-	case "yaml", "yml":
-		page.TemplateData.Set("content", page.Content) // add content to template data
-		if fileBytes, err = yaml.Marshal(page.TemplateData); err != nil {
-			return nil, err
-		}
-	case "markdown", "md":
-		fallthrough
-	default:
-		if frontmatter, err = yaml.Marshal(OrderedTemplateData(page.TemplateData)); err != nil {
-			return nil, err
-		}
-		fileBytes = fmt.Appendf([]byte{}, "---\n%s---\n\n%s", frontmatter, page.Content)
-	}
-	return fileBytes, nil
-}
-
-// persist page data file to disk
-func WritePage(website *Website, page *Page, format string, w io.Writer) (err error) {
-	if w == nil {
-		w = os.Stdout
-	}
-
-	var file *os.File
-	var fileBytes []byte
-	var fileBytesWritten int
-	if fileBytes, err = page.RenderData(website, format); err != nil {
-		return err
-	}
-	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), website.RelativePath(page.URI.Path))
-	if err = os.MkdirAll(filepath.Dir(page.URI.Path), 0755); err != nil {
-		return err
-	}
-	if file, err = os.OpenFile(page.URI.Path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
-		return err
-	}
-	defer file.Close()
-	if fileBytesWritten, err = file.Write(fileBytes); err != nil {
-		return err
-	}
-	if fileBytesWritten != len(fileBytes) {
-		return fmt.Errorf("expected to write %v bytes, but wrote %v", len(fileBytes), fileBytesWritten)
-	}
-	return nil
-}
+// MARK: FUNCTIONS
 
 // LoadPages(ctx context.Context, website *Website, pages Pages, cache *Pages, verbose bool)
 //
@@ -1242,7 +940,7 @@ func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, 
 				return err
 			}
 			if cache.Contains(pages[i]) {
-				pages[i] = cache.PageByURI(pages[i].URI)
+				pages[i] = cache.PageByURI(pages[i].Source.URI())
 			}
 			return LoadPage(website, pages[i], verbose, w)
 		})
@@ -1254,29 +952,35 @@ func LoadPages(ctx context.Context, website *Website, pages Pages, cache Pages, 
 //
 // Loads the page from disk and parses the content into the page object.
 func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err error) {
+	var uri *url.URL
+	var fileBytes []byte
+	var fileData httt.TemplateData
 	if w == nil {
 		w = os.Stdout
 	}
-
-	var fileExt string = filepath.Ext(page.URI.Path)
-	var fileBytes []byte
-	var fileData httt.TemplateData
 	if page.Loaded {
 		return // guard
 	}
+	if uri = page.Source.URI(); uri == nil {
+		return fmt.Errorf("page.load requires page source state")
+	}
 	if verbose {
-		fmt.Fprintf(w, "page \"%s\" loading\n", website.RelativePath(page.URI.Path))
+		fmt.Fprintf(w, "page \"%s\" loading\n", website.RelativePath(uri.Path))
 	}
-	if fileBytes, err = os.ReadFile(page.URI.Path); err != nil {
+	if fileBytes, err = os.ReadFile(uri.Path); err != nil {
 		return err
 	}
-	if fileData, err = httt.ParseTemplateDataBytes(fileBytes, fileExt, website.Config.Markdown); err != nil {
+	if fileData, err = httt.ParseTemplateDataBytes(fileBytes, filepath.Ext(uri.Path), website.Config.Markdown); err == nil {
+		page.TemplateData = fileData
+	} else {
 		return err
 	}
-	page.CreatedAt = website.CreatedAt // default created_at to website created_at
-	page.TemplateData = fileData
 	if err = page.Parse(fileData); err != nil {
 		return err
+	}
+	if page.CreatedAt == "" && page.UpdatedAt == "" {
+		// Every page needs a timestamp, but we shouldn't assert CreatedAt provenance
+		page.UpdatedAt = website.UpdatedAt
 	}
 	if err = page.Visibility.Validate(); err != nil {
 		return err
@@ -1284,9 +988,14 @@ func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err erro
 	if err = page.validateTagNames(); err != nil {
 		return err
 	}
-	page.ResolvePath(website)
+	if page.PublicURL.Path == "" {
+		page.PublicURL.Path = page.Source.PublicURLPath(page.UglyURL)
+	}
 	if page.LayoutRef == "" {
 		page.LayoutRef = "default" // TODO: should layout be required?
+	}
+	if page.Format == "" {
+		page.Format = page.Source.FilenameFormat()
 	}
 	if page.Visibility.IsStatus() {
 		page.LayoutRef = website.Config.StatusLayout
@@ -1308,21 +1017,395 @@ func GetPages(website *Website, directory string) (pages Pages, err error) {
 		return nil, err
 	}
 	for _, p := range paths {
-		var uri *url.URL
-		absPath, err := htfiles.LocalPath(directory, p)
-		if err != nil {
+		var absPath, relPath, sourcePath, sourceFilename string
+		var static bool
+		if absPath, err = htfiles.LocalPath(directory, p); err != nil {
 			return nil, err
 		}
-		if uri, err = url.Parse(absPath); err != nil {
+		if relPath, err = htfiles.RelativePath(directory, absPath); err == nil {
+			sourcePath = filepath.Dir(relPath)
+			sourceFilename = filepath.Base(relPath)
+		} else {
 			return nil, err
 		}
-		page := &Page{URI: uri, Path: PagePath(website, uri), TemplateData: nil}
-		if path.Ext(page.URI.Path) == ".html" {
-			page.Static = true // mark page as static if source file is HTML (i.e. skip template processing and write directly to output)
+		if sourcePath == "." {
+			sourcePath = ""
+		}
+		if path.Ext(sourceFilename) == ".html" {
+			static = true // mark page as static if source file is HTML (i.e. skip template processing and write directly to output)
+		}
+		page := &Page{
+			Source: PageSource{
+				Directory: directory,
+				Path:      sourcePath,
+				Filename:  sourceFilename,
+			},
+			Format:       strings.TrimPrefix(path.Ext(sourceFilename), "."),
+			Static:       static,
+			TemplateData: nil,
 		}
 		pages = append(pages, page)
 	}
 	return pages, nil
+}
+
+// createPage initializes an unsaved, content-type-backed page at sourceDirectory.
+// It delegates to updatePage for consistent state, timestamp, and public-path
+// resolution.
+func createPage(website *Website, contenttype *ContentType, sourceDirectory string) (page *Page, err error) {
+	if website == nil {
+		return nil, fmt.Errorf("website is required to create a page")
+	}
+	if contenttype == nil {
+		return nil, fmt.Errorf("content type is required to create a page")
+	}
+	if sourceDirectory == "" {
+		return nil, fmt.Errorf("source directory is required to create a page")
+	}
+	page = &Page{Source: PageSource{Directory: sourceDirectory}}
+	if err = updatePage(website, contenttype, page); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+
+// updatePage applies the object-only transition shared by new and existing
+// pages. Persistence is deliberately owned by savePage, so incomplete drafts
+// can be updated without content-type readiness or file-system checks.
+func updatePage(website *Website, contenttype *ContentType, page *Page) error {
+	if website == nil || page == nil {
+		return fmt.Errorf("page.update requires website and page")
+	}
+	if page.Source.Directory == "" {
+		return fmt.Errorf("page.update requires page.source_dir")
+	}
+	if contenttype == nil {
+		if page.Format == "" {
+			page.Format = page.Source.FilenameFormat()
+		}
+		if page.Format != "" {
+			if _, err := pageDataFilename(page.Format); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := contenttype.Spec.Validate(); err != nil {
+			return err
+		}
+		if err := applyPageContentType(page, contenttype); err != nil {
+			return err
+		}
+	}
+	page.UpdatedAt = time.Now().Format(time.RFC3339)
+	return resolvePublicURLPath(website, contenttype, page)
+}
+
+// validatePage is the strict finalization gate: it validates the complete page
+// object and then content-type readiness when a content type is selected.
+func validatePage(website *Website, contenttype *ContentType, page *Page) error {
+	if website == nil || page == nil {
+		return fmt.Errorf("page.validate requires website and page")
+	}
+	if err := page.Validate(); err != nil {
+		return err
+	}
+	if contenttype == nil {
+		return nil
+	}
+	return contenttype.Ready(page)
+}
+
+// resolvePublicURLPath updates declarative PublicURL only. It never changes the
+// current Source or performs persistence.
+func resolvePublicURLPath(website *Website, contenttype *ContentType, page *Page) (err error) {
+	var resolver PublicURLPathResolver
+	if website == nil || page == nil {
+		return fmt.Errorf("page.path resolution requires website and page")
+	}
+	if contenttype == nil {
+		page.PublicURL.Path = page.Source.PublicURLPath(page.UglyURL)
+		return nil
+	}
+	if err := contenttype.ValidateDefinition(); err != nil {
+		return err
+	}
+	if resolver, err = PublicURLPathResolverFor(contenttype.Spec.PathResolver); err != nil {
+		return err
+	}
+	if page.PublicURL.Path, err = resolver.ResolvePublicURLPath(*page, contenttype); err != nil {
+		return err
+	}
+	return nil
+}
+
+// savePage persists at the page's current source root. It projects and
+// validates the destination before moving files, then writes page data.
+func savePage(website *Website, page *Page, w io.Writer) error {
+	if website == nil || page == nil || page.Source.Directory == "" {
+		return fmt.Errorf("page.save requires page source directory")
+	}
+	var destination = page.resolvePublicURLPageSource(page.Source.Directory)
+	if err := validatePageSources(website, page.Source, destination); err != nil {
+		return err
+	}
+	if err := movePage(page, destination); err != nil {
+		return err
+	}
+	return writePage(website, page, w)
+}
+
+// movePage performs a prevalidated same-root or cross-root file transition.
+// Cross-root moves carry direct regular siblings; same-root format changes move
+// only the page-data file. It commits Source only after that data file moves.
+func movePage(page *Page, destination PageSource) (err error) {
+	var includeAssets bool = true
+	if page == nil {
+		return fmt.Errorf("page.move requires page")
+	}
+	if _, exists, err := page.Source.Exists(); err != nil {
+		return err
+	} else if !exists {
+		return nil
+	}
+	if page.Source.matches(destination) {
+		return nil // the path did not change, nothing to do
+	}
+	if page.Source.Dir() == destination.Dir() {
+		includeAssets = false
+	}
+	if available, err := destination.Available(!includeAssets); !available {
+		return fmt.Errorf("page destination unavailable: %w", err)
+	}
+
+	// move page files
+	var srcURI = page.Source.URI()
+	var dstURI = destination.URI()
+	if includeAssets {
+		var srcDir = page.Source.Dir()
+		var dstDir = destination.Dir()
+		var paths []string
+		if err = os.MkdirAll(dstDir, 0755); err != nil {
+			return err
+		}
+		if paths, err = htfiles.List(srcDir, false); err != nil {
+			return err
+		}
+		for _, path := range paths {
+			var srcAssetPath, dstAssetPath string
+			if filepath.Base(srcURI.Path) == path {
+				continue // skip the page data file
+			}
+			if srcAssetPath, err = htfiles.LocalPath(srcDir, path); err != nil {
+				return err
+			}
+			if dstAssetPath, err = htfiles.LocalPath(dstDir, path); err != nil {
+				return err
+			}
+			if err = os.Rename(srcAssetPath, dstAssetPath); err != nil {
+				return err
+			}
+		}
+	}
+	if err = os.Rename(srcURI.Path, dstURI.Path); err != nil {
+		return err
+	}
+
+	// update page state
+	page.Source = destination
+	return nil
+}
+
+// writePage serializes and writes page data at its projected destination. It
+// records that destination as Source only after the write succeeds.
+func writePage(website *Website, page *Page, w io.Writer) (err error) {
+	var destination PageSource
+	var destinationURI *url.URL
+	var file *os.File
+	var fileBytes []byte
+	var fileBytesWritten int
+	if w == nil {
+		w = os.Stdout
+	}
+
+	if website == nil || page == nil || page.Source.Directory == "" {
+		return fmt.Errorf("page.write requires page source directory")
+	}
+	if page.Format == "" {
+		page.Format = page.Source.FilenameFormat()
+	}
+	if page.PublicURL.Path == "" {
+		page.PublicURL.Path = page.Source.PublicURLPath(page.UglyURL)
+	}
+	destination = page.resolvePublicURLPageSource(page.Source.Directory)
+	destinationURI = destination.URI()
+	if fileBytes, err = page.RenderData(website, page.Format); err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), website.RelativePath(destinationURI.Path))
+	if err = os.MkdirAll(filepath.Dir(destinationURI.Path), 0755); err != nil {
+		return err
+	}
+	if file, err = os.OpenFile(destinationURI.Path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
+		return err
+	}
+	defer file.Close()
+	if fileBytesWritten, err = file.Write(fileBytes); err != nil {
+		return err
+	}
+	if fileBytesWritten != len(fileBytes) {
+		return fmt.Errorf("expected to write %v bytes, but wrote %v", len(fileBytes), fileBytesWritten)
+	}
+	page.Source = destination
+	return nil
+}
+
+// finalizePage is the sole cross-root publish transition. It builds and
+// validates a candidate before moving or writing, preserving the caller's draft
+// page on a validation or destination-conflict failure.
+func finalizePage(website *Website, contenttype *ContentType, page *Page, createdAt string, w io.Writer) (err error) {
+	var candidatePage *Page = page.Clone()
+	var destination PageSource
+	var timestamp string = time.Now().Format(time.RFC3339)
+	if w == nil {
+		w = os.Stdout
+	}
+	if page == nil {
+		return fmt.Errorf("page.finalize requires a page object")
+	}
+	if page.Source.URI() == nil {
+		return fmt.Errorf("page.finalize requires page source state")
+	}
+	if _, exists, err := page.Source.Exists(); err != nil {
+		return err
+	} else if !exists {
+		return fmt.Errorf("page.finalize source does not exist: %s", page.Source.URI().Path)
+	}
+	if contenttype != nil {
+		if err = contenttype.Spec.Validate(); err != nil {
+			return err
+		}
+		if candidatePage, err = contenttype.OverlayPage(candidatePage); err != nil {
+			return err
+		}
+		if err = applyPageContentType(candidatePage, contenttype); err != nil {
+			return err
+		}
+	}
+
+	if createdAt == "" {
+		createdAt = timestamp
+	}
+	candidatePage.CreatedAt = createdAt
+	candidatePage.UpdatedAt = timestamp
+	if candidatePage.Visibility.IsDraft() {
+		candidatePage.Visibility = ""
+	}
+	if candidatePage.TemplateData != nil {
+		candidatePage.TemplateData.Delete("visibility")
+	}
+
+	if err = validatePage(website, contenttype, candidatePage); err != nil {
+		return err
+	}
+	if err = resolvePublicURLPath(website, contenttype, candidatePage); err != nil {
+		return err
+	}
+	destination = candidatePage.resolvePublicURLPageSource(website.ContentDirPath())
+	if err = validatePageSources(website, candidatePage.Source, destination); err != nil {
+		return err
+	}
+
+	// Finalization is the sole cross-root move: all prior saves remain in the
+	// page's configured source directory, while this transition targets content.
+	if err = movePage(candidatePage, destination); err != nil {
+		return err
+	}
+	if err = writePage(website, candidatePage, w); err != nil {
+		return err
+	}
+	// Composer sidecars are draft-only. movePage relocates it with the other
+	// regular page files, so delete it only after final persistence succeeds.
+	sidecarPath := filepath.Join(filepath.Dir(candidatePage.Source.URI().Path), ".composer")
+	if err = os.Remove(sidecarPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	*page = *candidatePage
+	return nil
+}
+
+// applyPageContentType applies the direct page properties supplied by a content type.
+//
+// NOTE: Template data and prompt patches are applied separately by ContentType.OverlayPage.
+func applyPageContentType(page *Page, contenttype *ContentType) (err error) {
+	if page == nil || contenttype == nil {
+		return nil
+	}
+	page.Format = contenttype.Spec.Format
+	if contenttype.Spec.Layout != "" {
+		page.LayoutRef = contenttype.Spec.Layout
+	}
+
+	if contenttype.Spec.Visibility != "" {
+		page.Visibility = contenttype.Spec.Visibility
+	}
+	return nil
+}
+
+// validatePageSources ensures persistence sources remain inside the website
+// root. A current source may omit its filename while Save creates a new page;
+// projected destinations always include a filename.
+func validatePageSources(website *Website, sources ...PageSource) (err error) {
+	var root string
+	if website == nil || website.URI == nil {
+		return fmt.Errorf("page source validation requires website URI")
+	}
+	if root, err = filepath.Abs(website.RootDir()); err != nil {
+		return err
+	}
+	for _, source := range sources {
+		var sourceDirectory, relativeDirectory string
+		if source.Directory == "" {
+			return fmt.Errorf("page source directory missing")
+		}
+		if sourceDirectory, err = filepath.Abs(source.Directory); err != nil {
+			return err
+		}
+		if relativeDirectory, err = filepath.Rel(root, sourceDirectory); err != nil {
+			return err
+		}
+		if relativeDirectory == ".." || strings.HasPrefix(relativeDirectory, ".."+string(filepath.Separator)) || filepath.IsAbs(relativeDirectory) {
+			return fmt.Errorf("page source directory %q escapes website root %q", source.Directory, root)
+		}
+		if source.Filename == "" {
+			continue
+		}
+		uri := source.URI()
+		if uri == nil {
+			return fmt.Errorf("page source state incomplete")
+		}
+		if _, err = htfiles.RelativePath(root, uri.Path); err != nil {
+			return fmt.Errorf("page source %q escapes website root %q: %w", uri.Path, root, err)
+		}
+	}
+	return nil
+}
+
+// mergePagesBySourcePath applies later-source-root precedence to persisted
+// pages. Source.Path is each page's relative source-directory identity: pages
+// at the same source path in a later root replace earlier-root pages.
+func mergePagesBySourcePath(a, b Pages) Pages {
+	merged := a
+	for _, page := range b {
+		// Later roots override earlier roots at the same relative source path.
+		if index := slices.IndexFunc(merged, func(existing *Page) bool {
+			return existing != nil && strings.EqualFold(existing.Source.Path, page.Source.Path)
+		}); index >= 0 {
+			merged[index] = page
+			continue
+		}
+		merged = append(merged, page)
+	}
+	return merged
 }
 
 func ValidateTagName(name string) error {
@@ -1330,27 +1413,4 @@ func ValidateTagName(name string) error {
 		return fmt.Errorf("tag name %q is invalid: %w", name, err)
 	}
 	return nil
-}
-
-func PagePath(website *Website, uri *url.URL) string {
-	subPath, err := htfiles.RelativePath(website.ContentDirPath(), uri.Path)
-	if err != nil {
-		return ""
-	}
-	subPath = filepath.Dir(subPath)
-	if subPath == "." {
-		return "/"
-	}
-	return "/" + filepath.ToSlash(subPath) + "/"
-}
-
-func (page *Page) ResolvePath(website *Website) {
-	if website == nil || page.URI == nil {
-		return
-	}
-	page.Path = PagePath(website, page.URI)
-	if !page.UglyURL || page.Path == "/" {
-		return
-	}
-	page.Path = strings.TrimSuffix(page.Path, "/") + ".html"
 }

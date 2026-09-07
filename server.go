@@ -15,10 +15,11 @@ type Server struct {
 	htxtd.Server
 	Watcher
 
-	WebsiteURI  *href.Href
-	BuildID     string
-	BuildConfig BuildConfig
-	BaseURL     string
+	WebsiteURI        *href.Href
+	BuildID           string
+	BuildConfig       BuildConfig
+	BaseURL           string
+	sourceDirectories []string
 }
 
 // Run builds the website, serves it, and rebuilds after source changes.
@@ -45,7 +46,7 @@ func (server *Server) run(ctx context.Context, ready func(*url.URL)) (err error)
 		return err
 	}
 	interval := server.Watcher.Interval
-	server.Watcher = NewWatcher(website)
+	server.Watcher = NewWatcher(website, server.sourceDirectories...)
 	if interval != 0 {
 		server.Watcher.Interval = interval
 	}
@@ -128,6 +129,7 @@ func (server *Server) Build(ctx context.Context) (*Website, error) {
 	if err := build.Execute(ctx); err != nil {
 		return nil, err
 	}
+	server.sourceDirectories = build.sourceDirectories()
 	server.Directory = build.Config.URI.Path
 	return build.Website, nil
 }

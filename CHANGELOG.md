@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **BREAKING:** Replaced the physical `Page.URI` with runtime-only
+  `Page.Source` (`PageSource{Directory, Path, Filename}`), which derives the
+  current source-file URI and never appears in page front matter or template
+  data.
+* **BREAKING:** Replaced the computed `Page.Path` with declarative
+  `Page.PublicURL`, separating a page's intended public destination from its
+  current source location.
+* **Added:** `Page.Format`, the declared data serialization format used to
+  project the destination `index.<ext>` filename.
+* **BREAKING:** Replaced package-level `CreatePage` with object-only
+  `Website.CreatePage(contenttype, sourceDirectory)`, which returns an unsaved
+  page and does not accept a page or writer. Call `Page.Save` after editing.
+  Removed `htxt page new`.
+* **BREAKING:** Replaced package-level `UpdatePage` with object-only
+  `Page.Update` or `Website.UpdatePage`, followed by `Page.Save` or
+  `Website.SavePage`; the Page and Website methods share the same underlying
+  update/save lifecycle logic.
+* **BREAKING:** Replaced package-level `FinalizePage` with `Page.Finalize`.
+  `Website.FinalizePage` and `ContentType.FinalizePage` are thin wrappers over
+  the same finalization logic. The corresponding Page, Website, and ContentType
+  validation helpers likewise share their underlying logic.
+* **BREAKING:** Renamed content-type `spec.uri_resolver` and its URI-resolver
+  APIs to `spec.path_resolver` and path-resolver APIs.
+* **Changed:** Draft autosaves no longer materialize content-type templates or
+  prompt patches. Existing `OverlayPage`, `PreviewPageData`, `Ready`, and
+  `CandidateReady` APIs continue to provide candidate composition and strict
+  publish readiness; finalization materializes the overlay once.
+* **Added:** Preview-only `BuildConfig.DraftsDirectory` (`drafts_dir`) and the
+  `htxt build --drafts-dir` / server options. Draft roots override canonical
+  content by source path across page loading, assets, feeds, tags, incremental
+  selection, and watcher discovery; deployments reject draft roots.
+* **Changed:** Saving retains the current source root until successful
+  persistence, validates current and projected page sources inside the website
+  root, and moves direct regular siblings on cross-directory transitions.
+* Updated `github.com/herdworks/httt` to v0.41.1.
+
 ## v0.47.1 (2026-09-02)
 
 * **Added:** `Website.AssetCandidates` and `Website.LookupAsset`, which load

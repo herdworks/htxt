@@ -41,16 +41,15 @@ type ContentTypeMetadata struct {
 }
 
 type ContentTypeSpecification struct {
-	Layout       string                  `json:"layout" yaml:"layout"`
-	Path         string                  `json:"path" yaml:"path"`
-	URIResolver  PageURIResolverName     `json:"uri_resolver" yaml:"uri_resolver"`
-	Format       string                  `json:"format" yaml:"format"`
-	Requires     ContentTypeRequirements `json:"requires,omitempty" yaml:"requires,omitempty"`
-	Visibility   PageVisibilityKind      `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"description=Default visibility for pages of this content type."`
-	Unlisted     bool                    `json:"-" yaml:"-"`
-	TemplateData httt.TemplateData       `json:"template" yaml:"template"`
-	Prompts      htprompt.Prompts        `json:"prompts,omitempty" yaml:"prompts,omitempty"`
-	Patches      htpatch.Patches         `json:"patches,omitempty" yaml:"patches,omitempty"`
+	Layout       string                    `json:"layout" yaml:"layout"`
+	Path         string                    `json:"path" yaml:"path"`
+	PathResolver PublicURLPathResolverKind `json:"path_resolver" yaml:"path_resolver"`
+	Format       string                    `json:"format" yaml:"format"`
+	Requires     ContentTypeRequirements   `json:"requires" yaml:"requires"`
+	Visibility   PageVisibilityKind        `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"description=Default visibility for pages of this content type."`
+	TemplateData httt.TemplateData         `json:"template" yaml:"template"`
+	Prompts      htprompt.Prompts          `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+	Patches      htpatch.Patches           `json:"patches,omitempty" yaml:"patches,omitempty"`
 }
 
 type ContentTypeState struct {
@@ -58,10 +57,11 @@ type ContentTypeState struct {
 }
 
 type ContentTypeRequirements struct {
-	Title      bool           `json:"title,omitempty" yaml:"title,omitempty"`
-	Content    bool           `json:"content,omitempty" yaml:"content,omitempty"`
-	Redirect   bool           `json:"redirect,omitempty" yaml:"redirect,omitempty"`
-	Attachment AttachmentKind `json:"attachment,omitempty" yaml:"attachment,omitempty"`
+	Title       bool           `json:"title,omitempty" yaml:"title,omitempty"`
+	Description bool           `json:"description,omitempty" yaml:"description,omitempty"`
+	Content     bool           `json:"content,omitempty" yaml:"content,omitempty"`
+	Redirect    bool           `json:"redirect,omitempty" yaml:"redirect,omitempty"`
+	Attachment  AttachmentKind `json:"attachment,omitempty" yaml:"attachment,omitempty"`
 }
 
 // =============================================================================
@@ -72,7 +72,7 @@ var (
 	DefaultContentType = ContentType{
 		URI:      &href.Href{URL: url.URL{Path: "/dev/null"}},
 		Metadata: ContentTypeMetadata{Name: "default", Description: "Default content type."},
-		Spec:     ContentTypeSpecification{Layout: "default", Path: "-", URIResolver: TimestampURIResolver, Format: "markdown", TemplateData: httt.TemplateData{}},
+		Spec:     ContentTypeSpecification{Layout: "default", Path: "-", PathResolver: TimestampPathResolver, Format: "markdown", TemplateData: httt.TemplateData{}},
 	}
 
 	draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
@@ -95,36 +95,35 @@ func (types ContentTypes) ColumnValues(field string) []string {
 	return values
 }
 
-func (contenttype ContentType) Validate(page *Page) error {
-	// skip validation for draft pages
-	if page != nil && page.Visibility.IsDraft() {
-		return nil
-	}
-	return contenttype.Ready(page)
-}
-
 func (contenttype ContentType) Ready(page *Page) error {
-	if err := contenttype.ValidateDefinition(); err != nil {
+	var err error
+	if err = contenttype.ValidateDefinition(); err != nil {
 		return err
 	}
 	if page == nil {
 		return fmt.Errorf("content-type requires page")
 	}
-	var err error
 
 	// title validation
 	err = fmt.Errorf("content-type requires page.title property")
 	if contenttype.Spec.Requires.Title && len(page.Title) == 0 {
 		return err
 	}
-	if contenttype.Spec.URIResolver == TitleKabobURIResolver && len(page.Title) == 0 {
+	if contenttype.Spec.PathResolver == TitleKabobPathResolver && len(page.Title) == 0 {
 		return err
 	}
-	if contenttype.Spec.URIResolver == TitleSnakeURIResolver && len(page.Title) == 0 {
+	if contenttype.Spec.PathResolver == TitleSnakePathResolver && len(page.Title) == 0 {
 		return err
 	}
+
+	// description validation
+	err = fmt.Errorf("content-type requires page.description property")
+	if contenttype.Spec.Requires.Description && len(page.Description) == 0 {
+		return err
+	}
+
 	err = fmt.Errorf("content-type requires page.slug property")
-	if contenttype.Spec.URIResolver == ManualURIResolver && len(page.Slug) == 0 {
+	if contenttype.Spec.PathResolver == ManualPathResolver && len(page.Slug) == 0 {
 		return err
 	}
 
@@ -197,8 +196,8 @@ func (contenttype ContentType) OverlayPage(page *Page) (*Page, error) {
 		return nil, err
 	}
 	candidate := page.Clone()
-	if candidate.LayoutRef == "" {
-		candidate.LayoutRef = contenttype.Spec.Layout
+	if err := applyPageContentType(candidate, &contenttype); err != nil {
+		return nil, err
 	}
 	candidate.ResolveTemplateData(nil)
 	pageData := candidate.TemplateData
@@ -215,11 +214,16 @@ func (contenttype ContentType) OverlayPage(page *Page) (*Page, error) {
 // PreviewPageData returns serialized page data after applying the content type
 // overlay without mutating page or writing to disk.
 func (contenttype ContentType) PreviewPageData(website *Website, page *Page) ([]byte, error) {
-	ct := pageContentType(&contenttype)
+	ct := &contenttype
+	if ct.IsEmpty() {
+		ct = &DefaultContentType
+	}
 	candidate, err := ct.OverlayPage(page)
 	if err != nil {
 		return nil, err
 	}
+	// Preview serialization applies an explicit publish visibility when supplied,
+	// but otherwise retains the source draft state.
 	if ct.Spec.Visibility != "" {
 		candidate.Visibility = ct.Spec.Visibility
 	}
@@ -319,6 +323,9 @@ func (contenttype *ContentType) Load() (err error) {
 	if _, exists := legacy.Spec["unlisted"]; exists {
 		return fmt.Errorf("content-type spec.unlisted is no longer supported; use spec.visibility")
 	}
+	if _, exists := legacy.Spec["uri_resolver"]; exists {
+		return fmt.Errorf("content-type spec.uri_resolver is no longer supported; use spec.path_resolver")
+	}
 	switch fileExt {
 	case ".json":
 		if err = json.Unmarshal(fileBytes, &contenttype); err != nil {
@@ -368,19 +375,14 @@ func (contenttype *ContentType) IsEmpty() bool {
 	return false
 }
 
-func (contenttype *ContentType) ResolvePageURI(website *Website, page *Page, sourceURI *url.URL) (*url.URL, error) {
-	if website == nil {
-		return nil, fmt.Errorf("page.uri resolution requires website")
-	}
-	if page == nil {
-		return nil, fmt.Errorf("page.uri resolution requires page")
-	}
-	contenttype = pageContentType(contenttype)
-	resolver, err := PageURIResolverFor(contenttype.Spec.URIResolver)
-	if err != nil {
-		return nil, err
-	}
-	return resolver.ResolvePageURI(website, page, contenttype, sourceURI)
+// ValidatePage validates page against this content type without writing it.
+func (contenttype *ContentType) ValidatePage(website *Website, page *Page) error {
+	return validatePage(website, contenttype, page)
+}
+
+// FinalizePage validates and publishes page through website context.
+func (contenttype *ContentType) FinalizePage(website *Website, page *Page, createdAt string, w io.Writer) error {
+	return finalizePage(website, contenttype, page, createdAt, w)
 }
 
 func (spec ContentTypeSpecification) MIMEType() string {
@@ -400,20 +402,20 @@ func (spec ContentTypeSpecification) Validate() error {
 	if spec.Format == "" {
 		return fmt.Errorf("content-type spec.format is required")
 	}
-	if _, err := contentTypeIndexFilename(spec.Format); err != nil {
+	if _, err := pageDataFilename(spec.Format); err != nil {
 		return err
 	}
-	if spec.URIResolver == "" {
-		return fmt.Errorf("content-type spec.uri_resolver is required")
+	if spec.PathResolver == "" {
+		return fmt.Errorf("content-type spec.path_resolver is required")
 	}
-	if _, err := PageURIResolverFor(spec.URIResolver); err != nil {
+	if _, err := PublicURLPathResolverFor(spec.PathResolver); err != nil {
 		return err
 	}
 	renderedPath, err := renderContentTypePathTemplate(spec.Path, time.Date(2006, 1, 2, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		return fmt.Errorf("content-type spec.path invalid: %w", err)
 	}
-	if _, err := cleanRelativeURIPath(renderedPath); err != nil {
+	if _, err := cleanRelativePath(renderedPath); err != nil {
 		return fmt.Errorf("content-type spec.path invalid: %w", err)
 	}
 	if err := spec.Prompts.Validate(); err != nil {
@@ -432,139 +434,139 @@ func (spec ContentTypeSpecification) Validate() error {
 	return nil
 }
 
-type PageURIResolver interface {
-	ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error)
+type PublicURLPathResolver interface {
+	ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error)
 }
 
-type PageURIResolverName string
+type PublicURLPathResolverKind string
 
 const (
-	ManualURIResolver     PageURIResolverName = "manual"
-	TitleKabobURIResolver PageURIResolverName = "title-kabob"
-	TitleSnakeURIResolver PageURIResolverName = "title_snake"
-	TimestampURIResolver  PageURIResolverName = "timestamp"
-	UUIDURIResolver       PageURIResolverName = "uuid"
-	NoURIResolver         PageURIResolverName = "none"
+	ManualPathResolver     PublicURLPathResolverKind = "manual"
+	TitleKabobPathResolver PublicURLPathResolverKind = "title-kabob"
+	TitleSnakePathResolver PublicURLPathResolverKind = "title_snake"
+	TimestampPathResolver  PublicURLPathResolverKind = "timestamp"
+	UUIDPathResolver       PublicURLPathResolverKind = "uuid"
+	NoPathResolver         PublicURLPathResolverKind = "none"
 )
 
-func PageURIResolverFor(name PageURIResolverName) (PageURIResolver, error) {
+func PublicURLPathResolverFor(name PublicURLPathResolverKind) (PublicURLPathResolver, error) {
 	switch name {
-	case ManualURIResolver:
-		return manualURIResolver{}, nil
-	case TitleKabobURIResolver:
-		return titleKabobURIResolver{}, nil
-	case TitleSnakeURIResolver:
-		return titleSnakeURIResolver{}, nil
-	case TimestampURIResolver:
-		return timestampURIResolver{}, nil
-	case UUIDURIResolver:
-		return uuidURIResolver{}, nil
-	case NoURIResolver:
-		return noURIResolver{}, nil
+	case ManualPathResolver:
+		return manualPathResolver{}, nil
+	case TitleKabobPathResolver:
+		return titleKabobPathResolver{}, nil
+	case TitleSnakePathResolver:
+		return titleSnakePathResolver{}, nil
+	case TimestampPathResolver:
+		return timestampPathResolver{}, nil
+	case UUIDPathResolver:
+		return uuidPathResolver{}, nil
+	case NoPathResolver:
+		return noPathResolver{}, nil
 	default:
-		return nil, fmt.Errorf("content-type spec.uri_resolver %q is not supported", name)
+		return nil, fmt.Errorf("content-type spec.path_resolver %q is not supported", name)
 	}
 }
 
-type manualURIResolver struct{}
+type manualPathResolver struct{}
 
-func (manualURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (manualPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return contentTypePageURI(website, page, contenttype, suffix)
+		return contentTypePublicURLPath(page, contenttype, suffix)
 	}
 	if page.Visibility.IsDraft() {
-		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+		return contentTypePublicURLPath(page, contenttype, stableDraftURISuffix(page))
 	}
-	return nil, fmt.Errorf("content-type requires page.slug property")
+	return "", fmt.Errorf("content-type requires page.slug property")
 }
 
-type titleKabobURIResolver struct{}
+type titleKabobPathResolver struct{}
 
-func (titleKabobURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (titleKabobPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return contentTypePageURI(website, page, contenttype, suffix)
+		return contentTypePublicURLPath(page, contenttype, suffix)
 	}
 	if page.Title != "" {
-		return contentTypePageURI(website, page, contenttype, kabobURISuffix(page.Title))
+		return contentTypePublicURLPath(page, contenttype, kabobURISuffix(page.Title))
 	}
 	if page.Visibility.IsDraft() {
-		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+		return contentTypePublicURLPath(page, contenttype, stableDraftURISuffix(page))
 	}
-	return nil, fmt.Errorf("content-type requires page.title property")
+	return "", fmt.Errorf("content-type requires page.title property")
 }
 
-type titleSnakeURIResolver struct{}
+type titleSnakePathResolver struct{}
 
-func (titleSnakeURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (titleSnakePathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return contentTypePageURI(website, page, contenttype, suffix)
+		return contentTypePublicURLPath(page, contenttype, suffix)
 	}
 	if page.Title != "" {
-		return contentTypePageURI(website, page, contenttype, snakeURISuffix(page.Title))
+		return contentTypePublicURLPath(page, contenttype, snakeURISuffix(page.Title))
 	}
 	if page.Visibility.IsDraft() {
-		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+		return contentTypePublicURLPath(page, contenttype, stableDraftURISuffix(page))
 	}
-	return nil, fmt.Errorf("content-type requires page.title property")
+	return "", fmt.Errorf("content-type requires page.title property")
 }
 
-type timestampURIResolver struct{}
+type timestampPathResolver struct{}
 
-func (timestampURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (timestampPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return contentTypePageURI(website, page, contenttype, suffix)
+		return contentTypePublicURLPath(page, contenttype, suffix)
 	}
 	if page.Visibility.IsDraft() {
-		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+		return contentTypePublicURLPath(page, contenttype, stableDraftURISuffix(page))
 	}
-	return contentTypePageURI(website, page, contenttype, fmt.Sprintf("%v", page.LastModified().UnixMilli()))
+	return contentTypePublicURLPath(page, contenttype, fmt.Sprintf("%v", page.LastModified().UnixMilli()))
 }
 
-type uuidURIResolver struct{}
+type uuidPathResolver struct{}
 
-func (uuidURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (uuidPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return contentTypePageURI(website, page, contenttype, suffix)
+		return contentTypePublicURLPath(page, contenttype, suffix)
 	}
 	if page.Visibility.IsDraft() {
-		return contentTypePageURI(website, page, contenttype, stableDraftURISuffix(page, sourceURI))
+		return contentTypePublicURLPath(page, contenttype, stableDraftURISuffix(page))
 	}
-	return contentTypePageURI(website, page, contenttype, strings.ToLower(uuid.New().String()))
+	return contentTypePublicURLPath(page, contenttype, strings.ToLower(uuid.New().String()))
 }
 
-type noURIResolver struct{}
+type noPathResolver struct{}
 
-func (noURIResolver) ResolvePageURI(website *Website, page *Page, contenttype *ContentType, sourceURI *url.URL) (*url.URL, error) {
+func (noPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
-			return nil, err
+			return "", err
 		}
-		return contentTypePageURI(website, page, contenttype, suffix)
+		return contentTypePublicURLPath(page, contenttype, suffix)
 	}
-	return contentTypePageURI(website, page, contenttype, "")
+	return contentTypePublicURLPath(page, contenttype, "")
 }
 
 // =============================================================================
 // Functions
 // =============================================================================
 
-func explicitPageURISuffix(page *Page) (string, bool, error) {
-	if page == nil || page.Slug == "" {
+func explicitPageURISuffix(page Page) (string, bool, error) {
+	if page.Slug == "" {
 		return "", false, nil
 	}
 	if strings.Contains(page.Slug, "/") {
@@ -573,13 +575,9 @@ func explicitPageURISuffix(page *Page) (string, bool, error) {
 	return page.Slug, true, nil
 }
 
-func stableDraftURISuffix(page *Page, sourceURI *url.URL) string {
-	uri := sourceURI
-	if uri == nil && page != nil {
-		uri = page.URI
-	}
-	if uri != nil && uri.Path != "" {
-		dir := filepath.Base(filepath.Dir(uri.Path))
+func stableDraftURISuffix(page Page) string {
+	if page.Source.Path != "" {
+		dir := filepath.Base(page.Source.Path)
 		if strings.HasPrefix(dir, "draft-") || draftTimestampURISuffixPattern.MatchString(dir) {
 			return dir
 		}
@@ -591,41 +589,31 @@ func timestampDraftURISuffix(t time.Time) string {
 	return fmt.Sprintf("d%011x", t.UnixMilli())
 }
 
-func contentTypePageURI(website *Website, page *Page, contenttype *ContentType, suffix string) (*url.URL, error) {
-	if website == nil {
-		return nil, fmt.Errorf("page.uri resolution requires website")
-	}
-	if page == nil {
-		return nil, fmt.Errorf("page.uri resolution requires page")
-	}
+func contentTypePublicURLPath(page Page, contenttype *ContentType, suffix string) (string, error) {
 	if contenttype == nil {
-		return nil, fmt.Errorf("page.uri resolution requires content type")
+		return "", fmt.Errorf("page source resolution requires content type")
 	}
-	renderedPath, err := renderContentTypePath(contenttype.Spec.Path, page)
+	renderedPath, err := renderContentTypePath(contenttype.Spec.Path, &page)
 	if err != nil {
-		return nil, fmt.Errorf("content-type spec.path invalid: %w", err)
+		return "", fmt.Errorf("content-type spec.path invalid: %w", err)
 	}
-	prefix, err := cleanRelativeURIPath(renderedPath)
+	prefix, err := cleanRelativePath(renderedPath)
 	if err != nil {
-		return nil, fmt.Errorf("content-type spec.path invalid: %w", err)
+		return "", fmt.Errorf("content-type spec.path invalid: %w", err)
 	}
-	cleanSuffix, err := cleanRelativeURIPath(suffix)
+	cleanSuffix, err := cleanRelativePath(suffix)
 	if err != nil {
-		return nil, fmt.Errorf("page uri suffix invalid: %w", err)
+		return "", fmt.Errorf("page uri suffix invalid: %w", err)
 	}
-	filename, err := contentTypeIndexFilename(contenttype.Spec.Format)
-	if err != nil {
-		return nil, err
-	}
-	parts := []string{website.ContentDirPath()}
+	parts := []string{}
 	if prefix != "" {
 		parts = append(parts, prefix)
 	}
 	if cleanSuffix != "" {
 		parts = append(parts, cleanSuffix)
 	}
-	parts = append(parts, filename)
-	return &url.URL{Path: filepath.Join(parts...)}, nil
+	sourcePath := filepath.Join(parts...)
+	return (PageSource{Path: sourcePath}).PublicURLPath(page.UglyURL), nil
 }
 
 func renderContentTypePath(path string, page *Page) (string, error) {
@@ -651,17 +639,23 @@ func contentTypePathDate(page *Page) (time.Time, error) {
 	if page == nil {
 		return time.Time{}, fmt.Errorf("content-type path template requires page")
 	}
-	if page.CreatedAt == "" {
-		return time.Time{}, fmt.Errorf("content-type path template requires page.created_at")
+	timestamp := page.CreatedAt
+	field := "created_at"
+	if timestamp == "" {
+		timestamp = page.UpdatedAt
+		field = "updated_at"
 	}
-	date, err := time.Parse(time.RFC3339, page.CreatedAt)
+	if timestamp == "" {
+		return time.Time{}, fmt.Errorf("content-type path template requires page.created_at or page.updated_at")
+	}
+	date, err := time.Parse(time.RFC3339, timestamp)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("content-type path template requires valid page.created_at: %w", err)
+		return time.Time{}, fmt.Errorf("content-type path template requires valid page.%s: %w", field, err)
 	}
 	return date, nil
 }
-func contentTypeIndexFilename(format string) (string, error) {
-	switch format {
+func pageDataFilename(format string) (string, error) {
+	switch strings.ToLower(format) {
 	case "json":
 		return "index.json", nil
 	case "yaml", "yml":

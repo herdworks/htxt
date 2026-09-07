@@ -26,6 +26,7 @@ func ServerCommand() clic.Command {
 				WebsiteConfigOption,
 				BuildIdentifierOption,
 				BuildContentDirOption,
+				BuildDraftsDirOption,
 				BuildDataDirOption,
 				BuildStaticDirOption,
 				BuildThemeOption,
@@ -95,8 +96,9 @@ func serverHandler(execution *clic.Execution) error {
 				StaticDirectory:  options["static-dir"].StringValue(),
 				ThemePath:        options["theme"].StringValue(),
 			},
-			DataFile: options["data-file"].StringValue(),
-			LogFile:  options["log-file"].StringValue(),
+			DataFile:        options["data-file"].StringValue(),
+			LogFile:         options["log-file"].StringValue(),
+			DraftsDirectory: options["drafts-dir"].StringValue(),
 		},
 	}
 	if err = server.Validate(); err != nil {

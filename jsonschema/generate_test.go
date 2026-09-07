@@ -218,7 +218,7 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			if definition["title"] != "HyperTexting page" {
 				t.Fatalf("Page definition title = %#v", definition["title"])
 			}
-			if properties["created_at"].(map[string]any)["description"] != "Defaults to 'site.created_at'." {
+			if properties["created_at"].(map[string]any)["description"] != "Set when the page is finalized." {
 				t.Fatalf("Page created_at description = %#v", properties["created_at"])
 			}
 			if properties["layout"].(map[string]any)["default"] != "default" {

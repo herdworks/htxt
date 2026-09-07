@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 )
@@ -14,9 +15,10 @@ import (
 type Watcher struct {
 	Interval time.Duration
 
-	mu      sync.RWMutex
-	website *Website
-	changes chan struct{}
+	mu                sync.RWMutex
+	website           *Website
+	sourceDirectories []string
+	changes           chan struct{}
 }
 
 type watchState struct {
@@ -33,11 +35,12 @@ const (
 )
 
 // NewWatcher creates a watcher for website's managed files.
-func NewWatcher(website *Website) Watcher {
+func NewWatcher(website *Website, sourceDirectories ...string) Watcher {
 	return Watcher{
-		website:  website,
-		Interval: DefaultWatcherInterval,
-		changes:  make(chan struct{}, 1),
+		website:           website,
+		Interval:          DefaultWatcherInterval,
+		sourceDirectories: slices.Clone(sourceDirectories),
+		changes:           make(chan struct{}, 1),
 	}
 }
 
@@ -107,7 +110,7 @@ func (watcher *Watcher) snapshot() (map[string]watchState, error) {
 	if website == nil {
 		return nil, fmt.Errorf("watcher.website is required")
 	}
-	paths, err := website.FilePaths()
+	paths, err := website.FilePaths(watcher.sourceDirectories...)
 	if err != nil {
 		return nil, err
 	}

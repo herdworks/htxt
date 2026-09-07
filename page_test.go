@@ -56,6 +56,20 @@ func TestPagesFilterDraft(t *testing.T) {
 	}
 }
 
+func TestPageSourceURIDerivesSourceState(t *testing.T) {
+	page := &Page{
+		Source: PageSource{
+			Directory: "/website/drafts",
+			Path:      "posts/hello",
+			Filename:  "index.md",
+		},
+	}
+
+	if got, want := page.Source.URI().Path, "/website/drafts/posts/hello/index.md"; got != want {
+		t.Fatalf("Page.Source.URI().Path = %q, want %q", got, want)
+	}
+}
+
 func TestPagesColumnValuesIncludesVisibility(t *testing.T) {
 	pages := Pages{
 		&Page{Visibility: AutoVisibility},
@@ -67,9 +81,9 @@ func TestPagesColumnValuesIncludesVisibility(t *testing.T) {
 }
 
 func TestPagesAddPreservesOrderAndUniqueURIs(t *testing.T) {
-	first := &Page{URI: &url.URL{Path: "/content/first/index.md"}}
-	duplicate := &Page{URI: &url.URL{Path: "/content/first/index.md"}}
-	second := &Page{URI: &url.URL{Path: "/content/second/index.md"}}
+	first := pageWithURI(&url.URL{Path: "/content/first/index.md"}, Page{})
+	duplicate := pageWithURI(&url.URL{Path: "/content/first/index.md"}, Page{})
+	second := pageWithURI(&url.URL{Path: "/content/second/index.md"}, Page{})
 
 	got := Pages{first}.Add(nil, duplicate, second, first)
 	if len(got) != 2 || got[0] != first || got[1] != second {
@@ -128,7 +142,7 @@ func TestLoadPageValidatesVisibilityAndAppliesStatusLayout(t *testing.T) {
 	source := "---\nlayout: article\nvisibility: story\n---\n\nstatus"
 	writePageTestFile(t, sourcePath, source)
 
-	page := &Page{URI: &url.URL{Path: sourcePath}}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{})
 	if err := LoadPage(website, page, false, io.Discard); err != nil {
 		t.Fatalf("LoadPage() error = %v", err)
 	}
@@ -152,7 +166,7 @@ func TestLoadPageValidatesVisibilityAndAppliesStatusLayout(t *testing.T) {
 
 	invalidPath := filepath.Join(website.ContentDirPath(), "invalid", "index.md")
 	writePageTestFile(t, invalidPath, "---\nvisibility: private\n---\n\ninvalid")
-	if err := LoadPage(website, &Page{URI: &url.URL{Path: invalidPath}}, false, io.Discard); err == nil {
+	if err := LoadPage(website, pageWithURI(&url.URL{Path: invalidPath}, Page{}), false, io.Discard); err == nil {
 		t.Fatal("LoadPage() accepted invalid visibility")
 	}
 }
@@ -162,48 +176,48 @@ func TestLoadPageRejectsInvalidTagName(t *testing.T) {
 	sourcePath := filepath.Join(website.ContentDirPath(), "invalid-tag", "index.md")
 	writePageTestFile(t, sourcePath, "---\ntags:\n  - foo//bar\n---\n\ninvalid")
 
-	page := &Page{URI: &url.URL{Path: sourcePath}}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{})
 	if err := LoadPage(website, page, false, io.Discard); err == nil {
 		t.Fatal("LoadPage() accepted an invalid tag name")
 	}
 }
 
-func TestContentTypeResolvePageURIUsesContentDirForDraftPages(t *testing.T) {
+func TestPageUpdateResolvesDraftPublicURLPathWithoutMutatingSource(t *testing.T) {
 	website, _ := testWebsite(t)
 	contenttype := &ContentType{Metadata: ContentTypeMetadata{Name: "Test"}, Spec: ContentTypeSpecification{
-		Layout:      "default",
-		URIResolver: ManualURIResolver,
-		Format:      "markdown",
-		Path:        "posts",
+		Layout:       "default",
+		PathResolver: ManualPathResolver,
+		Format:       "markdown",
+		Path:         "posts",
 	}}
-	page := &Page{Visibility: DraftVisibility, Slug: "draft-post"}
+	page := &Page{Source: PageSource{Directory: website.ContentDirPath()}, Visibility: DraftVisibility, Slug: "draft-post"}
 
-	uri, err := contenttype.ResolvePageURI(website, page, nil)
-	if err != nil {
-		t.Fatalf("ContentType.ResolvePageURI() error = %v", err)
+	if err := page.Update(website, contenttype); err != nil {
+		t.Fatalf("Page.Update() error = %v", err)
 	}
-	got := uri.Path
-	want := filepath.Join(website.ContentDirPath(), "posts", "draft-post", "index.md")
-	if got != want {
-		t.Fatalf("ContentType.ResolvePageURI() = %q, want %q", got, want)
+	if page.PublicURL.Path != "/posts/draft-post/" {
+		t.Fatalf("page.Path = %q, want /posts/draft-post/", page.PublicURL.Path)
 	}
-}
-
-func TestPagePathWithRelativeWebsiteRoot(t *testing.T) {
-	sourcePath, err := filepath.Abs(filepath.Join("testdata", "site", "content", "about", "index.html"))
-	if err != nil {
-		t.Fatalf("Abs() error = %v", err)
-	}
-	website := &Website{URI: &href.Href{URL: url.URL{Path: filepath.Join("testdata", "site", "site.yaml")}}}
-	pageURI := &url.URL{Path: sourcePath}
-
-	got := PagePath(website, pageURI)
-	if got != "/about/" {
-		t.Fatalf("PagePath() = %q, want %q", got, "/about/")
+	if page.Source.Path != "" || page.Source.Filename != "" {
+		t.Fatalf("path resolution mutated source state: %#v", page)
 	}
 }
 
-func TestPageResolvePath(t *testing.T) {
+func TestLoadPagePreservesProjectedPath(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "source", "index.md")
+	writePageTestFile(t, sourcePath, "---\nlayout: default\n---\n\nsource")
+
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{PublicURL: url.URL{Path: "/projected/"}})
+	if err := LoadPage(website, page, false, io.Discard); err != nil {
+		t.Fatalf("LoadPage() error = %v", err)
+	}
+	if page.PublicURL.Path != "/projected/" {
+		t.Fatalf("page.Path = %q, want caller projection", page.PublicURL.Path)
+	}
+}
+
+func TestPageResolvedPath(t *testing.T) {
 	website, _ := testWebsite(t)
 	tests := []struct {
 		name    string
@@ -229,27 +243,122 @@ func TestPageResolvePath(t *testing.T) {
 			want:    "/posts/hello.html",
 		},
 		{
-			name:    "root page stays index path",
+			name:    "ugly root page becomes index file",
 			source:  filepath.Join(website.ContentDirPath(), "index.md"),
 			uglyURL: true,
-			want:    "/",
+			want:    "/index.html",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			page := &Page{URI: &url.URL{Path: tc.source}, UglyURL: tc.uglyURL}
-			page.ResolvePath(website)
-			if page.Path != tc.want {
-				t.Fatalf("ResolvePath() path = %q, want %q", page.Path, tc.want)
+			page := pageWithURI(&url.URL{Path: tc.source}, Page{UglyURL: tc.uglyURL})
+			if got := page.Source.PublicURLPath(page.UglyURL); got != tc.want {
+				t.Fatalf("PageSource.publicURLPath() = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
+func TestPageSourcePublicURLPathTrimsSlashes(t *testing.T) {
+	tests := []struct {
+		sourcePath string
+		uglyURL    bool
+		want       string
+	}{
+		{sourcePath: "/about/", want: "/about/"},
+		{sourcePath: "//posts//hello//", want: "/posts/hello/"},
+		{sourcePath: "/404/", uglyURL: true, want: "/404.html"},
+	}
+	for _, tc := range tests {
+		if got := (PageSource{Path: tc.sourcePath}).PublicURLPath(tc.uglyURL); got != tc.want {
+			t.Fatalf("PageSource.publicURLPath(%q, %t) = %q, want %q", tc.sourcePath, tc.uglyURL, got, tc.want)
+		}
+	}
+}
+
+func TestPageResolvePublicURLPageSourceProjectsPublicURLPath(t *testing.T) {
+	tests := []struct {
+		name      string
+		publicURL string
+		uglyURL   bool
+		want      string
+	}{
+		{name: "pretty root", publicURL: "/", want: ""},
+		{name: "pretty page", publicURL: "/posts/hello/", want: filepath.Join("posts", "hello")},
+		{name: "ugly root", publicURL: "/index.html", uglyURL: true, want: ""},
+		{name: "ugly page", publicURL: "/posts/hello.html", uglyURL: true, want: filepath.Join("posts", "hello")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page := &Page{
+				Source:    PageSource{Directory: "content", Filename: "index.md"},
+				PublicURL: url.URL{Path: test.publicURL},
+				Format:    "markdown",
+				UglyURL:   test.uglyURL,
+			}
+			if got := page.resolvePublicURLPageSource("drafts").Path; got != test.want {
+				t.Fatalf("destination source path for %q (ugly=%t) = %q, want %q", test.publicURL, test.uglyURL, got, test.want)
+			}
+		})
+	}
+}
+
+func TestPageResolvePublicURLPageSourceMatchesAlignedSource(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		filename  string
+		publicURL string
+		format    string
+		uglyURL   bool
+	}{
+		{name: "pretty root markdown", filename: "index.md", publicURL: "/", format: "markdown"},
+		{name: "pretty nested json", path: filepath.Join("posts", "hello"), filename: "index.json", publicURL: "/posts/hello/", format: "json"},
+		{name: "ugly root yaml", filename: "index.yaml", publicURL: "/index.html", format: "yaml", uglyURL: true},
+		{name: "ugly nested yml", path: filepath.Join("posts", "hello"), filename: "index.yaml", publicURL: "/posts/hello.html", format: "yml", uglyURL: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page := &Page{
+				Source:    PageSource{Directory: "content", Path: test.path, Filename: test.filename},
+				PublicURL: url.URL{Path: test.publicURL},
+				Format:    test.format,
+				UglyURL:   test.uglyURL,
+			}
+			if destination := page.resolvePublicURLPageSource(page.Source.Directory); !page.Source.matches(destination) {
+				t.Fatalf("resolvePublicURLPageSource() = %#v, want source %#v", destination, page.Source)
+			}
+		})
+	}
+}
+
+func TestPageSourceDir(t *testing.T) {
+	source := PageSource{Directory: "content", Path: filepath.Join("posts", "hello")}
+	if want := filepath.Join("content", "posts", "hello"); source.Dir() != want {
+		t.Fatalf("PageSource.Dir() = %q, want %q", source.Dir(), want)
+	}
+}
+
+func TestPageSourceMatches(t *testing.T) {
+	source := PageSource{Directory: "content", Path: filepath.Join("posts", "hello"), Filename: "index.md"}
+	if !source.matches(source) {
+		t.Fatal("PageSource.matches() = false, want true for identical source")
+	}
+	if source.matches(PageSource{Directory: "content", Path: filepath.Join("posts", "hello"), Filename: "index.yaml"}) {
+		t.Fatal("PageSource.matches() = true, want false for a different data filename")
+	}
+	if source.matches(PageSource{Directory: "drafts", Path: filepath.Join("posts", "hello"), Filename: "index.md"}) {
+		t.Fatal("PageSource.matches() = true, want false for a different source directory")
+	}
+	if source.matches(PageSource{Directory: "content", Path: filepath.Join("posts", "hello")}) {
+		t.Fatal("PageSource.matches() = true, want false for incomplete source state")
+	}
+}
+
 func TestPageCanonicalURL(t *testing.T) {
 	website, _ := testWebsite(t)
-	page := &Page{Path: "/about/"}
+	page := &Page{PublicURL: url.URL{Path: "/about/"}}
 
 	canonicalURL, err := page.CanonicalURL(website)
 	if err != nil {
@@ -260,9 +369,31 @@ func TestPageCanonicalURL(t *testing.T) {
 	}
 }
 
+func TestPageCanonicalURLRejectsNonWebsiteRelativePublicURL(t *testing.T) {
+	website, _ := testWebsite(t)
+	tests := []struct {
+		name      string
+		publicURL url.URL
+	}{
+		{name: "scheme", publicURL: url.URL{Scheme: "https", Host: "elsewhere.example", Path: "/about/"}},
+		{name: "opaque", publicURL: url.URL{Scheme: "mailto", Opaque: "hello@example.com", Path: "/about/"}},
+		{name: "host", publicURL: url.URL{Host: "elsewhere.example", Path: "/about/"}},
+		{name: "user info", publicURL: url.URL{User: url.User("user"), Path: "/about/"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page := &Page{PublicURL: test.publicURL}
+
+			if _, err := page.CanonicalURL(website); err == nil || !strings.Contains(err.Error(), "website-relative") {
+				t.Fatalf("CanonicalURL() error = %v, want website-relative public URL requirement", err)
+			}
+		})
+	}
+}
+
 func TestPageResolveTemplateDataSetsCanonicalURL(t *testing.T) {
 	website, _ := testWebsite(t)
-	page := &Page{Path: "/about/"}
+	page := &Page{PublicURL: url.URL{Path: "/about/"}}
 
 	page.ResolveTemplateData(website)
 	if got, want := page.TemplateData.Get("canonical_url"), "https://example.com/about/"; got != want {
@@ -273,8 +404,8 @@ func TestPageResolveTemplateDataSetsCanonicalURL(t *testing.T) {
 func TestPageAtomEntryUsesCanonicalURLForIDAndAlternateLink(t *testing.T) {
 	website, _ := testWebsite(t)
 	page := Page{
-		Path:     "/about/",
-		Redirect: "https://elsewhere.example/post/",
+		PublicURL: url.URL{Path: "/about/"},
+		Redirect:  "https://elsewhere.example/post/",
 	}
 
 	entry := page.AtomEntry(website)
@@ -306,8 +437,11 @@ func TestPageAtomEntryLinksRepresentAttachments(t *testing.T) {
 	writeAssetTestFile(t, filepath.Join(pageDir, "photo.png"))
 	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "docs", "guide.pdf"))
 	page := Page{
-		URI:  &url.URL{Path: filepath.Join(pageDir, "index.md")},
-		Path: "/s/123/",
+		Source: PageSource{
+			Directory: filepath.Dir(filepath.Join(pageDir, "index.md")),
+			Filename:  filepath.Base(filepath.Join(pageDir, "index.md")),
+		},
+		PublicURL: url.URL{Path: "/s/123/"},
 		Attachments: Attachments{
 			{Kind: AttachmentKindLink, Href: mustHref(t, "https://example.org/article"), Data: map[string]any{"hypergraph": map[string]any{"title": "Example Article"}}},
 			{Kind: AttachmentKindImage, Href: mustHref(t, "photo.png")},
@@ -370,7 +504,7 @@ func TestLoadPageResolvesUglyURLPathAfterParsing(t *testing.T) {
 	if err := os.WriteFile(sourcePath, content, 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	page := &Page{URI: &url.URL{Path: sourcePath}, Path: PagePath(website, &url.URL{Path: sourcePath})}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{})
 
 	if err := LoadPage(website, page, false, io.Discard); err != nil {
 		t.Fatalf("LoadPage() error = %v", err)
@@ -378,8 +512,8 @@ func TestLoadPageResolvesUglyURLPathAfterParsing(t *testing.T) {
 	if !page.UglyURL {
 		t.Fatal("LoadPage() did not parse ugly_url")
 	}
-	if page.Path != "/404.html" {
-		t.Fatalf("LoadPage() path = %q, want %q", page.Path, "/404.html")
+	if page.PublicURL.Path != "/404.html" {
+		t.Fatalf("LoadPage() path = %q, want %q", page.PublicURL.Path, "/404.html")
 	}
 }
 
@@ -400,26 +534,32 @@ func TestWritePageTruncatesExistingFile(t *testing.T) {
 			path := filepath.Join(website.ContentDirPath(), "shorter-"+tc.name, "index"+tc.ext)
 			uri := &url.URL{Path: path}
 			first := &Page{
-				URI:         uri,
+				Source: PageSource{
+					Directory: filepath.Dir(uri.Path),
+					Filename:  filepath.Base(uri.Path),
+				},
 				CreatedAt:   "2026-05-19T00:00:00Z",
 				LayoutRef:   "default",
 				Title:       "Long Page",
 				Description: "stale description should disappear after shorter save",
 				Content:     "stale body should disappear after shorter save",
 			}
-			if err := WritePage(website, first, tc.format, io.Discard); err != nil {
-				t.Fatalf("first WritePage() error = %v", err)
+			if err := writePage(website, first, io.Discard); err != nil {
+				t.Fatalf("first writePage() error = %v", err)
 			}
 
 			second := &Page{
-				URI:       uri,
+				Source: PageSource{
+					Directory: filepath.Dir(uri.Path),
+					Filename:  filepath.Base(uri.Path),
+				},
 				CreatedAt: "2026-05-19T00:00:00Z",
 				LayoutRef: "default",
 				Title:     "Short Page",
 				Content:   "ok",
 			}
-			if err := WritePage(website, second, tc.format, io.Discard); err != nil {
-				t.Fatalf("second WritePage() error = %v", err)
+			if err := writePage(website, second, io.Discard); err != nil {
+				t.Fatalf("second writePage() error = %v", err)
 			}
 
 			bytes, err := os.ReadFile(path)
@@ -433,7 +573,7 @@ func TestWritePageTruncatesExistingFile(t *testing.T) {
 				}
 			}
 
-			loaded := &Page{URI: uri}
+			loaded := pageWithURI(uri, Page{})
 			if err := LoadPage(website, loaded, false, io.Discard); err != nil {
 				t.Fatalf("LoadPage() error = %v", err)
 			}
@@ -454,7 +594,10 @@ func TestPageRenderDataRendersMarkdownFromClonedPage(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "preview", "index.md")
 	page := &Page{
-		URI:        &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Path:     filepath.Join("posts", "draft"),
+			Filename: filepath.Base(sourcePath),
+		},
 		CreatedAt:  "2026-07-03T00:00:00Z",
 		LayoutRef:  "default",
 		Title:      "Preview Page",
@@ -495,10 +638,10 @@ func TestContentTypePreviewPageDataAppliesOverlayWithoutWriting(t *testing.T) {
 	contenttype := ContentType{
 		Metadata: ContentTypeMetadata{Name: "Neighborhood Post"},
 		Spec: ContentTypeSpecification{
-			Layout:      "post.html",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "markdown",
-			Visibility:  UnlistedVisibility,
+			Layout:       "post.html",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "markdown",
+			Visibility:   UnlistedVisibility,
 			TemplateData: httt.TemplateData{
 				"neighborhood": "",
 			},
@@ -519,7 +662,11 @@ func TestContentTypePreviewPageDataAppliesOverlayWithoutWriting(t *testing.T) {
 		State: ContentTypeState{UserData: map[string]any{"neighborhood": "north-beach"}},
 	}
 	page := &Page{
-		URI:        &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      filepath.Join("posts", "draft-fixed"),
+			Filename:  filepath.Base(sourcePath),
+		},
 		CreatedAt:  "2026-07-03T00:00:00Z",
 		Title:      "Neighborhood Notes",
 		Content:    "A few notes from the neighborhood.",
@@ -557,17 +704,17 @@ func testPageContentType(format string, contentPath string) *ContentType {
 	return &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Test"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			URIResolver: TimestampURIResolver,
-			Format:      format,
-			Path:        contentPath,
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       format,
+			Path:         contentPath,
 		},
 	}
 }
 
-func testPageContentTypeWithURIResolver(format string, contentPath string, resolver PageURIResolverName) *ContentType {
+func testPageContentTypeWithPathResolver(format string, contentPath string, resolver PublicURLPathResolverKind) *ContentType {
 	contenttype := testPageContentType(format, contentPath)
-	contenttype.Spec.URIResolver = resolver
+	contenttype.Spec.PathResolver = resolver
 	return contenttype
 }
 
@@ -581,76 +728,152 @@ func writePageTestFile(t *testing.T, path string, contents string) {
 	}
 }
 
-func TestCreatePageRequiresEmptyURI(t *testing.T) {
-	website, _ := testWebsite(t)
-	contenttype := testPageContentType("markdown", "posts")
-	page := &Page{URI: &url.URL{Path: filepath.Join(website.ContentDirPath(), "posts", "hello", "index.md")}}
+func autosaveTestPage(website *Website, page *Page, contenttype *ContentType, w io.Writer) error {
+	if page.Source.Directory == "" {
+		page.Source.Directory = website.ContentDirPath()
+	}
+	if err := updatePage(website, contenttype, page); err != nil {
+		return err
+	}
+	return savePage(website, page, w)
+}
 
-	err := CreatePage(website, page, contenttype, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "page.create requires page.uri to be empty") {
-		t.Fatalf("CreatePage() error = %v, want page.uri guard", err)
+func TestPageSaveRejectsSourcesOutsideWebsiteRoot(t *testing.T) {
+	website, _ := testWebsite(t)
+	outsideDirectory := t.TempDir()
+	outsideSourcePath := filepath.Join(outsideDirectory, "index.md")
+	insideSourcePath := filepath.Join(website.ContentDirPath(), "draft", "index.md")
+	writePageTestFile(t, outsideSourcePath, "outside")
+	writePageTestFile(t, insideSourcePath, "inside")
+
+	tests := []struct {
+		name string
+		page *Page
+		path string
+	}{
+		{
+			name: "current source",
+			page: &Page{
+				Source:    PageSource{Directory: outsideDirectory, Filename: "index.md"},
+				PublicURL: url.URL{Path: "/posts/safe/"},
+				Format:    "markdown",
+			},
+			path: outsideSourcePath,
+		},
+		{
+			name: "projected destination",
+			page: &Page{
+				Source:    PageSource{Directory: website.ContentDirPath(), Path: "draft", Filename: "index.md"},
+				PublicURL: url.URL{Path: "/../../outside/"},
+				Format:    "markdown",
+			},
+			path: insideSourcePath,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.page.Save(website, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), "escapes website root") {
+				t.Fatalf("Page.Save() error = %v, want website-root escape error", err)
+			}
+			if _, err := os.Stat(test.path); err != nil {
+				t.Fatalf("source path missing after rejected save: %v", err)
+			}
+		})
 	}
 }
 
-func TestCreatePageFailsIfResolvedPathExists(t *testing.T) {
+func TestPageFinalizeRejectsSourceOutsideWebsiteRoot(t *testing.T) {
 	website, _ := testWebsite(t)
-	contenttype := testPageContentType("markdown", "posts")
-	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "duplicate", "index.md")
-	if err := os.MkdirAll(filepath.Dir(destinationPath), 0755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
+	draftsDirectory := t.TempDir()
+	sourcePath := filepath.Join(draftsDirectory, "posts", "draft", "index.md")
+	writePageTestFile(t, sourcePath, "draft")
+	page := &Page{
+		Source: PageSource{
+			Directory: draftsDirectory,
+			Path:      filepath.Join("posts", "draft"),
+			Filename:  "index.md",
+		},
+		Visibility: DraftVisibility,
+		Title:      "Published Draft",
+		Content:    "draft",
 	}
-	if err := os.WriteFile(destinationPath, []byte("existing"), 0644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	page := &Page{Slug: "duplicate", Title: "Duplicate", Content: "new content"}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
 
-	err := CreatePage(website, page, contenttype, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "page.create conflict") {
-		t.Fatalf("CreatePage() error = %v, want conflict", err)
+	err := page.Finalize(website, contenttype, "", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "escapes website root") {
+		t.Fatalf("Page.Finalize() error = %v, want website-root escape error", err)
+	}
+	if _, err := os.Stat(sourcePath); err != nil {
+		t.Fatalf("source path missing after rejected finalization: %v", err)
 	}
 }
 
-func TestCreatePageWithNilContentTypeUsesDefaultTimestampPath(t *testing.T) {
+func TestCreatePageRequiresSourceDirectory(t *testing.T) {
 	website, _ := testWebsite(t)
-	page := &Page{Content: "default content"}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
 
-	if err := CreatePage(website, page, nil, io.Discard); err != nil {
-		t.Fatalf("CreatePage() error = %v", err)
+	if _, err := website.CreatePage(contenttype, ""); err == nil || !strings.Contains(err.Error(), "source directory is required to create a page") {
+		t.Fatalf("Website.CreatePage() error = %v, want source directory requirement", err)
 	}
-	if page.URI == nil {
-		t.Fatal("page.URI is nil")
+}
+
+func TestCreatePageRejectsEmptyContentType(t *testing.T) {
+	website, _ := testWebsite(t)
+
+	if _, err := website.CreatePage(&ContentType{}, website.ContentDirPath()); err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
+		t.Fatalf("Website.CreatePage() error = %v, want invalid content type", err)
 	}
-	pageDir := filepath.Dir(page.URI.Path)
-	timestampSegment := filepath.Base(pageDir)
-	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "-") {
-		t.Fatalf("page.URI = %s, want under default '-' content path", page.URI.Path)
-	}
-	if _, err := strconv.ParseInt(timestampSegment, 10, 64); err != nil {
-		t.Fatalf("default URI segment = %q, want millisecond timestamp", timestampSegment)
-	}
-	if filepath.Base(page.URI.Path) != "index.md" {
-		t.Fatalf("page.URI = %s, want markdown index file", page.URI.Path)
-	}
-	if page.Path != "/-/"+timestampSegment+"/" {
-		t.Fatalf("page.Path = %q, want /-/%s/", page.Path, timestampSegment)
-	}
-	bytes, err := os.ReadFile(page.URI.Path)
+}
+
+func TestCreatePageInitializesUnsavedPage(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourceDirectory := filepath.Join(website.RootDir(), "drafts")
+	contenttype := testPageContentType("markdown", "posts")
+
+	page, err := website.CreatePage(contenttype, sourceDirectory)
 	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
+		t.Fatalf("Website.CreatePage() error = %v", err)
 	}
-	if !strings.Contains(string(bytes), "default content") {
-		t.Fatalf("default page contents = %q, want page content", string(bytes))
+	if page.Source.Directory != sourceDirectory {
+		t.Fatalf("page.Source.Directory = %q, want %q", page.Source.Directory, sourceDirectory)
+	}
+	if page.Source.URI() != nil {
+		t.Fatalf("page.Source.URI() = %#v, want nil before persistence", page.Source.URI())
+	}
+	if page.Format != "markdown" || page.LayoutRef != "default" {
+		t.Fatalf("page direct content-type state = format %q, layout %q", page.Format, page.LayoutRef)
+	}
+	if page.UpdatedAt == "" || page.PublicURL.Path == "" {
+		t.Fatalf("page transition state = updated_at %q, public URL %q", page.UpdatedAt, page.PublicURL.Path)
+	}
+	if _, err := os.Stat(sourceDirectory); !os.IsNotExist(err) {
+		t.Fatalf("source directory exists after object-only Website.CreatePage: %v", err)
+	}
+}
+
+func TestUpdatePageRejectsInvalidContentTypeWithoutUpdatingTimestamp(t *testing.T) {
+	website, _ := testWebsite(t)
+	updatedAt := "2026-05-20T00:00:00Z"
+	page := pageWithURI(&url.URL{Path: filepath.Join(website.ContentDirPath(), "draft", "index.md")}, Page{UpdatedAt: updatedAt})
+
+	err := website.UpdatePage(&ContentType{}, page)
+	if err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
+		t.Fatalf("Website.UpdatePage() error = %v, want invalid content type", err)
+	}
+	if page.UpdatedAt != updatedAt {
+		t.Fatalf("page.UpdatedAt = %q, want unchanged %q", page.UpdatedAt, updatedAt)
 	}
 }
 
 func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
 	tests := []struct {
 		name     string
-		resolver PageURIResolverName
+		resolver PublicURLPathResolverKind
 		wantSlug string
 	}{
-		{name: "title kabob", resolver: TitleKabobURIResolver, wantSlug: "hello-world"},
-		{name: "title snake", resolver: TitleSnakeURIResolver, wantSlug: "hello_world"},
+		{name: "title kabob", resolver: TitleKabobPathResolver, wantSlug: "hello-world"},
+		{name: "title snake", resolver: TitleSnakePathResolver, wantSlug: "hello_world"},
 	}
 
 	for _, tc := range tests {
@@ -659,10 +882,10 @@ func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
 			contenttype := &ContentType{
 				Metadata: ContentTypeMetadata{Name: "Blog"},
 				Spec: ContentTypeSpecification{
-					Layout:      "default",
-					Path:        "/blog/${year}/${month}/${day}/",
-					URIResolver: tc.resolver,
-					Format:      "markdown",
+					Layout:       "default",
+					Path:         "/blog/${year}/${month}/${day}/",
+					PathResolver: tc.resolver,
+					Format:       "markdown",
 				},
 			}
 			page := &Page{
@@ -671,33 +894,33 @@ func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
 				Content:   "templated content type path",
 			}
 
-			if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
-				t.Fatalf("CreatePage() error = %v", err)
+			if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+				t.Fatalf("autosaveTestPage() error = %v", err)
 			}
 			wantPath := filepath.Join(website.ContentDirPath(), "blog", "2026", "05", "24", tc.wantSlug, "index.md")
-			if page.URI == nil || page.URI.Path != wantPath {
-				t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+			if page.Source.URI() == nil || page.Source.URI().Path != wantPath {
+				t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), wantPath)
 			}
-			if page.Path != "/blog/2026/05/24/"+tc.wantSlug+"/" {
-				t.Fatalf("page.Path = %q, want templated date path", page.Path)
+			if page.PublicURL.Path != "/blog/2026/05/24/"+tc.wantSlug+"/" {
+				t.Fatalf("page.Path = %q, want templated date path", page.PublicURL.Path)
 			}
 		})
 	}
 }
 
-func TestCreatePageAppliesContentTypeUnlistedDefault(t *testing.T) {
+func TestCreateDraftPageAppliesContentTypeVisibility(t *testing.T) {
 	website, _ := testWebsite(t)
 	contenttype := testPageContentType("markdown", "posts")
 	contenttype.Spec.Visibility = UnlistedVisibility
 	page := &Page{Visibility: DraftVisibility, Content: "draft content"}
 
-	if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("CreatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	if page.Visibility != UnlistedVisibility {
 		t.Fatalf("page.Visibility = %q, want unlisted", page.Visibility)
 	}
-	bytes, err := os.ReadFile(page.URI.Path)
+	bytes, err := os.ReadFile(page.Source.URI().Path)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -706,30 +929,46 @@ func TestCreatePageAppliesContentTypeUnlistedDefault(t *testing.T) {
 	}
 }
 
-func TestUpdatePageWithTemplatedContentTypePathUsesExistingCreatedAt(t *testing.T) {
+func TestUpdatePageWithTemplatedContentTypePathUsesUpdatedAtBeforeFinalization(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "drafts", "working", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
 	contenttype := &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Blog"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			Path:        "/blog/${year}/${month}/${day}/",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "markdown",
+			Layout:       "default",
+			Path:         "/blog/${year}/${month}/${day}/",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "markdown",
 		},
 	}
-	page := &Page{URI: &url.URL{Path: sourcePath}, Title: "Published Draft", Content: "published"}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{
+		UpdatedAt: "2026-05-20T00:00:00Z",
+		Title:     "Published Draft",
+		Content:   "published",
+	})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
-	destinationPath := filepath.Join(website.ContentDirPath(), "blog", "2026", "05", "20", "published-draft", "index.md")
-	if page.URI == nil || page.URI.Path != destinationPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	updatedAt, err := time.Parse(time.RFC3339, page.UpdatedAt)
+	if err != nil {
+		t.Fatalf("page.UpdatedAt = %q, want RFC3339 timestamp: %v", page.UpdatedAt, err)
 	}
-	if page.Path != "/blog/2026/05/20/published-draft/" {
-		t.Fatalf("page.Path = %q, want existing created_at date path", page.Path)
+	destinationPath := filepath.Join(
+		website.ContentDirPath(),
+		"blog",
+		updatedAt.Format("2006"),
+		updatedAt.Format("01"),
+		updatedAt.Format("02"),
+		"published-draft",
+		"index.md",
+	)
+	if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
+	}
+	if page.PublicURL.Path != "/blog/"+updatedAt.Format("2006/01/02")+"/published-draft/" {
+		t.Fatalf("page.Path = %q, want updated_at date path", page.PublicURL.Path)
 	}
 	if _, err := os.Stat(destinationPath); err != nil {
 		t.Fatalf("destination page missing: %v", err)
@@ -739,21 +978,21 @@ func TestUpdatePageWithTemplatedContentTypePathUsesExistingCreatedAt(t *testing.
 	}
 }
 
-func TestUpdatePageAppliesContentTypeUnlistedDefault(t *testing.T) {
+func TestUpdateDraftPageAppliesContentTypeVisibility(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
 	contenttype := testPageContentType("markdown", "posts")
 	contenttype.Spec.Visibility = UnlistedVisibility
-	page := &Page{URI: &url.URL{Path: sourcePath}, Visibility: DraftVisibility, Content: "updated draft"}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Visibility: DraftVisibility, Content: "updated draft"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	if page.Visibility != UnlistedVisibility {
 		t.Fatalf("page.Visibility = %q, want unlisted", page.Visibility)
 	}
-	bytes, err := os.ReadFile(page.URI.Path)
+	bytes, err := os.ReadFile(page.Source.URI().Path)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -764,28 +1003,28 @@ func TestUpdatePageAppliesContentTypeUnlistedDefault(t *testing.T) {
 
 func TestCreateDraftPageWithEmptySlugUsesTemporaryURI(t *testing.T) {
 	website, _ := testWebsite(t)
-	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
 	page := &Page{Visibility: DraftVisibility, Content: "draft content"}
 
-	if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("CreatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	if page.Slug != "" {
 		t.Fatalf("page.Slug = %q, want empty", page.Slug)
 	}
-	if page.URI == nil {
+	if page.Source.URI() == nil {
 		t.Fatal("page.URI is nil")
 	}
-	pageDir := filepath.Dir(page.URI.Path)
+	pageDir := filepath.Dir(page.Source.URI().Path)
 	draftSegment := filepath.Base(pageDir)
 	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "posts") {
-		t.Fatalf("page.URI = %s, want under posts draft directory", page.URI.Path)
+		t.Fatalf("page.URI = %s, want under posts draft directory", page.Source.URI().Path)
 	}
 	assertTimestampDraftSegment(t, draftSegment)
-	if page.Path != "/posts/"+draftSegment+"/" {
-		t.Fatalf("page.Path = %q, want computed draft path", page.Path)
+	if page.PublicURL.Path != "/posts/"+draftSegment+"/" {
+		t.Fatalf("page.Path = %q, want computed draft path", page.PublicURL.Path)
 	}
-	bytes, err := os.ReadFile(page.URI.Path)
+	bytes, err := os.ReadFile(page.Source.URI().Path)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -796,30 +1035,30 @@ func TestCreateDraftPageWithEmptySlugUsesTemporaryURI(t *testing.T) {
 
 func TestCreateDraftPageWithUserSlugPreservesSlug(t *testing.T) {
 	website, _ := testWebsite(t)
-	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
 	page := &Page{Visibility: DraftVisibility, Slug: "custom-draft", Content: "draft content"}
 
-	if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("CreatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	wantPath := filepath.Join(website.ContentDirPath(), "posts", "custom-draft", "index.md")
-	if page.URI == nil || page.URI.Path != wantPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != wantPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), wantPath)
 	}
 	if page.Slug != "custom-draft" {
 		t.Fatalf("page.Slug = %q, want custom-draft", page.Slug)
 	}
-	if page.Path != "/posts/custom-draft/" {
-		t.Fatalf("page.Path = %q, want /posts/custom-draft/", page.Path)
+	if page.PublicURL.Path != "/posts/custom-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/custom-draft/", page.PublicURL.Path)
 	}
-	bytes, err := os.ReadFile(page.URI.Path)
+	bytes, err := os.ReadFile(page.Source.URI().Path)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	if !strings.Contains(string(bytes), "slug: custom-draft") {
 		t.Fatalf("page did not serialize user slug:\n%s", string(bytes))
 	}
-	loaded := &Page{URI: page.URI}
+	loaded := pageWithURI(page.Source.URI(), Page{})
 	if err := LoadPage(website, loaded, false, io.Discard); err != nil {
 		t.Fatalf("LoadPage() error = %v", err)
 	}
@@ -839,21 +1078,21 @@ func TestUpdateDraftPageWithEmptySlugRehomesTemporaryURIForContentTypeChange(t *
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-	contenttype := testPageContentTypeWithURIResolver("json", "notes", TitleKabobURIResolver)
-	page := &Page{URI: &url.URL{Path: sourcePath}, Visibility: DraftVisibility, Content: "updated"}
+	contenttype := testPageContentTypeWithPathResolver("json", "notes", TitleKabobPathResolver)
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Visibility: DraftVisibility, Content: "updated"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	destinationPath := filepath.Join(website.ContentDirPath(), "notes", "draft-fixed", "index.json")
-	if page.URI == nil || page.URI.Path != destinationPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
 	}
 	if page.Slug != "" {
 		t.Fatalf("page.Slug = %q, want empty", page.Slug)
 	}
-	if page.Path != "/notes/draft-fixed/" {
-		t.Fatalf("page.Path = %q, want /notes/draft-fixed/", page.Path)
+	if page.PublicURL.Path != "/notes/draft-fixed/" {
+		t.Fatalf("page.Path = %q, want /notes/draft-fixed/", page.PublicURL.Path)
 	}
 	if _, err := os.Stat(destinationPath); err != nil {
 		t.Fatalf("destination page missing: %v", err)
@@ -874,18 +1113,18 @@ func TestUpdateDraftPageWithEmptySlugPreservesTimestampTemporaryURI(t *testing.T
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "d019ac0ffee0", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-	contenttype := testPageContentTypeWithURIResolver("json", "notes", TitleKabobURIResolver)
-	page := &Page{URI: &url.URL{Path: sourcePath}, Visibility: DraftVisibility, Content: "updated"}
+	contenttype := testPageContentTypeWithPathResolver("json", "notes", TitleKabobPathResolver)
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Visibility: DraftVisibility, Content: "updated"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	destinationPath := filepath.Join(website.ContentDirPath(), "notes", "d019ac0ffee0", "index.json")
-	if page.URI == nil || page.URI.Path != destinationPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
 	}
-	if page.Path != "/notes/d019ac0ffee0/" {
-		t.Fatalf("page.Path = %q, want /notes/d019ac0ffee0/", page.Path)
+	if page.PublicURL.Path != "/notes/d019ac0ffee0/" {
+		t.Fatalf("page.Path = %q, want /notes/d019ac0ffee0/", page.PublicURL.Path)
 	}
 	if _, err := os.Stat(destinationPath); err != nil {
 		t.Fatalf("destination page missing: %v", err)
@@ -896,21 +1135,21 @@ func TestUpdateDraftPageWithTitleRehomesToTitleSlug(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
-	page := &Page{URI: &url.URL{Path: sourcePath}, Visibility: DraftVisibility, Title: "Final Draft", Content: "updated"}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Visibility: DraftVisibility, Title: "Final Draft", Content: "updated"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "final-draft", "index.md")
-	if page.URI == nil || page.URI.Path != destinationPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
 	}
 	if page.Slug != "" {
 		t.Fatalf("page.Slug = %q, want empty", page.Slug)
 	}
-	if page.Path != "/posts/final-draft/" {
-		t.Fatalf("page.Path = %q, want /posts/final-draft/", page.Path)
+	if page.PublicURL.Path != "/posts/final-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/final-draft/", page.PublicURL.Path)
 	}
 	bytes, err := os.ReadFile(destinationPath)
 	if err != nil {
@@ -925,31 +1164,31 @@ func TestPublishUpdateFromTemporaryDraftToTitleSlug(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", TitleKabobURIResolver)
-	page := &Page{URI: &url.URL{Path: sourcePath}, Title: "Published Draft", Content: "published"}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Title: "Published Draft", Content: "published"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "published-draft", "index.md")
-	if page.URI == nil || page.URI.Path != destinationPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
 	}
 	if page.Slug != "" {
 		t.Fatalf("page.Slug = %q, want empty", page.Slug)
 	}
-	if page.Path != "/posts/published-draft/" {
-		t.Fatalf("page.Path = %q, want /posts/published-draft/", page.Path)
+	if page.PublicURL.Path != "/posts/published-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/published-draft/", page.PublicURL.Path)
 	}
 }
 
 func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 	tests := []struct {
 		name     string
-		resolver PageURIResolverName
+		resolver PublicURLPathResolverKind
 	}{
-		{name: "title kabob", resolver: TitleKabobURIResolver},
-		{name: "title snake", resolver: TitleSnakeURIResolver},
+		{name: "title kabob", resolver: TitleKabobPathResolver},
+		{name: "title snake", resolver: TitleSnakePathResolver},
 	}
 
 	for _, tc := range tests {
@@ -957,12 +1196,12 @@ func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 			website, _ := testWebsite(t)
 			sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 			writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-			contenttype := testPageContentTypeWithURIResolver("markdown", "posts", tc.resolver)
-			page := &Page{URI: &url.URL{Path: sourcePath}, Content: "published"}
+			contenttype := testPageContentTypeWithPathResolver("markdown", "posts", tc.resolver)
+			page := pageWithURI(&url.URL{Path: sourcePath}, Page{Content: "published"})
 
-			err := UpdatePage(website, page, contenttype, io.Discard)
+			err := autosaveTestPage(website, page, contenttype, io.Discard)
 			if err == nil || !strings.Contains(err.Error(), "content-type requires page.title property") {
-				t.Fatalf("UpdatePage() error = %v, want title validation", err)
+				t.Fatalf("autosaveTestPage() error = %v, want title validation", err)
 			}
 			if _, statErr := os.Stat(sourcePath); statErr != nil {
 				t.Fatalf("source page should remain after validation failure: %v", statErr)
@@ -971,17 +1210,17 @@ func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 	}
 }
 
-func TestPublishUpdateForManualURIResolverValidation(t *testing.T) {
+func TestPublishUpdateForManualPathResolverValidation(t *testing.T) {
 	t.Run("fails without slug", func(t *testing.T) {
 		website, _ := testWebsite(t)
 		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-		contenttype := testPageContentTypeWithURIResolver("markdown", "posts", ManualURIResolver)
-		page := &Page{URI: &url.URL{Path: sourcePath}, Content: "published"}
+		contenttype := testPageContentTypeWithPathResolver("markdown", "posts", ManualPathResolver)
+		page := pageWithURI(&url.URL{Path: sourcePath}, Page{Content: "published"})
 
-		err := UpdatePage(website, page, contenttype, io.Discard)
+		err := autosaveTestPage(website, page, contenttype, io.Discard)
 		if err == nil || !strings.Contains(err.Error(), "content-type requires page.slug property") {
-			t.Fatalf("UpdatePage() error = %v, want slug validation", err)
+			t.Fatalf("autosaveTestPage() error = %v, want slug validation", err)
 		}
 		if _, statErr := os.Stat(sourcePath); statErr != nil {
 			t.Fatalf("source page should remain after validation failure: %v", statErr)
@@ -992,15 +1231,15 @@ func TestPublishUpdateForManualURIResolverValidation(t *testing.T) {
 		website, _ := testWebsite(t)
 		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
-		contenttype := testPageContentTypeWithURIResolver("markdown", "posts", ManualURIResolver)
-		page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "manual-page", Content: "published"}
+		contenttype := testPageContentTypeWithPathResolver("markdown", "posts", ManualPathResolver)
+		page := pageWithURI(&url.URL{Path: sourcePath}, Page{Slug: "manual-page", Content: "published"})
 
-		if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-			t.Fatalf("UpdatePage() error = %v", err)
+		if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+			t.Fatalf("autosaveTestPage() error = %v", err)
 		}
 		destinationPath := filepath.Join(website.ContentDirPath(), "posts", "manual-page", "index.md")
-		if page.URI == nil || page.URI.Path != destinationPath {
-			t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+		if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+			t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
 		}
 		if page.Slug != "manual-page" {
 			t.Fatalf("page.Slug = %q, want manual-page", page.Slug)
@@ -1019,17 +1258,17 @@ func TestUpdatePageSameDestinationWritesInPlace(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "same", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nslug: same\n---\n\nold")
-	contenttype := testPageContentTypeWithURIResolver("markdown", "posts", ManualURIResolver)
-	page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "same", Content: "updated in place"}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", ManualPathResolver)
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Slug: "same", Content: "updated in place"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
-	if page.URI == nil || page.URI.Path != sourcePath {
-		t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+	if page.Source.URI() == nil || page.Source.URI().Path != sourcePath {
+		t.Fatalf("page.URI = %#v, want unchanged source path", page.Source.URI())
 	}
-	if page.Path != "/posts/same/" {
-		t.Fatalf("page.Path = %q, want /posts/same/", page.Path)
+	if page.PublicURL.Path != "/posts/same/" {
+		t.Fatalf("page.Path = %q, want /posts/same/", page.PublicURL.Path)
 	}
 	bytes, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -1044,26 +1283,32 @@ func TestUpdatePageAutoContentTypeWritesMarkdownInPlace(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\n---\n\nold")
-	emptyContentType := &ContentType{Spec: ContentTypeSpecification{Layout: "default", URIResolver: TimestampURIResolver, Format: "markdown"}}
 	page := &Page{
-		URI:       &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      filepath.Join("posts", "draft-fixed"),
+			Filename:  filepath.Base(sourcePath),
+		},
 		Slug:      "renamed",
 		LayoutRef: "default",
 		Title:     "Renamed",
 		Content:   "updated in place",
 	}
 
-	if err := UpdatePage(website, page, emptyContentType, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, nil, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
-	if page.URI == nil || page.URI.Path != sourcePath {
-		t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+	if page.Source.URI() == nil || page.Source.URI().Path != sourcePath {
+		t.Fatalf("page.URI = %#v, want unchanged source path", page.Source.URI())
 	}
-	if page.Path != "/posts/draft-fixed/" {
-		t.Fatalf("page.Path = %q, want /posts/draft-fixed/", page.Path)
+	if page.PublicURL.Path != "/posts/draft-fixed/" {
+		t.Fatalf("page.Path = %q, want /posts/draft-fixed/", page.PublicURL.Path)
 	}
-	if page.CreatedAt != "2026-05-20T00:00:00Z" {
-		t.Fatalf("page.CreatedAt = %q, want preserved source created_at", page.CreatedAt)
+	if page.CreatedAt != "" {
+		t.Fatalf("page.CreatedAt = %q, want empty draft creation timestamp", page.CreatedAt)
+	}
+	if page.UpdatedAt == "" {
+		t.Fatal("page.UpdatedAt missing")
 	}
 	bytes, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -1105,23 +1350,30 @@ func TestUpdatePageAutoContentTypeWritesStructuredFormatsInPlace(t *testing.T) {
 			sourcePath := filepath.Join(website.ContentDirPath(), tc.relPath)
 			writePageTestFile(t, sourcePath, tc.oldContents)
 			page := &Page{
-				URI:       &url.URL{Path: sourcePath},
+				Source: PageSource{
+					Directory: website.ContentDirPath(),
+					Path:      filepath.Dir(tc.relPath),
+					Filename:  filepath.Base(sourcePath),
+				},
 				Slug:      "renamed",
 				LayoutRef: "default",
 				Content:   "updated " + tc.name,
 			}
 
-			if err := UpdatePage(website, page, nil, io.Discard); err != nil {
-				t.Fatalf("UpdatePage() error = %v", err)
+			if err := autosaveTestPage(website, page, nil, io.Discard); err != nil {
+				t.Fatalf("autosaveTestPage() error = %v", err)
 			}
-			if page.URI == nil || page.URI.Path != sourcePath {
-				t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+			if page.Source.URI() == nil || page.Source.URI().Path != sourcePath {
+				t.Fatalf("page.URI = %#v, want unchanged source path", page.Source.URI())
 			}
-			if page.Path != "/notes/same/" {
-				t.Fatalf("page.Path = %q, want /notes/same/", page.Path)
+			if page.PublicURL.Path != "/notes/same/" {
+				t.Fatalf("page.Path = %q, want /notes/same/", page.PublicURL.Path)
 			}
-			if page.CreatedAt != "2026-05-20T00:00:00Z" {
-				t.Fatalf("page.CreatedAt = %q, want preserved source created_at", page.CreatedAt)
+			if page.CreatedAt != "" {
+				t.Fatalf("page.CreatedAt = %q, want empty draft creation timestamp", page.CreatedAt)
+			}
+			if page.UpdatedAt == "" {
+				t.Fatal("page.UpdatedAt missing")
 			}
 			bytes, err := os.ReadFile(sourcePath)
 			if err != nil {
@@ -1138,11 +1390,11 @@ func TestUpdatePageAutoContentTypeFailsForUnsupportedSourceFormat(t *testing.T) 
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "notes", "same", "index.txt")
 	writePageTestFile(t, sourcePath, "old")
-	page := &Page{URI: &url.URL{Path: sourcePath}, CreatedAt: "2026-05-20T00:00:00Z", Content: "updated"}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{CreatedAt: "2026-05-20T00:00:00Z", Content: "updated"})
 
-	err := UpdatePage(website, page, nil, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "auto content type does not support source file extension") {
-		t.Fatalf("UpdatePage() error = %v, want unsupported extension", err)
+	err := autosaveTestPage(website, page, nil, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "unsupported content type format") {
+		t.Fatalf("autosaveTestPage() error = %v, want unsupported extension", err)
 	}
 	if _, statErr := os.Stat(sourcePath); statErr != nil {
 		t.Fatalf("source page should remain after unsupported extension: %v", statErr)
@@ -1169,7 +1421,11 @@ func TestUpdatePageRehomesRegularFilesAndPreservesNestedPages(t *testing.T) {
 	}
 	contenttype := testPageContentType("markdown", "posts")
 	page := &Page{
-		URI:        &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      filepath.Join("drafts", "working"),
+			Filename:  filepath.Base(sourcePath),
+		},
 		Slug:       "updated",
 		CreatedAt:  "2026-05-20T00:00:00Z",
 		LayoutRef:  "default",
@@ -1178,17 +1434,17 @@ func TestUpdatePageRehomesRegularFilesAndPreservesNestedPages(t *testing.T) {
 		Visibility: DraftVisibility,
 	}
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 
 	destinationDir := filepath.Join(website.ContentDirPath(), "posts", "updated")
 	destinationPath := filepath.Join(destinationDir, "index.md")
-	if page.URI == nil || page.URI.Path != destinationPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, destinationPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != destinationPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), destinationPath)
 	}
-	if page.Path != "/posts/updated/" {
-		t.Fatalf("page.Path = %q, want /posts/updated/", page.Path)
+	if page.PublicURL.Path != "/posts/updated/" {
+		t.Fatalf("page.Path = %q, want /posts/updated/", page.PublicURL.Path)
 	}
 	if _, err := os.Stat(destinationPath); err != nil {
 		t.Fatalf("destination page missing: %v", err)
@@ -1214,6 +1470,51 @@ func TestUpdatePageRehomesRegularFilesAndPreservesNestedPages(t *testing.T) {
 	}
 }
 
+func TestSavePageRehomesDraftRootPayload(t *testing.T) {
+	website, _ := testWebsite(t)
+	draftsDirectory := filepath.Join(website.RootDir(), "drafts")
+	sourceDirectory := filepath.Join(draftsDirectory, "posts", "working")
+	sourcePath := filepath.Join(sourceDirectory, "index.md")
+	for path, contents := range map[string]string{
+		sourcePath: "old page",
+		filepath.Join(sourceDirectory, "photo.jpg"): "photo",
+		filepath.Join(sourceDirectory, ".composer"): "composer",
+	} {
+		writePageTestFile(t, path, contents)
+	}
+	page := &Page{
+		Source: PageSource{
+			Directory: draftsDirectory,
+			Path:      filepath.Join("posts", "working"),
+			Filename:  "index.md",
+		},
+		CreatedAt:  "2026-05-20T00:00:00Z",
+		LayoutRef:  "default",
+		Title:      "Moved Draft",
+		Content:    "updated draft",
+		Visibility: DraftVisibility,
+	}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	if err := page.Update(website, contenttype); err != nil {
+		t.Fatalf("Page.Update() error = %v", err)
+	}
+	if err := page.Save(website, io.Discard); err != nil {
+		t.Fatalf("Page.Save() error = %v", err)
+	}
+	destinationDirectory := filepath.Join(draftsDirectory, "posts", "moved-draft")
+	if got, want := page.Source.Directory, draftsDirectory; got != want {
+		t.Fatalf("page.Source.Directory = %q, want %q", got, want)
+	}
+	for _, name := range []string{"index.md", "photo.jpg", ".composer"} {
+		if _, err := os.Stat(filepath.Join(destinationDirectory, name)); err != nil {
+			t.Fatalf("saved draft %s missing: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
+		t.Fatalf("original draft page still exists: %v", err)
+	}
+}
+
 func TestUpdatePageRehomesRootRegularFiles(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "index.md")
@@ -1233,7 +1534,10 @@ func TestUpdatePageRehomesRootRegularFiles(t *testing.T) {
 	}
 	contenttype := testPageContentType("markdown", "pages")
 	page := &Page{
-		URI:        &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Directory: filepath.Dir(sourcePath),
+			Filename:  filepath.Base(sourcePath),
+		},
 		Slug:       "home",
 		CreatedAt:  "2026-05-20T00:00:00Z",
 		LayoutRef:  "default",
@@ -1242,8 +1546,8 @@ func TestUpdatePageRehomesRootRegularFiles(t *testing.T) {
 		Visibility: DraftVisibility,
 	}
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 
 	destinationDir := filepath.Join(website.ContentDirPath(), "pages", "home")
@@ -1274,11 +1578,11 @@ func TestUpdatePageFailsIfResolvedPathExists(t *testing.T) {
 		}
 	}
 	contenttype := testPageContentType("markdown", "posts")
-	page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "taken", CreatedAt: "2026-05-20T00:00:00Z", Content: "new", Visibility: DraftVisibility}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Slug: "taken", CreatedAt: "2026-05-20T00:00:00Z", Content: "new", Visibility: DraftVisibility})
 
-	err := UpdatePage(website, page, contenttype, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "page.update conflict") {
-		t.Fatalf("UpdatePage() error = %v, want conflict", err)
+	err := autosaveTestPage(website, page, contenttype, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "page destination unavailable") {
+		t.Fatalf("autosaveTestPage() error = %v, want conflict", err)
 	}
 	if _, statErr := os.Stat(sourcePath); statErr != nil {
 		t.Fatalf("source page should remain after conflict: %v", statErr)
@@ -1305,31 +1609,55 @@ func TestUpdatePageFailsIfRegularFileWouldOverwrite(t *testing.T) {
 		}
 	}
 	contenttype := testPageContentType("markdown", "posts")
-	page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "updated", CreatedAt: "2026-05-20T00:00:00Z", Content: "new", Visibility: DraftVisibility}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Slug: "updated", CreatedAt: "2026-05-20T00:00:00Z", Content: "new", Visibility: DraftVisibility})
 
-	err := UpdatePage(website, page, contenttype, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "regular file already exists") {
-		t.Fatalf("UpdatePage() error = %v, want regular file conflict", err)
+	err := autosaveTestPage(website, page, contenttype, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "page destination unavailable") {
+		t.Fatalf("autosaveTestPage() error = %v, want regular file conflict", err)
 	}
 	if _, statErr := os.Stat(sourceAssetPath); statErr != nil {
 		t.Fatalf("source asset should remain after conflict: %v", statErr)
 	}
 }
 
+func TestPageSourceAvailableRequiresEmptyDirectoryUnlessSiblingsAllowed(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "destination")
+	source := PageSource{Directory: directory, Filename: "index.md"}
+	writePageTestFile(t, filepath.Join(directory, "cover.jpg"), "cover")
+
+	available, err := source.Available(false)
+	if err == nil || available {
+		t.Fatalf("Available(false) = %t, %v; want false destination conflict", available, err)
+	}
+	available, err = source.Available(true)
+	if err != nil || !available {
+		t.Fatalf("Available(true) = %t, %v; want true, nil", available, err)
+	}
+	writePageTestFile(t, filepath.Join(directory, "index.md"), "page")
+	available, err = source.Available(true)
+	if err == nil || available {
+		t.Fatalf("Available(true) with page file = %t, %v; want false destination conflict", available, err)
+	}
+}
+
 func TestUpdatePageFormatChangeRemovesOldPageFile(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "updated", "index.md")
+	assetPath := filepath.Join(filepath.Dir(sourcePath), "cover.jpg")
 	if err := os.MkdirAll(filepath.Dir(sourcePath), 0755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 	if err := os.WriteFile(sourcePath, []byte("old markdown"), 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+	if err := os.WriteFile(assetPath, []byte("cover"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
 	contenttype := testPageContentType("json", "posts")
-	page := &Page{URI: &url.URL{Path: sourcePath}, Slug: "updated", CreatedAt: "2026-05-20T00:00:00Z", Title: "Updated", Content: "json content", Visibility: DraftVisibility}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Slug: "updated", CreatedAt: "2026-05-20T00:00:00Z", Title: "Updated", Content: "json content", Visibility: DraftVisibility})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "updated", "index.json")
 	if _, err := os.Stat(destinationPath); err != nil {
@@ -1338,6 +1666,37 @@ func TestUpdatePageFormatChangeRemovesOldPageFile(t *testing.T) {
 	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
 		t.Fatalf("source markdown page still exists or unexpected error = %v", err)
 	}
+	if bytes, err := os.ReadFile(assetPath); err != nil || string(bytes) != "cover" {
+		t.Fatalf("page asset = %q, %v; want unchanged asset", bytes, err)
+	}
+}
+
+func TestUpdatePageDefersSourceCoordinateMutationUntilSave(t *testing.T) {
+	website, _ := testWebsite(t)
+	page := &Page{
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      filepath.Join("drafts", "working"),
+			Filename:  "index.md",
+		},
+		Format:     "markdown",
+		Visibility: DraftVisibility,
+		Title:      "Updated Draft",
+	}
+	contenttype := testPageContentTypeWithPathResolver("json", "posts", TitleKabobPathResolver)
+
+	if err := updatePage(website, contenttype, page); err != nil {
+		t.Fatalf("updatePage() error = %v", err)
+	}
+	if page.PublicURL.Path != "/posts/updated-draft/" {
+		t.Fatalf("page.Path = %q, want /posts/updated-draft/", page.PublicURL.Path)
+	}
+	if page.Format != "json" {
+		t.Fatalf("page.SourceFormat = %q, want json", page.Format)
+	}
+	if page.Source.Directory != website.ContentDirPath() || page.Source.Path != filepath.Join("drafts", "working") || page.Source.Filename != "index.md" {
+		t.Fatalf("updatePage() mutated persisted source state: %#v", page)
+	}
 }
 
 func TestCreatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) {
@@ -1345,10 +1704,10 @@ func TestCreatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 	contenttype := &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Draft"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			Path:        "posts",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "markdown",
+			Layout:       "default",
+			Path:         "posts",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "markdown",
 			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 			},
@@ -1365,19 +1724,19 @@ func TestCreatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 	}
 	page := &Page{Visibility: DraftVisibility, Content: "draft content"}
 
-	if err := CreatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("CreatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
-	if page.URI == nil {
+	if page.Source.URI() == nil {
 		t.Fatal("page.URI is nil")
 	}
-	pageDir := filepath.Dir(page.URI.Path)
+	pageDir := filepath.Dir(page.Source.URI().Path)
 	draftSegment := filepath.Base(pageDir)
 	if filepath.Dir(pageDir) != filepath.Join(website.ContentDirPath(), "posts") {
-		t.Fatalf("page.URI = %s, want autosave under posts", page.URI.Path)
+		t.Fatalf("page.URI = %s, want autosave under posts", page.Source.URI().Path)
 	}
 	assertTimestampDraftSegment(t, draftSegment)
-	bytes, err := os.ReadFile(page.URI.Path)
+	bytes, err := os.ReadFile(page.Source.URI().Path)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
@@ -1399,10 +1758,10 @@ func TestUpdatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 	contenttype := &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Draft"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			Path:        "notes",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "json",
+			Layout:       "default",
+			Path:         "notes",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "json",
 			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 			},
@@ -1417,14 +1776,14 @@ func TestUpdatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 		},
 		State: ContentTypeState{UserData: map[string]any{"title": "Patched Title", "featured": true}},
 	}
-	page := &Page{URI: &url.URL{Path: sourcePath}, Visibility: DraftVisibility, Content: "updated draft"}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{Visibility: DraftVisibility, Content: "updated draft"})
 
-	if err := UpdatePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("UpdatePage() error = %v", err)
+	if err := autosaveTestPage(website, page, contenttype, io.Discard); err != nil {
+		t.Fatalf("autosaveTestPage() error = %v", err)
 	}
 	wantPath := filepath.Join(website.ContentDirPath(), "notes", "draft-fixed", "index.json")
-	if page.URI == nil || page.URI.Path != wantPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != wantPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), wantPath)
 	}
 	bytes, err := os.ReadFile(wantPath)
 	if err != nil {
@@ -1448,11 +1807,11 @@ func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) 
 	contenttype := &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Post"},
 		Spec: ContentTypeSpecification{
-			Layout:      "default",
-			Path:        "posts",
-			URIResolver: TitleKabobURIResolver,
-			Format:      "markdown",
-			Visibility:  UnlistedVisibility,
+			Layout:       "default",
+			Path:         "posts",
+			PathResolver: TitleKabobPathResolver,
+			Format:       "markdown",
+			Visibility:   UnlistedVisibility,
 			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 				"tags":    []string{"spec"},
@@ -1475,18 +1834,24 @@ func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) 
 		}},
 	}
 	page := &Page{
-		URI:          &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Directory: filepath.Dir(sourcePath),
+			Filename:  filepath.Base(sourcePath),
+		},
 		Visibility:   DraftVisibility,
 		Content:      "final content",
 		TemplateData: httt.TemplateData{"visibility": "draft"},
 	}
 
-	if err := FinalizePage(website, page, contenttype, io.Discard); err != nil {
-		t.Fatalf("FinalizePage() error = %v", err)
+	if err := finalizePage(website, contenttype, page, page.CreatedAt, io.Discard); err != nil {
+		t.Fatalf("finalizePage() error = %v", err)
+	}
+	if page.CreatedAt == "" {
+		t.Fatal("page.CreatedAt missing after finalization")
 	}
 	wantPath := filepath.Join(website.ContentDirPath(), "posts", "final-title", "index.md")
-	if page.URI == nil || page.URI.Path != wantPath {
-		t.Fatalf("page.URI = %#v, want %s", page.URI, wantPath)
+	if page.Source.URI() == nil || page.Source.URI().Path != wantPath {
+		t.Fatalf("page.URI = %#v, want %s", page.Source.URI(), wantPath)
 	}
 	if page.Visibility != UnlistedVisibility {
 		t.Fatalf("page.Visibility = %q, want unlisted", page.Visibility)
@@ -1509,12 +1874,81 @@ func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) 
 	}
 }
 
+func TestFinalizePageMovesDraftPayloadIntoContentAndRemovesComposerSidecar(t *testing.T) {
+	website, _ := testWebsite(t)
+	draftsDirectory := filepath.Join(website.RootDir(), "drafts")
+	sourcePath := filepath.Join(draftsDirectory, "posts", "draft", "index.md")
+	writePageTestFile(t, sourcePath, "---\nlayout: default\nvisibility: draft\n---\n\ndraft")
+	writePageTestFile(t, filepath.Join(filepath.Dir(sourcePath), "photo.jpg"), "image")
+	writePageTestFile(t, filepath.Join(filepath.Dir(sourcePath), ".composer"), "sidecar")
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	page := &Page{
+		Source: PageSource{
+			Directory: draftsDirectory,
+			Path:      filepath.Join("posts", "draft"),
+			Filename:  filepath.Base(sourcePath),
+		},
+		Visibility: DraftVisibility,
+		Title:      "Published Draft",
+		Content:    "draft",
+	}
+	if err := finalizePage(website, contenttype, page, page.CreatedAt, io.Discard); err != nil {
+		t.Fatalf("finalizePage() error = %v", err)
+	}
+	destinationDirectory := filepath.Join(website.ContentDirPath(), "posts", "published-draft")
+	if page.Source.Directory != website.ContentDirPath() {
+		t.Fatalf("page.Source.Directory = %q, want content root", page.Source.Directory)
+	}
+	for _, name := range []string{"index.md", "photo.jpg"} {
+		if _, err := os.Stat(filepath.Join(destinationDirectory, name)); err != nil {
+			t.Fatalf("finalized %s missing: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(destinationDirectory, ".composer")); !os.IsNotExist(err) {
+		t.Fatalf("composer sidecar was copied to content: %v", err)
+	}
+}
+
+func TestFinalizePageConflictPreservesComposerSidecar(t *testing.T) {
+	website, _ := testWebsite(t)
+	draftsDirectory := filepath.Join(website.RootDir(), "drafts")
+	sourcePath := filepath.Join(draftsDirectory, "posts", "draft", "index.md")
+	sidecarPath := filepath.Join(filepath.Dir(sourcePath), ".composer")
+	destinationPath := filepath.Join(website.ContentDirPath(), "posts", "taken", "index.md")
+	writePageTestFile(t, sourcePath, "---\nlayout: default\nvisibility: draft\n---\n\ndraft")
+	writePageTestFile(t, sidecarPath, "sidecar")
+	writePageTestFile(t, destinationPath, "published")
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	page := &Page{
+		Source: PageSource{
+			Directory: draftsDirectory,
+			Path:      filepath.Join("posts", "draft"),
+			Filename:  filepath.Base(sourcePath),
+		},
+		Visibility: DraftVisibility,
+		Title:      "Taken",
+		Content:    "draft",
+	}
+
+	err := finalizePage(website, contenttype, page, page.CreatedAt, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "page destination unavailable") {
+		t.Fatalf("finalizePage() error = %v, want destination conflict", err)
+	}
+	if _, err := os.Stat(sidecarPath); err != nil {
+		t.Fatalf("composer sidecar missing after finalization conflict: %v", err)
+	}
+}
+
 func TestFinalizePageWithoutContentTypeFinalizesInPlaceAndClearsDraft(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "freeform", "draft-fixed", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
 	page := &Page{
-		URI:          &url.URL{Path: sourcePath},
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      filepath.Join("freeform", "draft-fixed"),
+			Filename:  filepath.Base(sourcePath),
+		},
 		Visibility:   DraftVisibility,
 		LayoutRef:    "default",
 		Title:        "Freeform",
@@ -1522,27 +1956,55 @@ func TestFinalizePageWithoutContentTypeFinalizesInPlaceAndClearsDraft(t *testing
 		TemplateData: httt.TemplateData{"visibility": "draft", "title": "Freeform"},
 	}
 
-	if err := FinalizePage(website, page, nil, io.Discard); err != nil {
-		t.Fatalf("FinalizePage() error = %v", err)
+	createdAt := "2026-05-20T00:00:00Z"
+	if err := finalizePage(website, nil, page, createdAt, io.Discard); err != nil {
+		t.Fatalf("finalizePage() error = %v", err)
 	}
-	if page.URI == nil || page.URI.Path != sourcePath {
-		t.Fatalf("page.URI = %#v, want unchanged source path", page.URI)
+	if page.CreatedAt != createdAt {
+		t.Fatalf("page.CreatedAt = %q, want provided timestamp %q", page.CreatedAt, createdAt)
 	}
-	if page.Visibility != PublicVisibility {
-		t.Fatalf("page.Visibility = %q, want public", page.Visibility)
+	if page.Source.URI() == nil || page.Source.URI().Path != sourcePath {
+		t.Fatalf("page.URI = %#v, want unchanged source path", page.Source.URI())
+	}
+	if page.Visibility != AutoVisibility {
+		t.Fatalf("page.Visibility = %q, want unset", page.Visibility)
 	}
 	bytes, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	contents := string(bytes)
-	if strings.Contains(contents, "visibility: draft") {
-		t.Fatalf("finalized freeform page retained draft state:\n%s", contents)
+	if strings.Contains(contents, "visibility:") {
+		t.Fatalf("finalized freeform page retained serialized visibility:\n%s", contents)
 	}
 	for _, want := range []string{"title: Freeform", "freeform content"} {
 		if !strings.Contains(contents, want) {
 			t.Fatalf("finalized freeform page missing %q:\n%s", want, contents)
 		}
+	}
+}
+
+func TestFinalizePageRejectsEmptyContentType(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "freeform", "draft-fixed", "index.md")
+	writePageTestFile(t, sourcePath, "---\nlayout: default\nvisibility: draft\n---\n\ndraft")
+	page := &Page{
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      filepath.Join("freeform", "draft-fixed"),
+			Filename:  filepath.Base(sourcePath),
+		},
+		Visibility: DraftVisibility,
+		LayoutRef:  "default",
+		Title:      "Draft",
+	}
+
+	err := finalizePage(website, &ContentType{}, page, "", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
+		t.Fatalf("finalizePage() error = %v, want invalid content type", err)
+	}
+	if page.CreatedAt != "" || page.Visibility != DraftVisibility {
+		t.Fatalf("finalizePage() mutated source page after invalid content type: %#v", page)
 	}
 }
 
@@ -1556,7 +2018,7 @@ func TestBuildPathWithRelativeWebsiteRoot(t *testing.T) {
 		Config:  BuildConfig{URI: &url.URL{Path: filepath.Join("testdata", "site", ".builds", "test")}},
 		Website: website,
 	}
-	page := &Page{URI: &url.URL{Path: sourcePath}, Path: "/about/"}
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{PublicURL: url.URL{Path: "/about/"}})
 
 	got := build.BuildPath(page)
 	want, err := filepath.Abs(filepath.Join("testdata", "site", ".builds", "test", "about", "index.html"))
@@ -1604,10 +2066,31 @@ func TestBuildPathWithPagePath(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := build.BuildPath(&Page{Path: tc.path})
+			got := build.BuildPath(&Page{PublicURL: url.URL{Path: tc.path}})
 			if got != tc.want {
 				t.Fatalf("BuildPath() = %q, want %q", got, tc.want)
 			}
 		})
 	}
+}
+
+func pageWithURI(uri *url.URL, page Page) *Page {
+	page.Source.Directory = filepath.Dir(uri.Path)
+	for directory := page.Source.Directory; directory != filepath.Dir(directory); directory = filepath.Dir(directory) {
+		if filepath.Base(directory) != "content" {
+			continue
+		}
+		relative, err := filepath.Rel(directory, uri.Path)
+		if err != nil {
+			break
+		}
+		page.Source.Directory = directory
+		page.Source.Path = filepath.Dir(relative)
+		if page.Source.Path == "." {
+			page.Source.Path = ""
+		}
+		break
+	}
+	page.Source.Filename = filepath.Base(uri.Path)
+	return &page
 }

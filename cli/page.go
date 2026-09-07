@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 
 	"github.com/herdworks/clic"
 	"github.com/herdworks/htxt"
@@ -24,108 +23,12 @@ func PageCommand() clic.Command {
 			Help: clic.DefaultHelp,
 		},
 		Commands: clic.MustCommandsFrom(
-			PageNewCommand,
 			PageListCommand,
 			PageInspectCommand,
 		),
 	}
 }
 
-// PageNewCommand creates a page in a website.
-func PageNewCommand() clic.Command {
-	config := WebsiteConfigOption()
-	return clic.Command{
-		Meta: clic.CommandMeta{
-			Description: "Create a new page.",
-			Usage: []string{
-				"{{ .Command }} [options]",
-			},
-		},
-		Spec: clic.CommandSpec{
-			Key:  "new",
-			Help: clic.DefaultHelp,
-			Options: clic.Options{
-				config.Spec.Key: &config,
-				"layout": {
-					Meta: clic.OptionMeta{
-						Name:        "layout",
-						ShortName:   "l",
-						Description: "New page layout.",
-					},
-					Spec: clic.OptionSpec{
-						Key:  "layout",
-						Kind: clic.StringOption,
-					},
-				},
-				"slug": {
-					Meta: clic.OptionMeta{
-						Name:        "slug",
-						ShortName:   "s",
-						Description: "New page slug.",
-					},
-					Spec: clic.OptionSpec{
-						Key:  "slug",
-						Kind: clic.StringOption,
-					},
-				},
-				"title": {
-					Meta: clic.OptionMeta{
-						Name:        "title",
-						ShortName:   "t",
-						Description: "New page title.",
-					},
-					Spec: clic.OptionSpec{
-						Key:  "title",
-						Kind: clic.StringOption,
-					},
-				},
-				"description": {
-					Meta: clic.OptionMeta{
-						Name:        "description",
-						ShortName:   "d",
-						Description: "New page description.",
-					},
-					Spec: clic.OptionSpec{
-						Key:  "description",
-						Kind: clic.StringOption,
-					},
-				},
-				"content-type": {
-					Meta: clic.OptionMeta{
-						Name:        "content-type",
-						Description: "New page content type.",
-					},
-					Spec: clic.OptionSpec{
-						Key:  "content-type",
-						Kind: clic.StringOption,
-					},
-				},
-				"content": {
-					Meta: clic.OptionMeta{
-						Name:        "content",
-						Description: "New page content.",
-					},
-					Spec: clic.OptionSpec{
-						Key:  "content",
-						Kind: clic.StringOption,
-					},
-				},
-				"draft": {
-					Meta: clic.OptionMeta{
-						Name:        "draft",
-						Description: "Create a draft page.",
-						Default:     false,
-					},
-					Spec: clic.OptionSpec{
-						Key:  "draft",
-						Kind: clic.BoolOption,
-					},
-				},
-			},
-			Handler: pageNewHandler,
-		},
-	}
-}
 func PageListCommand() clic.Command {
 	var config clic.Option = WebsiteConfigOption()
 	var visibility clic.Option = PageVisibilityOption()
@@ -194,30 +97,6 @@ func pageListValidator(execution *clic.Execution) error {
 	}
 }
 
-func pageNewHandler(execution *clic.Execution) error {
-	options := execution.Options
-	website := htxt.Website{
-		URI: &href.Href{
-			URL: url.URL{
-				Path: options["config"].StringValue(),
-			},
-		},
-	}
-	if err := website.Load(false, nil, nil); err != nil {
-		return err
-	}
-	page := htxt.Page{
-		LayoutRef:   options["layout"].StringValue(),
-		Slug:        options["slug"].StringValue(),
-		Title:       options["title"].StringValue(),
-		Description: options["description"].StringValue(),
-		Content:     options["content"].StringValue(),
-	}
-	if options["draft"].BoolValue() {
-		page.Visibility = htxt.DraftVisibility
-	}
-	return htxt.CreatePage(&website, &page, website.GetContentTypeByName(options["content-type"].StringValue(), true, nil), nil)
-}
 func pageListHandler(execution *clic.Execution) error {
 	uri, err := href.Parse(execution.Options["config"].StringValue())
 	if err != nil {
@@ -285,7 +164,7 @@ func pageInspectHandler(execution *clic.Execution) error {
 	if err = build.LoadContext(execution.Context, nil); err != nil {
 		return err
 	}
-	page := build.Pages.PageByPath(execution.Command.State.Arguments[0])
+	page := build.Pages.ByPublicURLPath(execution.Command.State.Arguments[0])
 	if page == nil {
 		return fmt.Errorf("page %q not found", execution.Command.State.Arguments[0])
 	}

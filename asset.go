@@ -127,15 +127,14 @@ func AssetCandidates(theme *httheme.Theme, website *Website, pages Pages) (Asset
 		}
 		candidates = append(candidates, asset)
 	}
-	pageAssetSourcePath := func(relPath string) (string, error) {
-		return website.ResourcePath(website.ContentDirPath(), relPath)
-	}
 	for _, page := range pages {
 		if page == nil {
 			continue
 		}
 		for _, relPath := range page.Assets {
-			asset, err := buildAssetEntry(website, PageAsset, relPath, pageAssetSourcePath)
+			asset, err := buildAssetEntry(website, PageAsset, relPath, func(relPath string) (string, error) {
+				return website.ResourcePath(page.Source.Directory, relPath)
+			})
 			if err != nil {
 				return nil, err
 			}

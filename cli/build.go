@@ -27,6 +27,7 @@ func BuildCommand() clic.Command {
 				BuildIncrementalOption,
 				BuildPageOption,
 				BuildContentDirOption,
+				BuildDraftsDirOption,
 				BuildDataDirOption,
 				BuildStaticDirOption,
 				BuildThemeOption,
@@ -88,6 +89,17 @@ func BuildContentDirOption() clic.Option {
 			Key:      "content-dir",
 			Kind:     clic.StringOption,
 			Required: false,
+		},
+	}
+}
+func BuildDraftsDirOption() clic.Option {
+	return clic.Option{
+		Meta: clic.OptionMeta{
+			Description: "Relative path to the draft content directory.",
+		},
+		Spec: clic.OptionSpec{
+			Key:  "drafts-dir",
+			Kind: clic.StringOption,
 		},
 	}
 }
@@ -181,11 +193,13 @@ func buildConfig(execution *clic.Execution) htxt.BuildConfig {
 			StaticDirectory:  execution.Options.StringValue("static-dir"),
 			ThemePath:        execution.Options.StringValue("theme"),
 		},
-		ID:          execution.Options.StringValue("id"),
-		Incremental: execution.Options.BoolValue("incremental"),
-		Page:        execution.Options.StringValue("page"),
-		DataFile:    execution.Options.StringValue("data-file"),
-		LogFile:     execution.Options.StringValue("log-file"),
-		Verbose:     true,
+		ID:              execution.Options.StringValue("id"),
+		Incremental:     execution.Options.BoolValue("incremental"),
+		Page:            execution.Options.StringValue("page"),
+		DraftsDirectory: execution.Options.StringValue("drafts-dir"),
+		Preview:         execution.Options.StringValue("drafts-dir") != "",
+		DataFile:        execution.Options.StringValue("data-file"),
+		LogFile:         execution.Options.StringValue("log-file"),
+		Verbose:         true,
 	}
 }

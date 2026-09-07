@@ -303,37 +303,21 @@ func (website *Website) DeploymentProviders(names []string) (htup.Environment, e
 	return env, nil
 }
 
-func (website *Website) validateProviderNames(names []string) error {
-	if len(names) == 0 {
-		return fmt.Errorf("no providers selected")
-	}
-	for _, name := range names {
-		if name == "" {
-			return fmt.Errorf("provider name is empty")
-		}
-		provider, ok := website.Providers[name]
-		if !ok {
-			return fmt.Errorf("provider %q not found", name)
-		}
-		if provider == nil {
-			return fmt.Errorf("provider %q is empty", name)
-		}
-	}
-	return nil
-}
-
 func (website *Website) RootDir() string {
 	return filepath.Dir(website.URI.Path)
 }
 
 // FilePaths lists all managed website files with paths relative to the website root.
-func (website *Website) FilePaths() (paths []string, err error) {
+func (website *Website) FilePaths(sourceDirectories ...string) (paths []string, err error) {
+	var root string
 	if website.URI == nil || website.URI.Path == "" {
 		return nil, fmt.Errorf("website.uri is required")
 	}
-	root, err := filepath.Abs(website.RootDir())
-	if err != nil {
+	if root, err = filepath.Abs(website.RootDir()); err != nil {
 		return nil, fmt.Errorf("resolve website root %q: %w", website.RootDir(), err)
+	}
+	if len(sourceDirectories) == 0 {
+		sourceDirectories = []string{website.ContentDirPath()}
 	}
 	seen := map[string]bool{}
 	add := func(path string) error {
@@ -354,14 +338,20 @@ func (website *Website) FilePaths() (paths []string, err error) {
 	if err = add(website.URI.Path); err != nil {
 		return nil, err
 	}
-	for _, directory := range []string{
-		website.ContentDirPath(),
+	directories := append(
+		slices.Clone(sourceDirectories),
 		website.DataDirPath(),
 		website.StaticDirPath(),
 		website.PluginsDirPath(),
-	} {
-		files, err := htfiles.List(directory, true)
-		if err != nil {
+	)
+	for _, directory := range directories {
+		var files []string
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		if files, err = htfiles.List(directory, true); err != nil {
 			return nil, err
 		}
 		for _, file := range files {
@@ -711,21 +701,30 @@ func (website *Website) CopyAsset(srcPath string, dstPath string, w io.Writer) (
 	return nil
 }
 
-func (website *Website) GetAssetURI(assetPath string, w io.Writer) *url.URL {
+func (website *Website) GetAssetURI(assetPath string, w io.Writer, sourceDirectories ...string) *url.URL {
+	var uri *url.URL
+	var err error
 	if w == nil {
 		w = os.Stdout
 	}
-
-	var uri *url.URL
-	var uris []*url.URL = []*url.URL{}
-	var err error
+	uris := []*url.URL{}
 	fmt.Fprintf(w, "asset \"%s\" lookup\n", assetPath)
-	for _, assetDir := range []string{website.ContentDirPath(), website.StaticDirPath(), website.Theme.StaticDirPath()} {
+	if len(sourceDirectories) == 0 {
+		sourceDirectories = []string{website.ContentDirPath()}
+	}
+
+	// Source directories are configured low-to-high precedence, so inspect
+	// draft overlays before canonical content when resolving a page asset.
+	for index := len(sourceDirectories) - 1; index >= 0; index-- {
+		assetDir := sourceDirectories[index]
 		var u *url.URL
 		if u, err = url.Parse(filepath.Join(assetDir, assetPath)); err != nil {
 			continue
 		}
 		uris = append(uris, u)
+	}
+	for _, assetDir := range []string{website.StaticDirPath(), website.Theme.StaticDirPath()} {
+		uris = append(uris, &url.URL{Path: filepath.Join(assetDir, assetPath)})
 	}
 	for _, u := range uris {
 		if _, err = os.Stat(u.Path); err == nil {
@@ -738,6 +737,32 @@ func (website *Website) GetAssetURI(assetPath string, w io.Writer) *url.URL {
 		fmt.Fprintf(w, "asset \"%s\" candidate \"%s\" found\n", assetPath, uri.Path)
 	}
 	return uri
+}
+
+// CreatePage creates an unsaved page initialized from contenttype at
+// sourceDirectory. Call Page.Save to persist it after editing.
+func (website *Website) CreatePage(contenttype *ContentType, sourceDirectory string) (*Page, error) {
+	return createPage(website, contenttype, sourceDirectory)
+}
+
+// UpdatePage applies a content type's object-only transition without writing.
+func (website *Website) UpdatePage(contenttype *ContentType, page *Page) error {
+	return updatePage(website, contenttype, page)
+}
+
+// ValidatePage validates a page against its content type without writing it.
+func (website *Website) ValidatePage(contenttype *ContentType, page *Page) error {
+	return validatePage(website, contenttype, page)
+}
+
+// SavePage persists page data at its current source location.
+func (website *Website) SavePage(page *Page, w io.Writer) error {
+	return savePage(website, page, w)
+}
+
+// FinalizePage validates and moves page into the canonical content root.
+func (website *Website) FinalizePage(contenttype *ContentType, page *Page, createdAt string, w io.Writer) error {
+	return finalizePage(website, contenttype, page, createdAt, w)
 }
 
 func (website *Website) ContentTypes() (types ContentTypes, err error) {
@@ -759,6 +784,7 @@ func (website *Website) ContentTypes() (types ContentTypes, err error) {
 	}
 	return types, nil
 }
+
 func (website *Website) GetContentTypeByName(name string, verbose bool, w io.Writer) (contenttype *ContentType) {
 	if w == nil {
 		w = os.Stdout
@@ -780,14 +806,36 @@ func (website *Website) GetContentTypeByName(name string, verbose bool, w io.Wri
 	return nil
 }
 
-func (website *Website) ListPages() (Pages, error) {
-	return GetPages(website, website.ContentDirPath())
+// ListPages discovers persisted pages from sourceDirectories in order. When
+// multiple roots contain a page at the same relative Source.Path, the page from
+// the later root replaces the earlier one. Persisted page Source.Path is the
+// page's source-directory identity: SavePage and FinalizePage project the
+// resolved PublicURL.Path into it, and loading derives PublicURL.Path from it.
+//
+// This lets a later draft root override its canonical content-root counterpart
+// before page loading, assets, feeds, tags, and other build processing.
+func (website *Website) ListPages(sourceDirectories ...string) (pages Pages, err error) {
+	if len(sourceDirectories) == 0 {
+		sourceDirectories = []string{website.ContentDirPath()}
+	}
+	for sourceIndex, directory := range sourceDirectories {
+		var discovered Pages
+		if discovered, err = GetPages(website, directory); err != nil {
+			return nil, err
+		}
+		if sourceIndex == 0 {
+			pages = discovered
+			continue
+		}
+		pages = mergePagesBySourcePath(pages, discovered)
+	}
+	return pages, nil
 }
 
 // AssetCandidates loads website pages and returns every asset candidate in
 // precedence order.
-func (website *Website) AssetCandidates(ctx context.Context) (Assets, error) {
-	pages, err := website.ListPages()
+func (website *Website) AssetCandidates(ctx context.Context, sourceDirectories ...string) (Assets, error) {
+	pages, err := website.ListPages(sourceDirectories...)
 	if err != nil {
 		return nil, err
 	}
@@ -799,8 +847,8 @@ func (website *Website) AssetCandidates(ctx context.Context) (Assets, error) {
 
 // LookupAsset loads website pages and returns the resolved asset and candidates
 // for publicPath.
-func (website *Website) LookupAsset(ctx context.Context, publicPath string) (Asset, []Asset, error) {
-	candidates, err := website.AssetCandidates(ctx)
+func (website *Website) LookupAsset(ctx context.Context, publicPath string, sourceDirectories ...string) (Asset, []Asset, error) {
+	candidates, err := website.AssetCandidates(ctx, sourceDirectories...)
 	if err != nil {
 		return Asset{}, nil, err
 	}
@@ -818,8 +866,8 @@ func (website *Website) LookupAsset(ctx context.Context, publicPath string) (Ass
 	return Asset{}, nil, fmt.Errorf("%w: %q", ErrAssetNotFound, publicPath)
 }
 
-func (website *Website) LoadPages(ctx context.Context, verbose bool, w io.Writer) error {
-	pages, err := website.ListPages()
+func (website *Website) LoadPages(ctx context.Context, verbose bool, w io.Writer, sourceDirectories ...string) error {
+	pages, err := website.ListPages(sourceDirectories...)
 	if err != nil {
 		return err
 	}
@@ -828,7 +876,7 @@ func (website *Website) LoadPages(ctx context.Context, verbose bool, w io.Writer
 	}
 	for _, page := range pages {
 		if err := page.Feeds.Validate(website); err != nil {
-			return fmt.Errorf("page %q: %w", page.URI.Path, err)
+			return fmt.Errorf("page %q: %w", page.Source.URI().Path, err)
 		}
 	}
 	pages.ResolveTemplateData(website)
@@ -847,20 +895,22 @@ func (website *Website) LoadTagPages() error {
 	slices.Sort(tags)
 	for _, tag := range tags {
 		path := "/" + strings.Trim(website.Config.TagPath, "/") + "/" + tag + "/"
-		if website.pages.PageByPath(path) != nil {
+		if website.pages.ByPublicURLPath(path) != nil {
 			continue
 		}
 		title, description := tagFeedIdentity(tag)
 		page := &Page{
-			URI:          &url.URL{Path: filepath.Join(website.ContentDirPath(), strings.Trim(path, "/"), "index.md")},
 			CreatedAt:    website.CreatedAt,
 			LayoutRef:    website.Config.TagLayout,
-			Path:         path,
+			PublicURL:    url.URL{Path: path},
 			Title:        title,
 			Description:  description,
 			Feeds:        FeedDataset{TagFeed: {"tag": {Tag: tag}}},
 			TemplateData: httt.TemplateData{},
 		}
+		page.Source.Directory = website.ContentDirPath()
+		page.Source.Path = strings.Trim(path, "/")
+		page.Source.Filename = "index.md"
 		website.pages = append(website.pages, page)
 	}
 	return nil
@@ -931,6 +981,25 @@ func (website *Website) configTemplateData() httt.TemplateData {
 		"tidy_mode":       website.Config.TidyMode,
 		"markdown":        website.Config.Markdown,
 	})
+}
+
+func (website *Website) validateProviderNames(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("no providers selected")
+	}
+	for _, name := range names {
+		if name == "" {
+			return fmt.Errorf("provider name is empty")
+		}
+		provider, ok := website.Providers[name]
+		if !ok {
+			return fmt.Errorf("provider %q not found", name)
+		}
+		if provider == nil {
+			return fmt.Errorf("provider %q is empty", name)
+		}
+	}
+	return nil
 }
 
 // ============================================================================

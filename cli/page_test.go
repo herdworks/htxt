@@ -7,6 +7,18 @@ import (
 	"github.com/herdworks/htxt"
 )
 
+func TestBuildConfigUsesDraftsDirectoryForPreview(t *testing.T) {
+	config := buildConfig(&clic.Execution{Options: clic.Options{
+		"drafts-dir": {State: clic.OptionState{Value: "drafts"}},
+	}})
+	if !config.Preview {
+		t.Fatal("buildConfig() Preview = false, want true when drafts-dir is set")
+	}
+	if config.DraftsDirectory != "drafts" {
+		t.Fatalf("buildConfig() DraftsDirectory = %q, want drafts", config.DraftsDirectory)
+	}
+}
+
 func TestFilterPagesByVisibility(t *testing.T) {
 	auto := &htxt.Page{Visibility: htxt.AutoVisibility}
 	public := &htxt.Page{Visibility: htxt.PublicVisibility}

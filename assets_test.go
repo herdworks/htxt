@@ -148,7 +148,7 @@ func TestAssetsColumnValues(t *testing.T) {
 
 func TestWebsiteAssetEntriesUseWinningAssetSource(t *testing.T) {
 	website, _ := testWebsite(t)
-	page := &Page{Assets: []string{"shared.css"}}
+	page := &Page{Source: PageSource{Directory: website.ContentDirPath()}, Assets: []string{"shared.css"}}
 	website.Theme.Assets = []string{"shared.css"}
 	website.Assets = []string{"shared.css"}
 	writeAssetTestFile(t, filepath.Join(website.Theme.StaticDirPath(), "shared.css"))
@@ -346,11 +346,11 @@ func TestWebsitePluginsUsesWebsitePrecedence(t *testing.T) {
 
 func TestPageDiscoverAssetsReplacesExistingAssets(t *testing.T) {
 	website, _ := testWebsite(t)
-	page := &Page{
-		URI:    &url.URL{Path: filepath.Join(website.ContentDirPath(), "about", "index.md")},
-		Assets: []string{"stale-photo.jpg"},
-	}
-	writeAssetTestFile(t, page.URI.Path)
+	page := &Page{Assets: []string{"stale-photo.jpg"}}
+	page.Source.Directory = website.ContentDirPath()
+	page.Source.Path = "about"
+	page.Source.Filename = "index.md"
+	writeAssetTestFile(t, page.Source.URI().Path)
 	writeAssetTestFile(t, filepath.Join(website.ContentDirPath(), "about", "photo.jpg"))
 
 	if err := page.DiscoverAssets(website, false, io.Discard); err != nil {
@@ -401,7 +401,7 @@ func TestAssetPathRejectsAbsolutePath(t *testing.T) {
 
 func TestBuildPath(t *testing.T) {
 	website, build := testWebsite(t)
-	page := &Page{URI: &url.URL{Path: filepath.Join(website.ContentDirPath(), "about", "index.md")}}
+	page := pageWithURI(&url.URL{Path: filepath.Join(website.ContentDirPath(), "about", "index.md")}, Page{})
 
 	got := build.BuildPath(page)
 	want := filepath.Join(build.Config.URI.Path, "about", "index.html")

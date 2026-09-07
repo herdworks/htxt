@@ -537,7 +537,7 @@ func matchesFeedConfig(page *Page, config FeedConfig) bool {
 
 func (selector FeedSelector) Matches(page *Page) bool {
 	if selector.Path != "" {
-		if expression, err := hsync.ParsePathExpression(selector.Path); err == nil && expression.Matches(page.Path) {
+		if expression, err := hsync.ParsePathExpression(selector.Path); err == nil && expression.Matches(page.PublicURL.Path) {
 			return true
 		}
 	}
@@ -563,7 +563,7 @@ func sortFeedPages(pages Pages, rules []FeedSort) {
 				return value
 			}
 		}
-		return cmp.Compare(a.Path, b.Path)
+		return cmp.Compare(a.PublicURL.Path, b.PublicURL.Path)
 	})
 }
 
