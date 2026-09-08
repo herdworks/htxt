@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.48.4 (2026-09-07)
+
 * Fixed draft-page rehomes and finalization to remove their empty source leaf
   directories while preserving directories that still contain nested pages or
   other files.
