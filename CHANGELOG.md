@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.48.3 (2026-09-07)
+
 * Fixed page-data serialization to omit an empty `feeds` mapping from rendered
   JSON, YAML, and Markdown front matter.
 
