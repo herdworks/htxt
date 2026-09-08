@@ -68,15 +68,7 @@ type ContentTypeRequirements struct {
 // Variables
 // =============================================================================
 
-var (
-	DefaultContentType = ContentType{
-		URI:      &href.Href{URL: url.URL{Path: "/dev/null"}},
-		Metadata: ContentTypeMetadata{Name: "default", Description: "Default content type."},
-		Spec:     ContentTypeSpecification{Layout: "default", Path: "-", PathResolver: TimestampPathResolver, Format: "markdown", TemplateData: httt.TemplateData{}},
-	}
-
-	draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
-)
+var draftTimestampURISuffixPattern = regexp.MustCompile(`^d[0-9a-f]{11}$`)
 
 // =============================================================================
 // Methods
@@ -214,20 +206,19 @@ func (contenttype ContentType) OverlayPage(page *Page) (*Page, error) {
 // PreviewPageData returns serialized page data after applying the content type
 // overlay without mutating page or writing to disk.
 func (contenttype ContentType) PreviewPageData(website *Website, page *Page) ([]byte, error) {
-	ct := &contenttype
-	if ct.IsEmpty() {
-		ct = &DefaultContentType
+	if err := contenttype.ValidateDefinition(); err != nil {
+		return nil, err
 	}
-	candidate, err := ct.OverlayPage(page)
+	candidate, err := contenttype.OverlayPage(page)
 	if err != nil {
 		return nil, err
 	}
 	// Preview serialization applies an explicit publish visibility when supplied,
 	// but otherwise retains the source draft state.
-	if ct.Spec.Visibility != "" {
-		candidate.Visibility = ct.Spec.Visibility
+	if contenttype.Spec.Visibility != "" {
+		candidate.Visibility = contenttype.Spec.Visibility
 	}
-	return candidate.RenderData(website, ct.Spec.Format)
+	return candidate.RenderData(website, contenttype.Spec.Format)
 }
 
 func (contenttype ContentType) CandidateReady(page *Page) error {
@@ -357,22 +348,6 @@ func (state *ContentTypeState) SeedDefaults(prompts htprompt.Prompts) {
 		return
 	}
 	state.UserData = prompts.Defaults()
-}
-
-func (contenttype *ContentType) IsEmpty() bool {
-	if contenttype == nil {
-		return true
-	}
-	if contenttype.Metadata.Name == "" {
-		return true
-	}
-	if contenttype.Spec.Layout == "" {
-		return true
-	}
-	if contenttype.Spec.Format == "" {
-		return true
-	}
-	return false
 }
 
 // ValidatePage validates page against this content type without writing it.

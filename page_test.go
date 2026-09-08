@@ -700,6 +700,21 @@ func TestContentTypePreviewPageDataAppliesOverlayWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestContentTypePreviewPageDataValidatesDefinition(t *testing.T) {
+	website, _ := testWebsite(t)
+	contenttype := ContentType{
+		Metadata: ContentTypeMetadata{Name: "Invalid Preview"},
+		Spec: ContentTypeSpecification{
+			Format: "markdown",
+		},
+	}
+
+	_, err := contenttype.PreviewPageData(website, &Page{})
+	if err == nil || !strings.Contains(err.Error(), "content-type spec.path_resolver is required") {
+		t.Fatalf("PreviewPageData() error = %v, want path_resolver requirement", err)
+	}
+}
+
 func testPageContentType(format string, contentPath string) *ContentType {
 	return &ContentType{
 		Metadata: ContentTypeMetadata{Name: "Test"},

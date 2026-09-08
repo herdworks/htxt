@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Changed:** `ContentType.PreviewPageData` validates its content-type
+  definition (instead of checking `IsEmpty()`) before rendering.
+* **Removed:** `DefaultContentType` and `ContentType.IsEmpty()`.
+  Content-type definitions are validated at their use boundaries instead of
+  applying an implicit default-content-type fallback.
+
 ## v0.48.1 (2026-09-07)
 
 * **Changed:** Page validation and finalization now accept an omitted `layout`.
