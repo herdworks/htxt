@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.48.2 (2026-09-07)
+
 * **Changed:** `ContentType.PreviewPageData` validates its content-type
   definition (instead of checking `IsEmpty()`) before rendering.
 * **Removed:** `DefaultContentType` and `ContentType.IsEmpty()`.
