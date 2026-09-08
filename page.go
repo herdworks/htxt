@@ -271,8 +271,10 @@ func (page *Page) ApplyComputedProperties(website *Website) {
 	if len(page.Assets) > 0 {
 		page.TemplateData.Set("assets", page.AssetNames())
 	}
-	if page.Feeds != nil {
+	if len(page.Feeds) > 0 {
 		page.TemplateData.Set("feeds", page.Feeds.TemplateData())
+	} else {
+		delete(page.TemplateData, "feeds")
 	}
 }
 

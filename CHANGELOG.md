@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Fixed page-data serialization to omit an empty `feeds` mapping from rendered
+  JSON, YAML, and Markdown front matter.
+
 ## v0.48.2 (2026-09-07)
 
 * **Changed:** `ContentType.PreviewPageData` validates its content-type

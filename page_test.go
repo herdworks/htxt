@@ -401,6 +401,25 @@ func TestPageResolveTemplateDataSetsCanonicalURL(t *testing.T) {
 	}
 }
 
+func TestPageResolveTemplateDataOmitsEmptyFeeds(t *testing.T) {
+	page := &Page{
+		Feeds:        FeedDataset{},
+		TemplateData: httt.TemplateData{"feeds": httt.TemplateData{}},
+	}
+
+	page.ResolveTemplateData(nil)
+	if _, exists := page.TemplateData["feeds"]; exists {
+		t.Fatalf("page template data retained empty feeds: %#v", page.TemplateData.Get("feeds"))
+	}
+	bytes, err := page.RenderData(nil, "md")
+	if err != nil {
+		t.Fatalf("RenderData() error = %v", err)
+	}
+	if strings.Contains(string(bytes), "feeds:") {
+		t.Fatalf("rendered markdown includes empty feeds: %s", bytes)
+	}
+}
+
 func TestPageAtomEntryUsesCanonicalURLForIDAndAlternateLink(t *testing.T) {
 	website, _ := testWebsite(t)
 	page := Page{
