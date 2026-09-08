@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.48.1 (2026-09-07)
+
 * **Changed:** Page validation and finalization now accept an omitted `layout`.
   Rendering resolves it through the theme's default `default.html` layout.
 * Updated `github.com/herdworks/httt` to v0.41.2.
