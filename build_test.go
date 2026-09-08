@@ -96,6 +96,19 @@ func TestBuildLogWriterWritesArtifactBeforeUnavailableStdout(t *testing.T) {
 	}
 }
 
+func TestNewTemplateDocumentUsesDefaultLayoutWhenPageLayoutEmpty(t *testing.T) {
+	website, _ := testWebsite(t)
+	writeBuildSelectionFile(t, filepath.Join(website.Theme.LayoutsDirPath(), "default.html"), "<main></main>")
+
+	doc, err := NewTemplateDocument(website, &Page{})
+	if err != nil {
+		t.Fatalf("NewTemplateDocument() error = %v", err)
+	}
+	if doc.Layout == nil {
+		t.Fatal("NewTemplateDocument() Layout = nil, want default layout")
+	}
+}
+
 func TestBuildWritePhasesDoNotStartAfterCancellation(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := &Build{

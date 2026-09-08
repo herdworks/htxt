@@ -158,9 +158,6 @@ func (page *Page) Validate() (err error) {
 	if page.CreatedAt == "" && page.UpdatedAt == "" {
 		return fmt.Errorf("page.created_at or page.updated_at missing (%s)", uri.Path)
 	}
-	if len(page.LayoutRef) == 0 {
-		return fmt.Errorf("page.layout missing (%s)", uri.Path)
-	}
 	if strings.Contains(page.Slug, "/") {
 		return fmt.Errorf("page.slug cannot contain a slash (%s)", page.Slug)
 	}

@@ -866,6 +866,38 @@ func TestUpdatePageRejectsInvalidContentTypeWithoutUpdatingTimestamp(t *testing.
 	}
 }
 
+func TestPageValidateAllowsEmptyLayout(t *testing.T) {
+	website, _ := testWebsite(t)
+	page := &Page{
+		Source: PageSource{
+			Directory: website.ContentDirPath(),
+			Path:      "draft",
+			Filename:  "index.md",
+		},
+		UpdatedAt: "2026-05-20T00:00:00Z",
+	}
+
+	if err := page.Validate(); err != nil {
+		t.Fatalf("Page.Validate() error = %v, want empty layout accepted", err)
+	}
+}
+
+func TestPageFinalizeAllowsEmptyLayout(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.ContentDirPath(), "draft", "index.md")
+	writePageTestFile(t, sourcePath, "draft")
+	page := pageWithURI(&url.URL{Path: sourcePath}, Page{
+		Content: "finalized without an explicit layout",
+	})
+
+	if err := page.Finalize(website, nil, "", io.Discard); err != nil {
+		t.Fatalf("Page.Finalize() error = %v, want empty layout accepted", err)
+	}
+	if page.LayoutRef != "" {
+		t.Fatalf("page.LayoutRef = %q, want empty layout preserved", page.LayoutRef)
+	}
+}
+
 func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
 	tests := []struct {
 		name     string
