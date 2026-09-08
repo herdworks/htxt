@@ -1208,6 +1208,8 @@ func movePage(page *Page, destination PageSource) (err error) {
 	if err = os.Rename(srcURI.Path, dstURI.Path); err != nil {
 		return err
 	}
+	// Remove only an empty source leaf; nested pages or unexpected files keep it.
+	_ = os.Remove(page.Source.Dir())
 
 	// update page state
 	page.Source = destination
@@ -1328,6 +1330,9 @@ func finalizePage(website *Website, contenttype *ContentType, page *Page, create
 	if err = os.Remove(sidecarPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	// movePage leaves a draft leaf with its sidecar in place; remove it now that
+	// finalization has removed that last draft-only file.
+	_ = os.Remove(page.Source.Dir())
 	*page = *candidatePage
 	return nil
 }

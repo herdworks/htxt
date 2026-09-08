@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Fixed draft-page rehomes and finalization to remove their empty source leaf
+  directories while preserving directories that still contain nested pages or
+  other files.
+
 ## v0.48.3 (2026-09-07)
 
 * Fixed page-data serialization to omit an empty `feeds` mapping from rendered

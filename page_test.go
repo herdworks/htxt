@@ -1521,6 +1521,9 @@ func TestUpdatePageRehomesRegularFilesAndPreservesNestedPages(t *testing.T) {
 	if _, err := os.Stat(nestedPagePath); err != nil {
 		t.Fatalf("nested page was not preserved: %v", err)
 	}
+	if _, err := os.Stat(sourceDir); err != nil {
+		t.Fatalf("source directory with nested page was removed: %v", err)
+	}
 	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
 		t.Fatalf("source page still exists or unexpected error = %v", err)
 	}
@@ -1578,6 +1581,9 @@ func TestSavePageRehomesDraftRootPayload(t *testing.T) {
 	}
 	if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
 		t.Fatalf("original draft page still exists: %v", err)
+	}
+	if _, err := os.Stat(sourceDirectory); !os.IsNotExist(err) {
+		t.Fatalf("empty source draft directory remains or unexpected error = %v", err)
 	}
 }
 
@@ -1972,6 +1978,9 @@ func TestFinalizePageMovesDraftPayloadIntoContentAndRemovesComposerSidecar(t *te
 	}
 	if _, err := os.Stat(filepath.Join(destinationDirectory, ".composer")); !os.IsNotExist(err) {
 		t.Fatalf("composer sidecar was copied to content: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(sourcePath)); !os.IsNotExist(err) {
+		t.Fatalf("empty source draft directory remains or unexpected error = %v", err)
 	}
 }
 
