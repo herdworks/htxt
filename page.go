@@ -977,6 +977,8 @@ func LoadPage(website *Website, page *Page, verbose bool, w io.Writer) (err erro
 	if err = page.Parse(fileData); err != nil {
 		return err
 	}
+	// TODO: Extract this into the shared website-aware page timestamp
+	// normalization used by load, save, and preview paths.
 	if page.CreatedAt == "" && page.UpdatedAt == "" {
 		// Every page needs a timestamp, but we shouldn't assert CreatedAt provenance
 		page.UpdatedAt = website.UpdatedAt
@@ -1143,6 +1145,8 @@ func savePage(website *Website, page *Page, w io.Writer) error {
 	if website == nil || page == nil || page.Source.Directory == "" {
 		return fmt.Errorf("page.save requires page source directory")
 	}
+	// TODO: Normalize a page with no timestamps from website.UpdatedAt before
+	// serializing it, preserving the absence of CreatedAt provenance.
 	var destination = page.resolvePublicURLPageSource(page.Source.Directory)
 	if err := validatePageSources(website, page.Source, destination); err != nil {
 		return err
@@ -1349,9 +1353,7 @@ func applyPageContentType(page *Page, contenttype *ContentType) (err error) {
 		page.LayoutRef = contenttype.Spec.Layout
 	}
 
-	if contenttype.Spec.Visibility != "" {
-		page.Visibility = contenttype.Spec.Visibility
-	}
+	page.Visibility = contenttype.Spec.Visibility
 	return nil
 }
 

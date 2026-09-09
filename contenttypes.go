@@ -46,7 +46,7 @@ type ContentTypeSpecification struct {
 	PathResolver PublicURLPathResolverKind `json:"path_resolver" yaml:"path_resolver"`
 	Format       string                    `json:"format" yaml:"format"`
 	Requires     ContentTypeRequirements   `json:"requires" yaml:"requires"`
-	Visibility   PageVisibilityKind        `json:"visibility,omitempty" yaml:"visibility,omitempty" jsonschema:"description=Default visibility for pages of this content type."`
+	Visibility   PageVisibilityKind        `json:"visibility" yaml:"visibility" jsonschema:"description=Visibility for pages of this content type."`
 	TemplateData httt.TemplateData         `json:"template" yaml:"template"`
 	Prompts      htprompt.Prompts          `json:"prompts,omitempty" yaml:"prompts,omitempty"`
 	Patches      htpatch.Patches           `json:"patches,omitempty" yaml:"patches,omitempty"`
@@ -213,11 +213,10 @@ func (contenttype ContentType) PreviewPageData(website *Website, page *Page) ([]
 	if err != nil {
 		return nil, err
 	}
-	// Preview serialization applies an explicit publish visibility when supplied,
-	// but otherwise retains the source draft state.
-	if contenttype.Spec.Visibility != "" {
-		candidate.Visibility = contenttype.Spec.Visibility
-	}
+	// TODO: Apply website-aware page timestamp normalization to candidate so
+	// timestamp-derived paths work for a newly decoded page.
+	// Preview serialization uses the content type's required visibility.
+	candidate.Visibility = contenttype.Spec.Visibility
 	return candidate.RenderData(website, contenttype.Spec.Format)
 }
 
@@ -374,6 +373,12 @@ func (spec ContentTypeSpecification) MIMEType() string {
 }
 
 func (spec ContentTypeSpecification) Validate() error {
+	if spec.Visibility == "" {
+		return fmt.Errorf("content-type spec.visibility is required")
+	}
+	if err := spec.Visibility.Validate(); err != nil {
+		return fmt.Errorf("content-type spec.visibility invalid: %w", err)
+	}
 	if spec.Format == "" {
 		return fmt.Errorf("content-type spec.format is required")
 	}

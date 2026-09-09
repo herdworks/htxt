@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Changed:** content-type definitions must explicitly set
+  `spec.visibility`. Page updates and previews now always apply that value,
+  including `public`, rather than retaining a previous page visibility.
+
 ## v0.48.4 (2026-09-07)
 
 * Fixed draft-page rehomes and finalization to remove their empty source leaf

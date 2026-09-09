@@ -188,6 +188,7 @@ func TestPageUpdateResolvesDraftPublicURLPathWithoutMutatingSource(t *testing.T)
 		Layout:       "default",
 		PathResolver: ManualPathResolver,
 		Format:       "markdown",
+		Visibility:   PublicVisibility,
 		Path:         "posts",
 	}}
 	page := &Page{Source: PageSource{Directory: website.ContentDirPath()}, Visibility: DraftVisibility, Slug: "draft-post"}
@@ -200,6 +201,25 @@ func TestPageUpdateResolvesDraftPublicURLPathWithoutMutatingSource(t *testing.T)
 	}
 	if page.Source.Path != "" || page.Source.Filename != "" {
 		t.Fatalf("path resolution mutated source state: %#v", page)
+	}
+}
+
+func TestPageUpdateReplacesVisibilityFromContentType(t *testing.T) {
+	website, _ := testWebsite(t)
+	contenttype := testPageContentType("markdown", "posts")
+	contenttype.Spec.PathResolver = ManualPathResolver
+	contenttype.Spec.Visibility = PublicVisibility
+	page := &Page{
+		Source:     PageSource{Directory: website.ContentDirPath()},
+		Slug:       "published-post",
+		Visibility: StatusVisibility,
+	}
+
+	if err := page.Update(website, contenttype); err != nil {
+		t.Fatalf("Page.Update() error = %v", err)
+	}
+	if page.Visibility != PublicVisibility {
+		t.Fatalf("page.Visibility = %q, want %q", page.Visibility, PublicVisibility)
 	}
 }
 
@@ -724,7 +744,8 @@ func TestContentTypePreviewPageDataValidatesDefinition(t *testing.T) {
 	contenttype := ContentType{
 		Metadata: ContentTypeMetadata{Name: "Invalid Preview"},
 		Spec: ContentTypeSpecification{
-			Format: "markdown",
+			Format:     "markdown",
+			Visibility: PublicVisibility,
 		},
 	}
 
@@ -742,6 +763,7 @@ func testPageContentType(format string, contentPath string) *ContentType {
 			PathResolver: TimestampPathResolver,
 			Format:       format,
 			Path:         contentPath,
+			Visibility:   DraftVisibility,
 		},
 	}
 }
@@ -855,7 +877,7 @@ func TestCreatePageRequiresSourceDirectory(t *testing.T) {
 func TestCreatePageRejectsEmptyContentType(t *testing.T) {
 	website, _ := testWebsite(t)
 
-	if _, err := website.CreatePage(&ContentType{}, website.ContentDirPath()); err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
+	if _, err := website.CreatePage(&ContentType{Spec: ContentTypeSpecification{Visibility: PublicVisibility}}, website.ContentDirPath()); err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
 		t.Fatalf("Website.CreatePage() error = %v, want invalid content type", err)
 	}
 }
@@ -891,7 +913,7 @@ func TestUpdatePageRejectsInvalidContentTypeWithoutUpdatingTimestamp(t *testing.
 	updatedAt := "2026-05-20T00:00:00Z"
 	page := pageWithURI(&url.URL{Path: filepath.Join(website.ContentDirPath(), "draft", "index.md")}, Page{UpdatedAt: updatedAt})
 
-	err := website.UpdatePage(&ContentType{}, page)
+	err := website.UpdatePage(&ContentType{Spec: ContentTypeSpecification{Visibility: PublicVisibility}}, page)
 	if err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
 		t.Fatalf("Website.UpdatePage() error = %v, want invalid content type", err)
 	}
@@ -952,6 +974,7 @@ func TestCreatePageWithTemplatedContentTypePath(t *testing.T) {
 					Path:         "/blog/${year}/${month}/${day}/",
 					PathResolver: tc.resolver,
 					Format:       "markdown",
+					Visibility:   PublicVisibility,
 				},
 			}
 			page := &Page{
@@ -1006,6 +1029,7 @@ func TestUpdatePageWithTemplatedContentTypePathUsesUpdatedAtBeforeFinalization(t
 			Path:         "/blog/${year}/${month}/${day}/",
 			PathResolver: TitleKabobPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 		},
 	}
 	page := pageWithURI(&url.URL{Path: sourcePath}, Page{
@@ -1263,6 +1287,7 @@ func TestPublishUpdateFailsWhenTitleSlugInputMissing(t *testing.T) {
 			sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 			writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
 			contenttype := testPageContentTypeWithPathResolver("markdown", "posts", tc.resolver)
+			contenttype.Spec.Visibility = PublicVisibility
 			page := pageWithURI(&url.URL{Path: sourcePath}, Page{Content: "published"})
 
 			err := autosaveTestPage(website, page, contenttype, io.Discard)
@@ -1282,6 +1307,7 @@ func TestPublishUpdateForManualPathResolverValidation(t *testing.T) {
 		sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")
 		writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
 		contenttype := testPageContentTypeWithPathResolver("markdown", "posts", ManualPathResolver)
+		contenttype.Spec.Visibility = PublicVisibility
 		page := pageWithURI(&url.URL{Path: sourcePath}, Page{Content: "published"})
 
 		err := autosaveTestPage(website, page, contenttype, io.Discard)
@@ -1780,6 +1806,7 @@ func TestCreatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 			Path:         "posts",
 			PathResolver: TitleKabobPathResolver,
 			Format:       "markdown",
+			Visibility:   DraftVisibility,
 			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 			},
@@ -1834,6 +1861,7 @@ func TestUpdatePageDoesNotMaterializeContentTypeTemplateOrPatches(t *testing.T) 
 			Path:         "notes",
 			PathResolver: TitleKabobPathResolver,
 			Format:       "json",
+			Visibility:   DraftVisibility,
 			TemplateData: httt.TemplateData{
 				"summary": "Spec summary",
 			},
@@ -2074,7 +2102,7 @@ func TestFinalizePageRejectsEmptyContentType(t *testing.T) {
 		Title:      "Draft",
 	}
 
-	err := finalizePage(website, &ContentType{}, page, "", io.Discard)
+	err := finalizePage(website, &ContentType{Spec: ContentTypeSpecification{Visibility: PublicVisibility}}, page, "", io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
 		t.Fatalf("finalizePage() error = %v, want invalid content type", err)
 	}

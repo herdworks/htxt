@@ -42,6 +42,7 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 					Path:         "articles-with-longer-path",
 					PathResolver: TitleKabobPathResolver,
 					Format:       "markdown",
+					Visibility:   PublicVisibility,
 				},
 			}
 			if err := first.Save(website, io.Discard); err != nil {
@@ -56,6 +57,7 @@ func TestContentTypeSaveTruncatesExistingFile(t *testing.T) {
 					Path:         "a",
 					PathResolver: TitleKabobPathResolver,
 					Format:       "markdown",
+					Visibility:   PublicVisibility,
 				},
 			}
 			if err := second.Save(website, io.Discard); err != nil {
@@ -98,6 +100,7 @@ func TestContentTypeSaveUsesSpecPromptsAndPatches(t *testing.T) {
 			Path:         "posts",
 			PathResolver: TitleKabobPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
 			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
@@ -172,6 +175,7 @@ func TestContentTypeSaveDoesNotSerializeStateUserData(t *testing.T) {
 			Path:         "posts",
 			PathResolver: TitleKabobPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
 			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
@@ -193,7 +197,7 @@ func TestContentTypeSaveDoesNotSerializeStateUserData(t *testing.T) {
 func TestContentTypeLoadRequiresPathResolver(t *testing.T) {
 	website, _ := testWebsite(t)
 	path := filepath.Join(website.Theme.ContentTypesDirPath(), "article.yaml")
-	writePageTestFile(t, path, "metadata:\n  name: Article\nspec:\n  layout: default\n  path: posts\n  format: markdown\n")
+	writePageTestFile(t, path, "metadata:\n  name: Article\nspec:\n  layout: default\n  path: posts\n  format: markdown\n  visibility: public\n")
 	contenttype := &ContentType{URI: &href.Href{URL: url.URL{Path: path}}}
 
 	err := contenttype.Load()
@@ -232,6 +236,7 @@ func TestContentTypeSpecValidatesPathTemplateFunctions(t *testing.T) {
 		Layout:       "default",
 		PathResolver: TimestampPathResolver,
 		Format:       "markdown",
+		Visibility:   PublicVisibility,
 	}
 	valid := base
 	valid.Path = "/blog/${year}/${month}/${day}/"
@@ -262,12 +267,39 @@ func TestContentTypeSpecValidatesPathTemplateFunctions(t *testing.T) {
 	}
 }
 
+func TestContentTypeSpecRequiresSupportedVisibility(t *testing.T) {
+	base := ContentTypeSpecification{
+		Layout:       "default",
+		PathResolver: TimestampPathResolver,
+		Format:       "markdown",
+		Visibility:   PublicVisibility,
+	}
+
+	for _, test := range []struct {
+		name       string
+		visibility PageVisibilityKind
+		want       string
+	}{
+		{name: "missing", want: "content-type spec.visibility is required"},
+		{name: "unsupported", visibility: "invalid", want: "content-type spec.visibility invalid"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec := base
+			spec.Visibility = test.visibility
+			if err := spec.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Validate() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestContentTypeReadyValidatesDraftPageRequirements(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Requires:     ContentTypeRequirements{Content: true},
 		},
 	}
@@ -284,6 +316,7 @@ func TestContentTypeReadyValidatesDescriptionRequirement(t *testing.T) {
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Requires:     ContentTypeRequirements{Description: true},
 		},
 	}
@@ -325,7 +358,7 @@ func TestContentTypeReadyValidatesSlugInputs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			contenttype := ContentType{Spec: ContentTypeSpecification{Layout: "default", PathResolver: tc.resolver, Format: "markdown"}}
+			contenttype := ContentType{Spec: ContentTypeSpecification{Layout: "default", PathResolver: tc.resolver, Format: "markdown", Visibility: PublicVisibility}}
 			if err := contenttype.Ready(tc.page); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Ready() error = %v, want %q", err, tc.want)
 			}
@@ -339,6 +372,7 @@ func TestContentTypeReadyValidatesAttachmentKind(t *testing.T) {
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Requires:     ContentTypeRequirements{Attachment: AttachmentKindImage},
 		},
 	}
@@ -372,6 +406,7 @@ func TestContentTypeValidateDefinitionChecksPatchPromptRefs(t *testing.T) {
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Prompts:      htprompt.Prompts{{ID: "tag", Type: htprompt.TypeText}},
 			Patches:      htpatch.Patches{{Op: "append", Path: "page.tags", ValueRef: "tag"}},
 		},
@@ -417,6 +452,7 @@ func TestContentTypeTemplateDataAppliesPatchesToSpecTemplateClone(t *testing.T) 
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			TemplateData: httt.TemplateData{
 				"title": "Base Title",
 				"tags":  []string{"base"},
@@ -478,6 +514,7 @@ func TestContentTypeTemplateDataUsesSeededPromptDefault(t *testing.T) {
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText, Default: "Default Title"}},
 			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
@@ -499,6 +536,7 @@ func TestContentTypeTemplateDataReadsStateUserDataDirectly(t *testing.T) {
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Prompts: htprompt.Prompts{
 				{ID: "title", Type: htprompt.TypeText},
 				{ID: "featured", Type: htprompt.TypeBoolean},
@@ -543,6 +581,7 @@ func TestContentTypeTemplateDataAddIgnoresPageDataAndReplaceRequiresSpecTemplate
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
 			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},
 		},
@@ -573,6 +612,7 @@ func TestContentTypeOverlayPageUsesOverlayPrecedenceWithoutMutatingPage(t *testi
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			TemplateData: httt.TemplateData{
 				"title":   "Spec Title",
 				"summary": "Spec summary",
@@ -644,6 +684,7 @@ func TestContentTypeCandidateReadyUsesOverlayWithoutMutatingPage(t *testing.T) {
 			Layout:       "default",
 			PathResolver: TimestampPathResolver,
 			Format:       "markdown",
+			Visibility:   PublicVisibility,
 			Requires:     ContentTypeRequirements{Title: true},
 			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
 			Patches:      htpatch.Patches{{Op: "add", Path: "page.title", ValueRef: "title"}},

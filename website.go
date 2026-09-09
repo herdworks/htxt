@@ -835,11 +835,20 @@ func (website *Website) ListPages(sourceDirectories ...string) (pages Pages, err
 // AssetCandidates loads website pages and returns every asset candidate in
 // precedence order.
 func (website *Website) AssetCandidates(ctx context.Context, sourceDirectories ...string) (Assets, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	pages, err := website.ListPages(sourceDirectories...)
 	if err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := LoadPages(ctx, website, pages, nil, false, nil); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return AssetCandidates(&website.Theme, website, pages)
