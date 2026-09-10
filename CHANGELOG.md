@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.48.6 (2026-09-10)
+
 * **Added:** `SchemaRegistry`, the stable catalog of HyperTexting CMS and SSG
   data contracts, including website, page, theme, hosting-provider, and sync
   configuration schemas.
