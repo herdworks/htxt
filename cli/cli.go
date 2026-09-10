@@ -38,6 +38,7 @@ func Command() clic.Command {
 			PageCommand,
 			AssetCommand,
 			ContentTypeCommand,
+			SchemaCommand,
 		),
 	}
 }

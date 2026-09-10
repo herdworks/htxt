@@ -17,7 +17,7 @@ func TestCLIComposesWebsiteCommands(t *testing.T) {
 	if err := CLI.Validate(); err != nil {
 		t.Fatalf("CLI.Validate() error = %v", err)
 	}
-	for _, key := range []string{"init", "build", "deploy", "server", "data", "page", "asset", "content-type"} {
+	for _, key := range []string{"init", "build", "deploy", "server", "data", "page", "asset", "content-type", "schema"} {
 		command, ok := CLI.SubCommand(key)
 		if !ok {
 			t.Errorf("CLI command %q is not registered", key)

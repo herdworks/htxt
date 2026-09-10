@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** `SchemaRegistry`, the stable catalog of HyperTexting CMS and SSG
+  data contracts, including website, page, theme, hosting-provider, and sync
+  configuration schemas.
+* **Added:** `htxt schema ls` and `htxt schema describe <kind>` for listing and
+  printing those contracts as JSON Schema documents.
+
 ## v0.48.5 (2026-09-09)
 
 * **Changed:** content-type definitions must explicitly set
