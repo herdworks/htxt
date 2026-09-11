@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.49.0 (2026-09-11)
+
 * **Added:** Optional `site.config.preview` defaults for the local preview
   server: `bind`, stable preview build `id`, and `port`. Explicit server flags
   and environment variables override configured values; unconfigured sites
