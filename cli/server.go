@@ -46,8 +46,7 @@ func ServerBindOption() clic.Option {
 		Meta: clic.OptionMeta{
 			ShortName:   "b",
 			EnvName:     "{{ .EnvPrefix }}BIND",
-			Description: "IP address or hostname to bind.",
-			Default:     "localhost",
+			Description: "IP address or hostname to bind (overrides site.config.preview.bind).",
 		},
 		Spec: clic.OptionSpec{
 			Key:  "bind",
@@ -61,8 +60,7 @@ func ServerPortOption() clic.Option {
 		Meta: clic.OptionMeta{
 			ShortName:   "p",
 			EnvName:     "{{ .EnvPrefix }}PORT",
-			Description: "TCP port to listen on.",
-			Default:     "8080",
+			Description: "TCP port to listen on (overrides site.config.preview.port).",
 		},
 		Spec: clic.OptionSpec{
 			Key:  "port",
@@ -77,9 +75,11 @@ func serverHandler(execution *clic.Execution) error {
 	if err != nil {
 		return err
 	}
-	port, err := parseServerPort(options["port"].StringValue())
-	if err != nil {
-		return err
+	var port int
+	if value := options["port"].StringValue(); value != "" {
+		if port, err = parseServerPort(value); err != nil {
+			return err
+		}
 	}
 	server := &htxt.Server{
 		Server: htxtd.Server{
@@ -100,6 +100,9 @@ func serverHandler(execution *clic.Execution) error {
 			LogFile:         options["log-file"].StringValue(),
 			DraftsDirectory: options["drafts-dir"].StringValue(),
 		},
+	}
+	if err = server.ResolveConfig(); err != nil {
+		return err
 	}
 	if err = server.Validate(); err != nil {
 		return err

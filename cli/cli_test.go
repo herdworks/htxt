@@ -3,14 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"github.com/herdworks/clic"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/google/uuid"
-	"github.com/herdworks/clic"
 )
 
 func TestCLIComposesWebsiteCommands(t *testing.T) {
@@ -53,17 +51,27 @@ func TestCLIUsesHTXTEnvironmentPrefix(t *testing.T) {
 	}
 }
 
-func TestServerCommandDefaultsBuildIdentifier(t *testing.T) {
+func TestBuildIdentifierOptionDefersIdentifierResolution(t *testing.T) {
 	option := ServerCommand().Spec.Options["id"]
 	if option == nil {
 		t.Fatal("server command has no build identifier option")
 	}
-	identifier, ok := option.Meta.Default.(string)
-	if !ok || identifier == "" {
-		t.Fatalf("server build identifier default = %#v, want UUID", option.Meta.Default)
+	if option.Meta.Default != nil {
+		t.Fatalf("server build identifier default = %#v, want nil", option.Meta.Default)
 	}
-	if _, err := uuid.Parse(identifier); err != nil {
-		t.Fatalf("server build identifier default = %q, want UUID: %v", identifier, err)
+	if got, want := option.Meta.EnvName, "{{ .EnvPrefix }}BUILD_ID"; got != want {
+		t.Fatalf("build identifier environment = %q, want %q", got, want)
+	}
+	if BuildCommand().Spec.Options["id"].Meta.Default != nil {
+		t.Fatalf("build command identifier default = %#v, want nil", BuildCommand().Spec.Options["id"].Meta.Default)
+	}
+	bind := ServerCommand().Spec.Options["bind"]
+	if bind == nil || bind.Meta.Default != nil {
+		t.Fatalf("server bind default = %#v, want nil", bind)
+	}
+	port := ServerCommand().Spec.Options["port"]
+	if port == nil || port.Meta.Default != nil {
+		t.Fatalf("server port default = %#v, want nil", port)
 	}
 }
 

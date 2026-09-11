@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/google/uuid"
 	"github.com/herdworks/htxt/href"
 	"github.com/herdworks/htxtd"
 )
@@ -38,6 +39,9 @@ func (server *Server) RunWithReady(ctx context.Context, ready func(*url.URL)) (e
 func (server *Server) run(ctx context.Context, ready func(*url.URL)) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if err := server.ResolveConfig(); err != nil {
+		return err
+	}
 	if err := server.Validate(); err != nil {
 		return err
 	}
@@ -104,6 +108,9 @@ func (server *Server) run(ctx context.Context, ready func(*url.URL)) (err error)
 
 // Build executes one fresh preview build using the server configuration.
 func (server *Server) Build(ctx context.Context) (*Website, error) {
+	if err := server.ResolveConfig(); err != nil {
+		return nil, err
+	}
 	if server.WebsiteURI == nil {
 		return nil, fmt.Errorf("server.website_uri is required")
 	}
@@ -132,6 +139,38 @@ func (server *Server) Build(ctx context.Context) (*Website, error) {
 	server.sourceDirectories = build.sourceDirectories()
 	server.Directory = build.Config.URI.Path
 	return build.Website, nil
+}
+
+// ResolveConfig applies configured preview defaults and legacy server defaults.
+func (server *Server) ResolveConfig() (err error) {
+	if server.WebsiteURI == nil || server.WebsiteURI.Path == "" {
+		return fmt.Errorf("server.website_uri is required")
+	}
+	website := &Website{URI: &href.Href{URL: server.WebsiteURI.URL}}
+	if err = website.LoadConfig(&server.BuildConfig.WebsiteConfig); err != nil {
+		return err
+	}
+	if preview := website.Config.Preview; preview != nil {
+		if server.Bind == "" && preview.Bind != "" {
+			server.Bind = preview.Bind
+		}
+		if server.BuildID == "" {
+			server.BuildID = preview.ID
+		}
+		if server.Port == 0 {
+			server.Port = preview.Port
+		}
+	}
+	if server.BuildID == "" {
+		server.BuildID = uuid.NewString()
+	}
+	if server.Bind == "" {
+		server.Bind = "localhost"
+	}
+	if server.Port == 0 {
+		server.Port = 8080
+	}
+	return nil
 }
 
 func (server *Server) writeListening() {

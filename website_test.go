@@ -406,6 +406,29 @@ func TestWebsiteConfigValidateAllowsEmptyDefaults(t *testing.T) {
 	}
 }
 
+func TestWebsiteConfigValidatePreviewDefaults(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		config WebsiteConfig
+		valid  bool
+	}{
+		{name: "valid", config: WebsiteConfig{Preview: &PreviewConfig{Bind: "127.0.0.1", ID: "preview-site", Port: 8131}}, valid: true},
+		{name: "blank bind", config: WebsiteConfig{Preview: &PreviewConfig{Bind: " ", ID: "preview-site", Port: 8131}}},
+		{name: "missing id", config: WebsiteConfig{Preview: &PreviewConfig{Port: 8131}}},
+		{name: "invalid port", config: WebsiteConfig{Preview: &PreviewConfig{ID: "preview-site", Port: 65536}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.config.Validate()
+			if test.valid && err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if !test.valid && err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+}
+
 func TestWebsiteConfigResolveStatusDefaultsAndOverrides(t *testing.T) {
 	config := WebsiteConfig{}
 	config.Resolve(nil)

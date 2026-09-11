@@ -13,8 +13,85 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/herdworks/htxtd"
 )
+
+func TestServerResolveConfigUsesConfiguredPreviewDefaults(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	writeBuildSelectionFile(t, fixture.sitePath, `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+  preview:
+    bind: 127.0.0.1
+    id: preview-site
+    port: 8131
+`)
+	server := Server{WebsiteURI: mustHref(t, fixture.sitePath)}
+	if err := server.ResolveConfig(); err != nil {
+		t.Fatalf("ResolveConfig() error = %v", err)
+	}
+	if got, want := server.BuildID, "preview-site"; got != want {
+		t.Fatalf("BuildID = %q, want %q", got, want)
+	}
+	if got, want := server.Port, 8131; got != want {
+		t.Fatalf("Port = %d, want %d", got, want)
+	}
+	if got, want := server.Bind, "127.0.0.1"; got != want {
+		t.Fatalf("Bind = %q, want %q", got, want)
+	}
+}
+
+func TestServerResolveConfigPreservesExplicitPreviewOverrides(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	writeBuildSelectionFile(t, fixture.sitePath, `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+  preview:
+    bind: configured-bind
+    id: configured-preview
+    port: 8131
+`)
+	server := Server{
+		Server:     htxtd.Server{Bind: "explicit-bind", Port: 9131},
+		WebsiteURI: mustHref(t, fixture.sitePath),
+		BuildID:    "explicit-preview",
+	}
+	if err := server.ResolveConfig(); err != nil {
+		t.Fatalf("ResolveConfig() error = %v", err)
+	}
+	if got, want := server.BuildID, "explicit-preview"; got != want {
+		t.Fatalf("BuildID = %q, want %q", got, want)
+	}
+	if got, want := server.Port, 9131; got != want {
+		t.Fatalf("Port = %d, want %d", got, want)
+	}
+	if got, want := server.Bind, "explicit-bind"; got != want {
+		t.Fatalf("Bind = %q, want %q", got, want)
+	}
+}
+
+func TestServerResolveConfigPreservesLegacyDefaults(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	server := Server{WebsiteURI: mustHref(t, fixture.sitePath)}
+	if err := server.ResolveConfig(); err != nil {
+		t.Fatalf("ResolveConfig() error = %v", err)
+	}
+	if _, err := uuid.Parse(server.BuildID); err != nil {
+		t.Fatalf("BuildID = %q, want UUID: %v", server.BuildID, err)
+	}
+	if got, want := server.Port, 8080; got != want {
+		t.Fatalf("Port = %d, want %d", got, want)
+	}
+}
 
 func TestServerBuildUsesStablePreviewDirectory(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
@@ -36,6 +113,13 @@ func TestServerBuildUsesStablePreviewDirectory(t *testing.T) {
 	}
 	if got, want := website.BaseURL, "http://localhost:8080/"; got != want {
 		t.Fatalf("BaseURL = %q, want %q", got, want)
+	}
+	content, err := os.ReadFile(filepath.Join(server.Directory, ".well-known", "hypertexting", "build"))
+	if err != nil {
+		t.Fatalf("ReadFile(build marker) error = %v", err)
+	}
+	if got, want := string(content), "development\n"; got != want {
+		t.Fatalf("build marker = %q, want %q", got, want)
 	}
 }
 

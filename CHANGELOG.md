@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** Optional `site.config.preview` defaults for the local preview
+  server: `bind`, stable preview build `id`, and `port`. Explicit server flags
+  and environment variables override configured values; unconfigured sites
+  retain the existing localhost, port 8080, generated-ID behavior.
+* **Added:** Generic generated build assets through `GeneratedBuildAsset` and
+  `Build.WriteGeneratedAssets`. Generated assets are written after regular
+  builtin, theme, website, and page assets, so they deterministically win
+  matching output paths.
+* **Added:** Every build publishes its effective build ID at
+  `/.well-known/hypertexting/build` as plain text, enabling reliable preview
+  server identification.
+
 ## v0.48.6 (2026-09-10)
 
 * **Added:** `SchemaRegistry`, the stable catalog of HyperTexting CMS and SSG

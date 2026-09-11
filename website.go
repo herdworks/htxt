@@ -94,23 +94,31 @@ type WebsiteFavicons []WebsiteFavicon
 type WebsiteConfig struct {
 	Path string `json:"-" yaml:"-" jsonschema:"-"`
 
-	BuildsDirectory      string `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty" jsonschema:"default=builds"`
-	ContentDirectory     string `json:"content_dir,omitempty" yaml:"content_dir,omitempty" jsonschema:"default=content"`
-	DataDirectory        string `json:"data_dir,omitempty" yaml:"data_dir,omitempty" jsonschema:"default=data"`
-	DeploymentsDirectory string `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty" jsonschema:"default=deployments"`
-	PluginsDirectory     string `json:"plugins_dir,omitempty" yaml:"plugins_dir,omitempty" jsonschema:"default=plugins"`
-	StaticDirectory      string `json:"static_dir,omitempty" yaml:"static_dir,omitempty" jsonschema:"default=static"`
-	ThemesDirectory      string `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
-	ThemePath            string `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
-	FeedPath             string `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
-	TagPath              string `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
-	TagLayout            string `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
-	StatusLayout         string `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
-	StatusRedirect       string `json:"status_redirect,omitempty" yaml:"status_redirect,omitempty" jsonschema:"default=/,format=uri-reference"`
-	RefreshInterval      int    `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty" jsonschema:"description=Refresh interval in seconds."`
+	BuildsDirectory      string         `json:"builds_dir,omitempty" yaml:"builds_dir,omitempty" jsonschema:"default=builds"`
+	ContentDirectory     string         `json:"content_dir,omitempty" yaml:"content_dir,omitempty" jsonschema:"default=content"`
+	DataDirectory        string         `json:"data_dir,omitempty" yaml:"data_dir,omitempty" jsonschema:"default=data"`
+	DeploymentsDirectory string         `json:"deployments_dir,omitempty" yaml:"deployments_dir,omitempty" jsonschema:"default=deployments"`
+	PluginsDirectory     string         `json:"plugins_dir,omitempty" yaml:"plugins_dir,omitempty" jsonschema:"default=plugins"`
+	StaticDirectory      string         `json:"static_dir,omitempty" yaml:"static_dir,omitempty" jsonschema:"default=static"`
+	ThemesDirectory      string         `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
+	ThemePath            string         `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
+	FeedPath             string         `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
+	TagPath              string         `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
+	TagLayout            string         `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
+	StatusLayout         string         `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
+	StatusRedirect       string         `json:"status_redirect,omitempty" yaml:"status_redirect,omitempty" jsonschema:"default=/,format=uri-reference"`
+	RefreshInterval      int            `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty" jsonschema:"description=Refresh interval in seconds."`
+	Preview              *PreviewConfig `json:"preview,omitempty" yaml:"preview,omitempty" jsonschema:"description=Optional local preview server defaults."`
 
 	TidyMode bool                  `json:"tidy_mode,omitempty" yaml:"tidy_mode,omitempty"`
 	Markdown *httt.HyperMarkConfig `json:"markdown,omitempty" yaml:"markdown,omitempty"`
+}
+
+// PreviewConfig defines stable local preview-server defaults for a website.
+type PreviewConfig struct {
+	ID   string `json:"id" yaml:"id" jsonschema:"required,description=Stable build identifier used to recognize the preview server."`
+	Bind string `json:"bind,omitempty" yaml:"bind,omitempty" jsonschema:"description=IP address or hostname for the local preview server; defaults to localhost."`
+	Port int    `json:"port" yaml:"port" jsonschema:"required,description=TCP port for the local preview server (1 through 65535)."`
 }
 
 func (WebsiteConfig) JSONSchemaTitle() string {
@@ -123,6 +131,15 @@ func (WebsiteConfig) JSONSchemaSummary() string {
 
 func (WebsiteConfig) JSONSchemaDescription() string {
 	return "Optional website paths and rendering settings."
+}
+
+func (PreviewConfig) JSONSchemaTitle() string { return "Website preview configuration" }
+func (PreviewConfig) JSONSchemaName() string  { return "website-preview-config" }
+func (PreviewConfig) JSONSchemaSummary() string {
+	return "Stable local preview-server defaults."
+}
+func (PreviewConfig) JSONSchemaDescription() string {
+	return "Stable bind address, build identity, and port for a local website preview server."
 }
 
 // METHODS =====================================================================
@@ -1128,6 +1145,25 @@ func (config *WebsiteConfig) Validate() error {
 		if _, err := htfiles.CleanRelativePath(strings.Trim(field.path, "/")); err != nil {
 			return fmt.Errorf("%s: %w", field.name, err)
 		}
+	}
+	if config.Preview != nil {
+		if err := config.Preview.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate verifies that the preview defaults can identify and start a server.
+func (config *PreviewConfig) Validate() error {
+	if config.Bind != "" && strings.TrimSpace(config.Bind) == "" {
+		return fmt.Errorf("site.config.preview.bind must not be blank")
+	}
+	if strings.TrimSpace(config.ID) == "" {
+		return fmt.Errorf("site.config.preview.id is required")
+	}
+	if config.Port < 1 || config.Port > 65535 {
+		return fmt.Errorf("site.config.preview.port %d is outside the valid range", config.Port)
 	}
 	return nil
 }

@@ -80,6 +80,12 @@ type BuildResult struct {
 	DurationMS int            `json:"duration_ms"`
 }
 
+// GeneratedBuildAsset is a build-owned file written after regular assets.
+type GeneratedBuildAsset struct {
+	Path  string
+	Bytes []byte
+}
+
 type synchronizedWriter struct {
 	mu sync.Mutex
 	w  io.Writer
@@ -149,6 +155,9 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 		return err
 	}
 	if err = contextCancellationCheckpoint(ctx); err != nil {
+		return err
+	}
+	if err = build.WriteGeneratedAssets(w); err != nil {
 		return err
 	}
 
@@ -497,6 +506,28 @@ func (build *Build) CopyWebsiteAsset(relPath string, w io.Writer) error {
 	return build.copyAsset(Asset{Source: WebsiteAsset, RelPath: filepath.ToSlash(relPath), SourcePath: srcPath}, w)
 }
 
+// WriteGeneratedAssets writes build-owned assets after all regular build work.
+func (build *Build) WriteGeneratedAssets(w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+	for _, asset := range build.generatedBuildAssets() {
+		var filePath string
+		if filePath, err = build.AbsolutePath(asset.Path); err != nil {
+			return err
+		}
+		if err = os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			return err
+		}
+		if err = build.WriteFile(filePath, asset.Bytes, w); err != nil {
+			return err
+		}
+		build.Status.Assets.Increment(1, asset.Path)
+		build.Status.Bytes.Increment(len(asset.Bytes), "generated_assets")
+	}
+	return nil
+}
+
 func (build *Build) copyAsset(asset Asset, w io.Writer) (err error) {
 	var srcFile io.ReadCloser
 	var found bool
@@ -544,6 +575,13 @@ func (build *Build) copyAsset(asset Asset, w io.Writer) (err error) {
 	}
 	build.Status.Bytes.Increment(int(dstFileBytesWritten), "assets")
 	return nil
+}
+
+func (build *Build) generatedBuildAssets() []GeneratedBuildAsset {
+	return []GeneratedBuildAsset{{
+		Path:  ".well-known/hypertexting/build",
+		Bytes: []byte(build.Config.ID + "\n"),
+	}}
 }
 
 // AssetCounterKey returns the normalized asset counter map key for relPath.

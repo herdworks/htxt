@@ -247,6 +247,26 @@ func TestBuildLoadContextFullBuildUsesDiscoveredPages(t *testing.T) {
 	}
 }
 
+func TestBuildGeneratedAssetsOverwriteRegularAssets(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	writeBuildSelectionFile(t, filepath.Join(fixture.root, "static", ".well-known", "hypertexting", "build"), "regular\n")
+	build := fixture.build()
+	if err := build.Execute(t.Context()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	path := filepath.Join(fixture.buildPath, ".well-known", "hypertexting", "build")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	if got, want := string(content), "test\n"; got != want {
+		t.Fatalf("generated build asset = %q, want %q", got, want)
+	}
+	if got := build.Status.Bytes.Map()["generated_assets"]; got != len("test\n") {
+		t.Fatalf("generated asset bytes = %d, want %d", got, len("test\n"))
+	}
+}
+
 func TestBuildPreviewDraftsDirectoryOverridesCanonicalPage(t *testing.T) {
 	fixture := newBuildSelectionFixture(t)
 	writeBuildSelectionFile(t, filepath.Join(fixture.root, "content", "about", "index.md"), "---\nlayout: default\ntitle: Canonical\n---\n")
