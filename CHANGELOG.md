@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.49.1 (2026-09-14)
+
 * **Added:** `Page.Prepare`, a non-writing finalization projection that applies
   an optional content type, validates the candidate, and returns its resolved
   public URL and canonical content source.
