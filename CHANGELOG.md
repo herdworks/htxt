@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Changed:** `Page.Finalize`, `ContentType.FinalizePage`, and
+  `Website.FinalizePage` now accept `overwrite`. When enabled, finalization
+  clears the canonical destination's direct files before moving the prepared
+  page bundle, while preserving nested directories and pages.
+
 ## v0.49.1 (2026-09-14)
 
 * **Added:** `Page.Prepare`, a non-writing finalization projection that applies

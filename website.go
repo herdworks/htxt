@@ -778,8 +778,8 @@ func (website *Website) SavePage(page *Page, w io.Writer) error {
 }
 
 // FinalizePage validates and moves page into the canonical content root.
-func (website *Website) FinalizePage(contenttype *ContentType, page *Page, createdAt string, w io.Writer) error {
-	return finalizePage(website, contenttype, page, createdAt, w)
+func (website *Website) FinalizePage(contenttype *ContentType, page *Page, createdAt string, overwrite bool, w io.Writer) error {
+	return finalizePage(website, contenttype, page, createdAt, overwrite, w)
 }
 
 func (website *Website) ContentTypes() (types ContentTypes, err error) {

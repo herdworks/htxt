@@ -777,8 +777,10 @@ func (page *Page) Prepare(website *Website, contenttype *ContentType, createdAt 
 }
 
 // Finalize validates and moves a page into the website's canonical content root.
-func (page *Page) Finalize(website *Website, contenttype *ContentType, createdAt string, w io.Writer) error {
-	return finalizePage(website, contenttype, page, createdAt, w)
+// When overwrite is true, it clears direct destination files before moving the
+// page bundle.
+func (page *Page) Finalize(website *Website, contenttype *ContentType, createdAt string, overwrite bool, w io.Writer) error {
+	return finalizePage(website, contenttype, page, createdAt, overwrite, w)
 }
 
 func (page *Page) validateTagNames() error {
@@ -1162,7 +1164,7 @@ func savePage(website *Website, page *Page, w io.Writer) error {
 	if err := validatePageSources(website, page.Source, destination); err != nil {
 		return err
 	}
-	if err := movePage(page, destination); err != nil {
+	if err := movePage(page, destination, false); err != nil {
 		return err
 	}
 	return writePage(website, page, w)
@@ -1171,7 +1173,7 @@ func savePage(website *Website, page *Page, w io.Writer) error {
 // movePage performs a prevalidated same-root or cross-root file transition.
 // Cross-root moves carry direct regular siblings; same-root format changes move
 // only the page-data file. It commits Source only after that data file moves.
-func movePage(page *Page, destination PageSource) (err error) {
+func movePage(page *Page, destination PageSource, overwrite bool) (err error) {
 	var includeAssets bool = true
 	if page == nil {
 		return fmt.Errorf("page.move requires page")
@@ -1187,7 +1189,11 @@ func movePage(page *Page, destination PageSource) (err error) {
 	if page.Source.Dir() == destination.Dir() {
 		includeAssets = false
 	}
-	if available, err := destination.Available(!includeAssets); !available {
+	if overwrite {
+		if err = (&Page{Source: destination}).DeleteFiles(io.Discard); err != nil {
+			return err
+		}
+	} else if available, err := destination.Available(!includeAssets); !available {
 		return fmt.Errorf("page destination unavailable: %w", err)
 	}
 
@@ -1278,7 +1284,7 @@ func writePage(website *Website, page *Page, w io.Writer) (err error) {
 // finalizePage is the sole cross-root publish transition. It builds and
 // validates a candidate before moving or writing, preserving the caller's draft
 // page on a validation or destination-conflict failure.
-func finalizePage(website *Website, contenttype *ContentType, page *Page, createdAt string, w io.Writer) (err error) {
+func finalizePage(website *Website, contenttype *ContentType, page *Page, createdAt string, overwrite bool, w io.Writer) (err error) {
 	var candidate *Page
 	var destination PageSource
 	if w == nil {
@@ -1290,7 +1296,7 @@ func finalizePage(website *Website, contenttype *ContentType, page *Page, create
 
 	// Finalization is the sole cross-root move: all prior saves remain in the
 	// page's configured source directory, while this transition targets content.
-	if err = movePage(candidate, destination); err != nil {
+	if err = movePage(candidate, destination, overwrite); err != nil {
 		return err
 	}
 	if err = writePage(website, candidate, w); err != nil {
@@ -1311,7 +1317,7 @@ func finalizePage(website *Website, contenttype *ContentType, page *Page, create
 
 // preparePage returns a candidate that retains page.Source as the
 // physical source bundle and a separate projected destination. Finalize needs
-// both values to move that bundle safely; FinalizationPreview projects the
+// both values to move that bundle safely; Prepare projects the
 // destination onto its returned copy for callers that only need the result.
 func preparePage(website *Website, contenttype *ContentType, page *Page, createdAt string) (candidate *Page, destination PageSource, err error) {
 	timestamp := time.Now().Format(time.RFC3339)

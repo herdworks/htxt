@@ -856,7 +856,7 @@ func TestPageFinalizeRejectsSourceOutsideWebsiteRoot(t *testing.T) {
 	}
 	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
 
-	err := page.Finalize(website, contenttype, "", io.Discard)
+	err := page.Finalize(website, contenttype, "", false, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "escapes website root") {
 		t.Fatalf("Page.Finalize() error = %v, want website-root escape error", err)
 	}
@@ -946,7 +946,7 @@ func TestPageFinalizeAllowsEmptyLayout(t *testing.T) {
 		Content: "finalized without an explicit layout",
 	})
 
-	if err := page.Finalize(website, nil, "", io.Discard); err != nil {
+	if err := page.Finalize(website, nil, "", false, io.Discard); err != nil {
 		t.Fatalf("Page.Finalize() error = %v, want empty layout accepted", err)
 	}
 	if page.LayoutRef != "" {
@@ -1103,7 +1103,7 @@ func TestTimestampPathResolverFallsBackToUpdatedAt(t *testing.T) {
 	}
 }
 
-func TestPageFinalizationPreviewReturnsCanonicalContentSourceWithoutWriting(t *testing.T) {
+func TestPagePrepareReturnsCanonicalContentSourceWithoutWriting(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.RootDir(), "drafts", "posts", "working", "index.md")
 	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
@@ -1123,7 +1123,7 @@ func TestPageFinalizationPreviewReturnsCanonicalContentSourceWithoutWriting(t *t
 	contenttype.Spec.Visibility = PublicVisibility
 	preview, err := page.Prepare(website, contenttype, page.CreatedAt)
 	if err != nil {
-		t.Fatalf("FinalizationPreview() error = %v", err)
+		t.Fatalf("Prepare() error = %v", err)
 	}
 	if want := filepath.Join(website.ContentDirPath(), "posts", "preview-page", "index.md"); preview.Source.URI() == nil || preview.Source.URI().Path != want {
 		t.Fatalf("preview source = %#v, want %s", preview.Source, want)
@@ -2014,7 +2014,7 @@ func TestFinalizePageMaterializesContentTypeOverlayAndClearsDraft(t *testing.T) 
 		TemplateData: httt.TemplateData{"visibility": "draft"},
 	}
 
-	if err := finalizePage(website, contenttype, page, page.CreatedAt, io.Discard); err != nil {
+	if err := finalizePage(website, contenttype, page, page.CreatedAt, false, io.Discard); err != nil {
 		t.Fatalf("finalizePage() error = %v", err)
 	}
 	if page.CreatedAt == "" {
@@ -2063,7 +2063,7 @@ func TestFinalizePageMovesDraftPayloadIntoContentAndRemovesComposerSidecar(t *te
 		Title:      "Published Draft",
 		Content:    "draft",
 	}
-	if err := finalizePage(website, contenttype, page, page.CreatedAt, io.Discard); err != nil {
+	if err := finalizePage(website, contenttype, page, page.CreatedAt, false, io.Discard); err != nil {
 		t.Fatalf("finalizePage() error = %v", err)
 	}
 	destinationDirectory := filepath.Join(website.ContentDirPath(), "posts", "published-draft")
@@ -2104,12 +2104,56 @@ func TestFinalizePageConflictPreservesComposerSidecar(t *testing.T) {
 		Content:    "draft",
 	}
 
-	err := finalizePage(website, contenttype, page, page.CreatedAt, io.Discard)
+	err := finalizePage(website, contenttype, page, page.CreatedAt, false, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "page destination unavailable") {
 		t.Fatalf("finalizePage() error = %v, want destination conflict", err)
 	}
 	if _, err := os.Stat(sidecarPath); err != nil {
 		t.Fatalf("composer sidecar missing after finalization conflict: %v", err)
+	}
+}
+
+func TestFinalizePageOverwriteReplacesDirectBundleFilesAndPreservesChildPages(t *testing.T) {
+	website, _ := testWebsite(t)
+	draftsDirectory := filepath.Join(website.RootDir(), "drafts")
+	sourcePath := filepath.Join(draftsDirectory, "posts", "draft", "index.md")
+	destinationDirectory := filepath.Join(website.ContentDirPath(), "posts", "taken")
+	destinationPath := filepath.Join(destinationDirectory, "index.md")
+	childPath := filepath.Join(destinationDirectory, "replies", "index.md")
+	writePageTestFile(t, sourcePath, "---\nlayout: default\nvisibility: draft\n---\n\nnew draft")
+	writePageTestFile(t, filepath.Join(filepath.Dir(sourcePath), "new.jpg"), "new asset")
+	writePageTestFile(t, filepath.Join(filepath.Dir(sourcePath), ".composer"), "sidecar")
+	writePageTestFile(t, destinationPath, "old published page")
+	writePageTestFile(t, filepath.Join(destinationDirectory, "old.jpg"), "old asset")
+	writePageTestFile(t, filepath.Join(destinationDirectory, ".composer"), "stale sidecar")
+	writePageTestFile(t, childPath, "child page")
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	page := &Page{
+		Source: PageSource{
+			Directory: draftsDirectory,
+			Path:      filepath.Join("posts", "draft"),
+			Filename:  filepath.Base(sourcePath),
+		},
+		Visibility: DraftVisibility,
+		Title:      "Taken",
+		Content:    "new draft",
+	}
+
+	if err := finalizePage(website, contenttype, page, page.CreatedAt, true, io.Discard); err != nil {
+		t.Fatalf("finalizePage() error = %v", err)
+	}
+	for _, path := range []string{destinationPath, filepath.Join(destinationDirectory, "new.jpg"), childPath} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("finalized path %s missing: %v", path, err)
+		}
+	}
+	for _, path := range []string{filepath.Join(destinationDirectory, "old.jpg"), filepath.Join(destinationDirectory, ".composer")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("replaced path %s remains or unexpected error = %v", path, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Dir(sourcePath)); !os.IsNotExist(err) {
+		t.Fatalf("empty source draft directory remains or unexpected error = %v", err)
 	}
 }
 
@@ -2131,7 +2175,7 @@ func TestFinalizePageWithoutContentTypeFinalizesInPlaceAndClearsDraft(t *testing
 	}
 
 	createdAt := "2026-05-20T00:00:00Z"
-	if err := finalizePage(website, nil, page, createdAt, io.Discard); err != nil {
+	if err := finalizePage(website, nil, page, createdAt, false, io.Discard); err != nil {
 		t.Fatalf("finalizePage() error = %v", err)
 	}
 	if page.CreatedAt != createdAt {
@@ -2173,7 +2217,7 @@ func TestFinalizePageRejectsEmptyContentType(t *testing.T) {
 		Title:      "Draft",
 	}
 
-	err := finalizePage(website, &ContentType{Spec: ContentTypeSpecification{Visibility: PublicVisibility}}, page, "", io.Discard)
+	err := finalizePage(website, &ContentType{Spec: ContentTypeSpecification{Visibility: PublicVisibility}}, page, "", false, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "content-type spec.format is required") {
 		t.Fatalf("finalizePage() error = %v, want invalid content type", err)
 	}

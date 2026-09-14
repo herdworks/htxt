@@ -355,8 +355,8 @@ func (contenttype *ContentType) ValidatePage(website *Website, page *Page) error
 }
 
 // FinalizePage validates and publishes page through website context.
-func (contenttype *ContentType) FinalizePage(website *Website, page *Page, createdAt string, w io.Writer) error {
-	return finalizePage(website, contenttype, page, createdAt, w)
+func (contenttype *ContentType) FinalizePage(website *Website, page *Page, createdAt string, overwrite bool, w io.Writer) error {
+	return finalizePage(website, contenttype, page, createdAt, overwrite, w)
 }
 
 func (spec ContentTypeSpecification) MIMEType() string {
