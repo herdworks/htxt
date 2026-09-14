@@ -765,6 +765,17 @@ func (page *Page) ValidateContentType(website *Website, contenttype *ContentType
 	return validatePage(website, contenttype, page)
 }
 
+// Prepare returns the page state and canonical content source that
+// Finalize would produce without moving or writing files.
+func (page *Page) Prepare(website *Website, contenttype *ContentType, createdAt string) (*Page, error) {
+	candidate, destination, err := preparePage(website, contenttype, page, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	candidate.Source = destination
+	return candidate, nil
+}
+
 // Finalize validates and moves a page into the website's canonical content root.
 func (page *Page) Finalize(website *Website, contenttype *ContentType, createdAt string, w io.Writer) error {
 	return finalizePage(website, contenttype, page, createdAt, w)
@@ -1268,77 +1279,87 @@ func writePage(website *Website, page *Page, w io.Writer) (err error) {
 // validates a candidate before moving or writing, preserving the caller's draft
 // page on a validation or destination-conflict failure.
 func finalizePage(website *Website, contenttype *ContentType, page *Page, createdAt string, w io.Writer) (err error) {
-	var candidatePage *Page = page.Clone()
+	var candidate *Page
 	var destination PageSource
-	var timestamp string = time.Now().Format(time.RFC3339)
 	if w == nil {
 		w = os.Stdout
 	}
-	if page == nil {
-		return fmt.Errorf("page.finalize requires a page object")
-	}
-	if page.Source.URI() == nil {
-		return fmt.Errorf("page.finalize requires page source state")
-	}
-	if _, exists, err := page.Source.Exists(); err != nil {
-		return err
-	} else if !exists {
-		return fmt.Errorf("page.finalize source does not exist: %s", page.Source.URI().Path)
-	}
-	if contenttype != nil {
-		if err = contenttype.Spec.Validate(); err != nil {
-			return err
-		}
-		if candidatePage, err = contenttype.OverlayPage(candidatePage); err != nil {
-			return err
-		}
-		if err = applyPageContentType(candidatePage, contenttype); err != nil {
-			return err
-		}
-	}
-
-	if createdAt == "" {
-		createdAt = timestamp
-	}
-	candidatePage.CreatedAt = createdAt
-	candidatePage.UpdatedAt = timestamp
-	if candidatePage.Visibility.IsDraft() {
-		candidatePage.Visibility = ""
-	}
-	if candidatePage.TemplateData != nil {
-		candidatePage.TemplateData.Delete("visibility")
-	}
-
-	if err = validatePage(website, contenttype, candidatePage); err != nil {
-		return err
-	}
-	if err = resolvePublicURLPath(website, contenttype, candidatePage); err != nil {
-		return err
-	}
-	destination = candidatePage.resolvePublicURLPageSource(website.ContentDirPath())
-	if err = validatePageSources(website, candidatePage.Source, destination); err != nil {
+	if candidate, destination, err = preparePage(website, contenttype, page, createdAt); err != nil {
 		return err
 	}
 
 	// Finalization is the sole cross-root move: all prior saves remain in the
 	// page's configured source directory, while this transition targets content.
-	if err = movePage(candidatePage, destination); err != nil {
+	if err = movePage(candidate, destination); err != nil {
 		return err
 	}
-	if err = writePage(website, candidatePage, w); err != nil {
+	if err = writePage(website, candidate, w); err != nil {
 		return err
 	}
 	// Composer sidecars are draft-only. movePage relocates it with the other
 	// regular page files, so delete it only after final persistence succeeds.
-	sidecarPath := filepath.Join(filepath.Dir(candidatePage.Source.URI().Path), ".composer")
+	sidecarPath := filepath.Join(filepath.Dir(candidate.Source.URI().Path), ".composer")
 	if err = os.Remove(sidecarPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	// movePage leaves a draft leaf with its sidecar in place; remove it now that
 	// finalization has removed that last draft-only file.
 	_ = os.Remove(page.Source.Dir())
-	*page = *candidatePage
+	*page = *candidate
 	return nil
+}
+
+// preparePage returns a candidate that retains page.Source as the
+// physical source bundle and a separate projected destination. Finalize needs
+// both values to move that bundle safely; FinalizationPreview projects the
+// destination onto its returned copy for callers that only need the result.
+func preparePage(website *Website, contenttype *ContentType, page *Page, createdAt string) (candidate *Page, destination PageSource, err error) {
+	timestamp := time.Now().Format(time.RFC3339)
+	if page == nil {
+		return nil, PageSource{}, fmt.Errorf("page.finalize requires a page object")
+	}
+	if page.Source.URI() == nil {
+		return nil, PageSource{}, fmt.Errorf("page.finalize requires page source state")
+	}
+	if _, exists, err := page.Source.Exists(); err != nil {
+		return nil, PageSource{}, err
+	} else if !exists {
+		return nil, PageSource{}, fmt.Errorf("page.finalize source does not exist: %s", page.Source.URI().Path)
+	}
+	candidate = page.Clone()
+	if contenttype != nil {
+		if err = contenttype.Spec.Validate(); err != nil {
+			return nil, PageSource{}, err
+		}
+		if candidate, err = contenttype.OverlayPage(candidate); err != nil {
+			return nil, PageSource{}, err
+		}
+		if err = applyPageContentType(candidate, contenttype); err != nil {
+			return nil, PageSource{}, err
+		}
+	}
+	if createdAt == "" {
+		createdAt = timestamp
+	}
+	candidate.CreatedAt = createdAt
+	candidate.UpdatedAt = timestamp
+	if candidate.Visibility.IsDraft() {
+		candidate.Visibility = ""
+	}
+	if candidate.TemplateData != nil {
+		candidate.TemplateData.Delete("visibility")
+	}
+	if err = validatePage(website, contenttype, candidate); err != nil {
+		return nil, PageSource{}, err
+	}
+	if err = resolvePublicURLPath(website, contenttype, candidate); err != nil {
+		return nil, PageSource{}, err
+	}
+	destination = candidate.resolvePublicURLPageSource(website.ContentDirPath())
+	if err = validatePageSources(website, candidate.Source, destination); err != nil {
+		return nil, PageSource{}, err
+	}
+	return candidate, destination, nil
 }
 
 // applyPageContentType applies the direct page properties supplied by a content type.

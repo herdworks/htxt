@@ -501,7 +501,8 @@ func (titleSnakePathResolver) ResolvePublicURLPath(page Page, contenttype *Conte
 
 type timestampPathResolver struct{}
 
-func (timestampPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (string, error) {
+func (timestampPathResolver) ResolvePublicURLPath(page Page, contenttype *ContentType) (_ string, err error) {
+	var ts time.Time
 	if suffix, ok, err := explicitPageURISuffix(page); err != nil || ok {
 		if err != nil {
 			return "", err
@@ -511,7 +512,12 @@ func (timestampPathResolver) ResolvePublicURLPath(page Page, contenttype *Conten
 	if page.Visibility.IsDraft() {
 		return contentTypePublicURLPath(page, contenttype, stableDraftURISuffix(page))
 	}
-	return contentTypePublicURLPath(page, contenttype, fmt.Sprintf("%v", page.LastModified().UnixMilli()))
+	if ts, err = time.Parse(time.RFC3339, page.CreatedAt); err != nil {
+		if ts, err = time.Parse(time.RFC3339, page.UpdatedAt); err != nil {
+			return "", fmt.Errorf("content-type timestamp path requires valid page.created_at or page.updated_at: %w", err)
+		}
+	}
+	return contentTypePublicURLPath(page, contenttype, fmt.Sprintf("%v", ts.UnixMilli()))
 }
 
 type uuidPathResolver struct{}

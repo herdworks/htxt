@@ -23,6 +23,7 @@ const (
 	OperationAdd     Operation = "add"
 	OperationReplace Operation = "replace"
 	OperationAppend  Operation = "append"
+	OperationSet     Operation = "set"
 
 	PagePathPrefix = "page."
 )
@@ -31,7 +32,7 @@ type Values map[string]any
 
 func (patch Patch) Validate() error {
 	switch patch.Op {
-	case OperationAdd, OperationReplace, OperationAppend:
+	case OperationAdd, OperationReplace, OperationAppend, OperationSet:
 	default:
 		return fmt.Errorf("patch op %q is not supported", patch.Op)
 	}
@@ -111,6 +112,10 @@ func Apply(data httt.TemplateData, patches Patches, values Values) error {
 		case OperationAppend:
 			if err := data.Append(path, value); err != nil {
 				return fmt.Errorf("patch %d append %s: %w", i+1, patch.Path, err)
+			}
+		case OperationSet:
+			if err := data.Set(path, value); err != nil {
+				return fmt.Errorf("patch %d set %s: %w", i+1, patch.Path, err)
 			}
 		}
 	}

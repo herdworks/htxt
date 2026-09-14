@@ -1068,6 +1068,77 @@ func TestUpdatePageWithTemplatedContentTypePathUsesUpdatedAtBeforeFinalization(t
 	}
 }
 
+func TestTimestampPathResolverPrefersCreatedAt(t *testing.T) {
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TimestampPathResolver)
+	page := Page{
+		CreatedAt: "2026-05-20T00:00:00Z",
+		UpdatedAt: "2026-05-21T00:00:00Z",
+	}
+	path, err := timestampPathResolver{}.ResolvePublicURLPath(page, contenttype)
+	if err != nil {
+		t.Fatalf("ResolvePublicURLPath() error = %v", err)
+	}
+	createdAt, err := time.Parse(time.RFC3339, page.CreatedAt)
+	if err != nil {
+		t.Fatalf("Parse(created_at) error = %v", err)
+	}
+	if want := "/posts/" + strconv.FormatInt(createdAt.UnixMilli(), 10) + "/"; path != want {
+		t.Fatalf("timestamp path = %q, want %q", path, want)
+	}
+}
+
+func TestTimestampPathResolverFallsBackToUpdatedAt(t *testing.T) {
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TimestampPathResolver)
+	page := Page{UpdatedAt: "2026-05-21T00:00:00Z"}
+	path, err := timestampPathResolver{}.ResolvePublicURLPath(page, contenttype)
+	if err != nil {
+		t.Fatalf("ResolvePublicURLPath() error = %v", err)
+	}
+	updatedAt, err := time.Parse(time.RFC3339, page.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Parse(updated_at) error = %v", err)
+	}
+	if want := "/posts/" + strconv.FormatInt(updatedAt.UnixMilli(), 10) + "/"; path != want {
+		t.Fatalf("timestamp path = %q, want %q", path, want)
+	}
+}
+
+func TestPageFinalizationPreviewReturnsCanonicalContentSourceWithoutWriting(t *testing.T) {
+	website, _ := testWebsite(t)
+	sourcePath := filepath.Join(website.RootDir(), "drafts", "posts", "working", "index.md")
+	writePageTestFile(t, sourcePath, "---\ncreated_at: 2026-05-20T00:00:00Z\nlayout: default\nvisibility: draft\n---\n\nold")
+	page := &Page{
+		Source: PageSource{
+			Directory: filepath.Join(website.RootDir(), "drafts"),
+			Path:      filepath.Join("posts", "working"),
+			Filename:  "index.md",
+		},
+		CreatedAt:  "2026-05-20T00:00:00Z",
+		LayoutRef:  "default",
+		Title:      "Preview Page",
+		Content:    "updated",
+		Visibility: DraftVisibility,
+	}
+	contenttype := testPageContentTypeWithPathResolver("markdown", "posts", TitleKabobPathResolver)
+	contenttype.Spec.Visibility = PublicVisibility
+	preview, err := page.Prepare(website, contenttype, page.CreatedAt)
+	if err != nil {
+		t.Fatalf("FinalizationPreview() error = %v", err)
+	}
+	if want := filepath.Join(website.ContentDirPath(), "posts", "preview-page", "index.md"); preview.Source.URI() == nil || preview.Source.URI().Path != want {
+		t.Fatalf("preview source = %#v, want %s", preview.Source, want)
+	}
+	if preview.PublicURL.Path != "/posts/preview-page/" {
+		t.Fatalf("preview public URL = %q, want /posts/preview-page/", preview.PublicURL.Path)
+	}
+	if page.Source.URI() == nil || page.Source.URI().Path != sourcePath {
+		t.Fatalf("preview mutated page source = %#v", page.Source)
+	}
+	if _, err := os.Stat(filepath.Join(website.ContentDirPath(), "posts", "preview-page", "index.md")); !os.IsNotExist(err) {
+		t.Fatalf("preview wrote destination or unexpected error = %v", err)
+	}
+}
+
 func TestUpdateDraftPageAppliesContentTypeVisibility(t *testing.T) {
 	website, _ := testWebsite(t)
 	sourcePath := filepath.Join(website.ContentDirPath(), "posts", "draft-fixed", "index.md")

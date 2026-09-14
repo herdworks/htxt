@@ -37,6 +37,56 @@ func TestApplyReplaceRejectsMissingTargets(t *testing.T) {
 	}
 }
 
+func TestApplySetCreatesAndOverwritesValues(t *testing.T) {
+	data := httt.TemplateData{
+		"title": "Original",
+		"metadata": httt.TemplateData{
+			"author": "Original Author",
+		},
+	}
+	patches := Patches{
+		{Op: OperationSet, Path: "page.title", ValueRef: "title"},
+		{Op: OperationSet, Path: "page.summary", ValueRef: "summary"},
+		{Op: OperationSet, Path: "page.metadata.author", ValueRef: "author"},
+		{Op: OperationSet, Path: "page.metadata.category", ValueRef: "category"},
+	}
+	values := Values{
+		"title":    "Updated",
+		"summary":  "New summary",
+		"author":   "Updated Author",
+		"category": "News",
+	}
+
+	if err := Apply(data, patches, values); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if got := data.Get("title"); got != "Updated" {
+		t.Fatalf("title = %v, want Updated", got)
+	}
+	if got := data.Get("summary"); got != "New summary" {
+		t.Fatalf("summary = %v, want New summary", got)
+	}
+	if got := data.Get("metadata.author"); got != "Updated Author" {
+		t.Fatalf("metadata.author = %v, want Updated Author", got)
+	}
+	if got := data.Get("metadata.category"); got != "News" {
+		t.Fatalf("metadata.category = %v, want News", got)
+	}
+}
+
+func TestApplySetRejectsScalarIntermediateWithoutMutation(t *testing.T) {
+	data := httt.TemplateData{"metadata": "not a map"}
+	patches := Patches{{Op: OperationSet, Path: "page.metadata.author", ValueRef: "author"}}
+	err := Apply(data, patches, Values{"author": "Ada"})
+
+	if err == nil || !strings.Contains(err.Error(), "not a map") {
+		t.Fatalf("Apply() error = %v, want intermediate non-map error", err)
+	}
+	if got := data.Get("metadata"); got != "not a map" {
+		t.Fatalf("metadata = %v, want original scalar", got)
+	}
+}
+
 func TestApplyAppendCreatesAndAppendsArrays(t *testing.T) {
 	data := httt.TemplateData{"tags": []string{"existing"}}
 	values := Values{"one": "new", "two": "created"}
@@ -89,6 +139,14 @@ func TestPatchesValidateAgainstTemplate(t *testing.T) {
 	patches = Patches{{Op: OperationAdd, Path: "page.title", ValueRef: "title"}}
 	if err := patches.Validate(httt.TemplateData{"title": "Base Title"}); err == nil || !strings.Contains(err.Error(), "key already exists") {
 		t.Fatalf("Validate() error = %v, want existing add target error", err)
+	}
+
+	patches = Patches{{Op: OperationSet, Path: "page.title", ValueRef: "title"}}
+	if err := patches.Validate(nil); err != nil {
+		t.Fatalf("Validate() error = %v, want set to create missing target", err)
+	}
+	if err := patches.Validate(httt.TemplateData{"title": "Base Title"}); err != nil {
+		t.Fatalf("Validate() error = %v, want set to overwrite target", err)
 	}
 
 	patches = Patches{{Op: OperationAppend, Path: "page.tags", ValueRef: "tag"}}

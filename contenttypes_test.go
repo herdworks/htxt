@@ -606,6 +606,35 @@ func TestContentTypeTemplateDataAddIgnoresPageDataAndReplaceRequiresSpecTemplate
 	}
 }
 
+func TestContentTypeSetPatchCreatesAndOverwritesTemplateData(t *testing.T) {
+	contenttype := ContentType{
+		Spec: ContentTypeSpecification{
+			Layout:       "default",
+			PathResolver: TimestampPathResolver,
+			Format:       "markdown",
+			Visibility:   PublicVisibility,
+			Prompts:      htprompt.Prompts{{ID: "title", Type: htprompt.TypeText}},
+			Patches:      htpatch.Patches{{Op: htpatch.OperationSet, Path: "page.title", ValueRef: "title"}},
+		},
+		State: ContentTypeState{UserData: map[string]any{"title": "Prompt Title"}},
+	}
+	page := &Page{Title: "Page Title", TemplateData: httt.TemplateData{"title": "Page Title"}}
+
+	if err := contenttype.ValidateDefinition(); err != nil {
+		t.Fatalf("ValidateDefinition() error = %v", err)
+	}
+	candidate, err := contenttype.OverlayPage(page)
+	if err != nil {
+		t.Fatalf("OverlayPage() error = %v", err)
+	}
+	if candidate.Title != "Prompt Title" {
+		t.Fatalf("candidate.Title = %q, want Prompt Title", candidate.Title)
+	}
+	if page.Title != "Page Title" {
+		t.Fatalf("page.Title = %q, want source page unchanged", page.Title)
+	}
+}
+
 func TestContentTypeOverlayPageUsesOverlayPrecedenceWithoutMutatingPage(t *testing.T) {
 	contenttype := ContentType{
 		Spec: ContentTypeSpecification{

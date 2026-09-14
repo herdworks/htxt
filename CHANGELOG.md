@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** `Page.Prepare`, a non-writing finalization projection that applies
+  an optional content type, validates the candidate, and returns its resolved
+  public URL and canonical content source.
+* **Added:** Content-type prompt patches support idempotent `set`, which
+  creates or overwrites a `page.*` template-data property.
+* **Changed:** Timestamp content-type path resolution now prefers
+  `page.created_at`, falling back to `page.updated_at` when creation time is
+  unavailable or invalid, so published pages retain stable generated paths.
+
 ## v0.49.0 (2026-09-11)
 
 * **Added:** Optional `site.config.preview` defaults for the local preview
