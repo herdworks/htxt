@@ -104,8 +104,8 @@ github.com/herdworks/htup v0.27.3 h1:QYpah96PRNSARJoCBmNJ7MluHJTJSqFRkq4C/1VDgn8
 github.com/herdworks/htup v0.27.3/go.mod h1:4df8kivNR3cGrUXYru40LLJyQwztjiejBUBCGQCOnj8=
 github.com/herdworks/htxtd v0.2.0 h1:7FJYIwEAC4RyPr7dGnaN40rkh3917hYxIKCGZa8NBLs=
 github.com/herdworks/htxtd v0.2.0/go.mod h1:uCvRbvWZH/rl9M2a5IlILpfhkbRH0DItgzcCdw/72G4=
-github.com/herdworks/hyperfeed v0.28.0 h1:1NoZJkD9H1ssTelzx7KrAaK5VjpIfB4vULo1hYqAdVI=
-github.com/herdworks/hyperfeed v0.28.0/go.mod h1:fSTg456v0aYCKlCMlWU4ZPGa+sq+xjmIbQbghvSGWW0=
+github.com/herdworks/hyperfeed v0.28.1 h1:bV07Ih2VUDvkTzaaQmVFAS/QHzLpJJCt2R6Ect1SW38=
+github.com/herdworks/hyperfeed v0.28.1/go.mod h1:fSTg456v0aYCKlCMlWU4ZPGa+sq+xjmIbQbghvSGWW0=
 github.com/herdworks/hypermedia v0.2.0 h1:4tjV2d37g0MRg9x8Td4d3kJh3lB0tRnz/XjOmccYpSQ=
 github.com/herdworks/hypermedia v0.2.0/go.mod h1:rFCDxC4dEFW/RkdVeiCfO9DMGbEGPQMd/jCHpDbvW2A=
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOlocH6Fxy8MmwDt+yVQYULKfN0RoTN8A=

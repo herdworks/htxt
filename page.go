@@ -310,6 +310,11 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	if len(page.Contributors) > 0 {
 		page.TemplateData.Set("contributors", page.Contributors.TemplateData())
 	}
+	if len(page.Links) > 0 {
+		page.TemplateData.Set("links", page.Links)
+	} else {
+		delete(page.TemplateData, "links")
+	}
 	if len(page.Tags) > 0 {
 		page.TemplateData.Set("tags", page.Tags)
 	}
@@ -606,6 +611,27 @@ func (page *Page) AtomEntryLinks(website *Website) (atomLinks []atom.Link, err e
 	}
 	if slices.Contains(WebsiteVisible, page.Visibility) {
 		atomLinks = append(atomLinks, atom.Link{Rel: "alternate", Type: "text/html", Href: atomURL.String()})
+	}
+	for _, link := range page.Links {
+		if (!strings.EqualFold(link.Rel, "comments") && !strings.EqualFold(link.Rel, "replies")) || strings.TrimSpace(link.Href) == "" {
+			continue
+		}
+		linkURL, parseErr := url.Parse(link.Href)
+		if parseErr != nil {
+			return nil, fmt.Errorf("page discussion link: %w", parseErr)
+		}
+		defaultType := "text/html"
+		if strings.EqualFold(linkURL.Scheme, "mailto") {
+			// Temporary convention for email replies until RSS feed generation.
+			defaultType = "text/x-url"
+		}
+		atomLinks = append(atomLinks, atom.Link{
+			Rel:      "replies",
+			Href:     atomURL.ResolveReference(linkURL).String(),
+			Type:     cmp.Or(link.Type, defaultType),
+			Title:    link.Title,
+			HrefLang: link.HrefLang,
+		})
 	}
 	for _, attachment := range page.Attachments {
 		if attachment == nil || attachment.Href == nil || attachment.Href.String() == "" {

@@ -42,6 +42,7 @@ type Website struct {
 	Title        string                       `json:"title" yaml:"title" jsonschema:"required"`
 	Description  string                       `json:"description" yaml:"description" jsonschema:"required"`
 	Byline       Byline                       `json:"byline,omitempty" yaml:"byline,omitempty" jsonschema:"required"`
+	Contact      *Contact                     `json:"contact,omitempty" yaml:"contact,omitempty" jsonschema:"description=Public contact metadata; a nonblank name generates contact.vcf."`
 	Favicon      WebsiteFavicon               `json:"favicon,omitempty" yaml:"favicon,omitempty"`
 	Links        []HTMLLink                   `json:"links,omitempty" yaml:"links,omitempty"`
 	Metadata     []HTMLMeta                   `json:"metadata,omitempty" yaml:"metadata,omitempty"`
@@ -258,6 +259,9 @@ func (website *Website) Validate() error {
 		return fmt.Errorf("site.byline is not valid")
 	}
 	if err := website.ValidateConfig(); err != nil {
+		return err
+	}
+	if err := website.Contact.Validate(); err != nil {
 		return err
 	}
 	if website.Sync != nil {

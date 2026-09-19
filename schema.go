@@ -13,6 +13,11 @@ import (
 var SchemaRegistry = jsonschema.Registry{
 	Attachment{},
 	Byline{},
+	Contact{},
+	ContactEmail{},
+	ContactPhone{},
+	ContactSocialProfile{},
+	ContactLink{},
 	FeedConfig{},
 	FeedData{},
 	FeedSelector{},

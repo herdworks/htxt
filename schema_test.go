@@ -8,7 +8,7 @@ import (
 )
 
 func TestSchemaRegistryIsJSONAndHasStableNames(t *testing.T) {
-	want := []string{"attachment", "byline", "feed-config", "feed-data", "feed-selector", "html-link", "html-meta", "markdown", "mention-config", "page", "provider", "provider-filter-rules", "provider-secret", "sync", "sync-rules", "theme", "website", "website-config", "website-favicon"}
+	want := []string{"attachment", "byline", "contact", "contact-email", "contact-link", "contact-phone", "contact-social-profile", "feed-config", "feed-data", "feed-selector", "html-link", "html-meta", "markdown", "mention-config", "page", "provider", "provider-filter-rules", "provider-secret", "sync", "sync-rules", "theme", "website", "website-config", "website-favicon"}
 	if got := SchemaRegistry.Names(); !slices.Equal(got, want) {
 		t.Fatalf("SchemaRegistry.Names() = %v, want %v", got, want)
 	}

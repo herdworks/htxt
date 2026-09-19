@@ -157,7 +157,7 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	if err = contextCancellationCheckpoint(ctx); err != nil {
 		return err
 	}
-	if err = build.WriteGeneratedAssets(w); err != nil {
+	if err = build.writeGeneratedAssets(ctx, w); err != nil {
 		return err
 	}
 
@@ -508,10 +508,18 @@ func (build *Build) CopyWebsiteAsset(relPath string, w io.Writer) error {
 
 // WriteGeneratedAssets writes build-owned assets after all regular build work.
 func (build *Build) WriteGeneratedAssets(w io.Writer) (err error) {
+	return build.writeGeneratedAssets(context.Background(), w)
+}
+
+func (build *Build) writeGeneratedAssets(ctx context.Context, w io.Writer) (err error) {
 	if w == nil {
 		w = os.Stdout
 	}
-	for _, asset := range build.generatedBuildAssets() {
+	assets, err := build.generatedBuildAssets(ctx)
+	if err != nil {
+		return err
+	}
+	for _, asset := range assets {
 		var filePath string
 		if filePath, err = build.AbsolutePath(asset.Path); err != nil {
 			return err
@@ -577,11 +585,14 @@ func (build *Build) copyAsset(asset Asset, w io.Writer) (err error) {
 	return nil
 }
 
-func (build *Build) generatedBuildAssets() []GeneratedBuildAsset {
-	return []GeneratedBuildAsset{{
-		Path:  ".well-known/hypertexting/build",
-		Bytes: []byte(build.Config.ID + "\n"),
-	}}
+func (build *Build) generatedBuildAssets(ctx context.Context) (assets []GeneratedBuildAsset, err error) {
+	assets = []GeneratedBuildAsset{{Path: ".well-known/hypertexting/build", Bytes: []byte(build.Config.ID + "\n")}}
+	if data, err := build.Website.contactVCard(ctx); err != nil {
+		return nil, err
+	} else if len(data) != 0 {
+		assets = append(assets, GeneratedBuildAsset{Path: contactAssetPath, Bytes: data})
+	}
+	return assets, nil
 }
 
 // AssetCounterKey returns the normalized asset counter map key for relPath.

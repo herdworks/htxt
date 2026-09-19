@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** Atom entry discussion links from `page.links` with
+  `rel="comments"` or `rel="replies"`, emitted as `rel="replies"` with
+  `text/html` as the default type, or `text/x-url` for `mailto:` URLs as a
+  temporary convention pending RSS feed generation. Explicit link types are
+  preserved.
+* **Added:** `Website.Contact` and contact schemas for top-level `contact`
+  metadata in `site.yaml` and `site.json`, available as `site.contact` in
+  templates. Supports a display name, optional image, and email, phone,
+  social-profile, and generic-link collections. Contact metadata, including
+  favicon URL syntax, is validated during website loading without filesystem
+  or network I/O.
+* **Added:** Full and incremental builds generate
+  `/.well-known/hypertexting/contact.vcf` for contacts with a nonblank name.
+  vCard 3.0 output includes a hostname-derived nickname, Apple-compatible social
+  profiles and grouped labels, and combined type/preference metadata, including
+  preferred links. Blank names omit generation; existing output is not reconciled.
+  Generated files win same-path asset collisions. Discovery remains user-controlled.
+* **Added:** Contact images can come from website-relative files or HTTP/HTTPS
+  URLs through HyperFeed's shared reader, with a 3 MiB input limit, a 10-second
+  timeout, and build cancellation. JPEG/PNG images must be at most 4096 × 4096
+  pixels, checked before full decoding. Images are loaded once during generation
+  and embedded unchanged as base64. Oversized or invalid images fail the build;
+  images are not resized.
+* **Changed:** Updated HyperFeed to v0.28.1.
+
 ## v0.49.2 (2026-09-14)
 
 * **Changed:** `Page.Finalize`, `ContentType.FinalizePage`, and
@@ -339,6 +364,7 @@ HyperTexting deployments are now hsync enabled.
   pull-based `ht-pipe`: component styles are marked with `class="component"`,
   while each layout head pulls and deduplicates them into its component style
   destination. Requires `hypertemplates-go` v0.35.0.
+  
 ## v0.37.0 (2026-07-27)
 
 Adopt next generation HT templating directives from `hypertemplates-go` v0.33.x, including new JavaScript style plugin syntax. Updated the HyperTexting CMS built-in head_start.html fragment to use new templating directives.

@@ -274,3 +274,60 @@ func TestWebsiteSelectsFeedsAndRenderersFromCompleteCatalog(t *testing.T) {
 		t.Fatalf("TagPages = %#v, want tag-bound renderer", pages)
 	}
 }
+
+func TestFeedAtomDiscussionLinks(t *testing.T) {
+	website, _ := testWebsite(t)
+	for _, rel := range []string{"comments", "replies"} {
+		t.Run(rel, func(t *testing.T) {
+			page := &Page{PublicURL: url.URL{Path: "/post/"}}
+			if err := page.Parse(httt.TemplateData{
+				"title": "Hello", "created_at": "2026-09-17T13:48:00-07:00",
+				"links": []map[string]string{
+					{"rel": rel, "href": "#comments", "title": "Discussion", "hreflang": "en"},
+					{"rel": rel, "href": "https://example.net/replies.xml", "type": "application/atom+xml"},
+					{"rel": rel, "href": "mailto:hello@example.com?subject=Hello"},
+					{"rel": rel, "href": "mailto:hello@example.com", "type": "text/plain"},
+					{"rel": rel, "href": ""},
+					{"rel": "stylesheet", "href": "/style.css"},
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			feed := Feed{Pages: Pages{page}}
+			data, err := xml.Marshal(feed.Atom(website))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded struct {
+				Entries []struct {
+					Links []struct {
+						Rel   string `xml:"rel,attr"`
+						Href  string `xml:"href,attr"`
+						Type  string `xml:"type,attr"`
+						Title string `xml:"title,attr"`
+						Lang  string `xml:"hreflang,attr"`
+					} `xml:"link"`
+				} `xml:"entry"`
+			}
+			if err := xml.Unmarshal(data, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if len(decoded.Entries) != 1 || len(decoded.Entries[0].Links) != 5 {
+				t.Fatalf("unexpected entries/links: %s", data)
+			}
+			links := decoded.Entries[0].Links
+			if link := links[1]; link.Rel != "replies" || link.Href != "https://example.com/post/#comments" || link.Type != "text/html" || link.Title != "Discussion" || link.Lang != "en" {
+				t.Fatalf("discussion link = %#v", link)
+			}
+			if link := links[2]; link.Rel != "replies" || link.Type != "application/atom+xml" || link.Href != "https://example.net/replies.xml" {
+				t.Fatalf("replies feed link = %#v", link)
+			}
+			if link := links[3]; link.Rel != "replies" || link.Type != "text/x-url" || link.Href != "mailto:hello@example.com?subject=Hello" {
+				t.Fatalf("email reply link = %#v", link)
+			}
+			if link := links[4]; link.Rel != "replies" || link.Type != "text/plain" || link.Href != "mailto:hello@example.com" {
+				t.Fatalf("explicit email reply type = %#v", link)
+			}
+		})
+	}
+}
