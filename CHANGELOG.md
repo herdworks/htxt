@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.49.3 (2026-09-19)
+
 * **Added:** Atom entry discussion links from `page.links` with
   `rel="comments"` or `rel="replies"`, emitted as `rel="replies"` with
   `text/html` as the default type, or `text/x-url` for `mailto:` URLs as a
