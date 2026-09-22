@@ -1,5 +1,13 @@
 package htxt
 
+import (
+	"fmt"
+	"net/url"
+
+	"github.com/herdworks/hyperfeed"
+	"github.com/herdworks/hyperfeed/href"
+)
+
 type HTMLLink struct {
 	As             string `json:"as,omitempty" yaml:"as,omitempty"`
 	Blocking       string `json:"blocking,omitempty" yaml:"blocking,omitempty"`
@@ -28,6 +36,22 @@ func (HTMLLink) JSONSchemaSummary() string { return "An HTML link element." }
 
 func (HTMLLink) JSONSchemaDescription() string {
 	return "An HTML link element represented as source data."
+}
+
+func (link HTMLLink) toHyperFeedLink(base *url.URL) (*hyperfeed.Link, error) {
+	if link.Href == "" {
+		return nil, nil
+	}
+	linkURL, err := url.Parse(link.Href)
+	if err != nil {
+		return nil, fmt.Errorf("HTML link: %w", err)
+	}
+	resolvedURL := base.ResolveReference(linkURL)
+	resolvedHref, err := href.Parse(resolvedURL)
+	if err != nil {
+		return nil, fmt.Errorf("HTML link URL: %w", err)
+	}
+	return &hyperfeed.Link{Href: resolvedHref, Rel: link.Rel, Mimetype: link.Type, HrefLang: link.HrefLang, Title: link.Title, Origin: "metadata"}, nil
 }
 
 type HTMLMeta struct {

@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/herdworks/httt"
+	"github.com/herdworks/hyperfeed"
+	"github.com/herdworks/hyperfeed/href"
 )
 
 // Page
@@ -67,4 +69,27 @@ func (bylines Bylines) TemplateData() (data []map[string]any) {
 		data = append(data, byline.TemplateData())
 	}
 	return data
+}
+
+func (byline *Byline) toHyperFeedByline(website *Website, role string, order int) (hyperfeed.Byline, error) {
+	if byline == nil {
+		return hyperfeed.Byline{}, nil
+	}
+	personURL, err := website.ResolveHref(byline.Href)
+	if err != nil {
+		return hyperfeed.Byline{}, err
+	}
+	personHref, err := href.Parse(personURL)
+	if err != nil {
+		return hyperfeed.Byline{}, err
+	}
+	faviconURL, err := website.ResolveHref(byline.Favicon)
+	if err != nil {
+		return hyperfeed.Byline{}, err
+	}
+	faviconHref, err := href.Parse(faviconURL)
+	if err != nil {
+		return hyperfeed.Byline{}, err
+	}
+	return hyperfeed.Byline{Href: personHref, Name: byline.Name, Email: byline.Email, Favicon: faviconHref, Role: role, Order: order}, nil
 }

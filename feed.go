@@ -2,21 +2,17 @@ package htxt
 
 import (
 	"cmp"
-	"encoding/xml"
 	"fmt"
-	"io"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/herdworks/hsync"
 	"github.com/herdworks/httt"
-	"github.com/herdworks/hyperfeed/atom"
+	"github.com/herdworks/hyperfeed"
+	"github.com/herdworks/hyperfeed/href"
 )
 
 // FeedConfig is declarative configuration for site.feeds
@@ -266,76 +262,58 @@ func (feeds Feeds) Feed(kind FeedKind, id string) (Feed, bool) {
 	return feed, ok
 }
 
-func (feed Feed) Atom(website *Website) *atom.Atom {
-	result := &atom.Atom{
-		ID: feed.URL.String(), Title: feed.Metadata.Title, Subtitle: feed.Metadata.Description,
-		Links:   []atom.Link{{Href: feed.URL.String(), Rel: "self", Type: "application/atom+xml"}},
-		Updated: atom.TimeStamp(feed.Pages.LastModified().Format(time.RFC3339)),
+func (feed Feed) toHyperFeedFeed(website *Website) (*hyperfeed.Feed, error) {
+	if website == nil {
+		return nil, fmt.Errorf("feed generation requires a website")
 	}
-	if feed.Metadata.Author != "" {
-		favicon := feed.Metadata.Favicon
-		if resolved, err := website.ResolveHref(favicon); err == nil {
-			favicon = resolved.String()
-		}
-		result.Authors = []*atom.Author{{Name: feed.Metadata.Author, Email: feed.Metadata.Email, Favicon: favicon}}
+	feedURL, err := href.Parse(&feed.URL)
+	if err != nil {
+		return nil, fmt.Errorf("feed URL: %w", err)
+	}
+	result := &hyperfeed.Feed{
+		URL:         feedURL,
+		Title:       feed.Metadata.Title,
+		Description: feed.Metadata.Description,
+		ModifiedAt:  feed.Pages.LastModified(),
+		Links: []*hyperfeed.Link{{
+			Href:     feedURL,
+			Rel:      "self",
+			Mimetype: "application/atom+xml",
+			Origin:   "metadata",
+		}},
 	}
 	if feed.HTMLURL.String() != "" {
-		result.Links = append(result.Links, atom.Link{Href: feed.HTMLURL.String(), Rel: "alternate", Type: "text/html"})
+		htmlURL, err := href.Parse(&feed.HTMLURL)
+		if err != nil {
+			return nil, fmt.Errorf("feed HTML URL: %w", err)
+		}
+		result.HTMLURL = htmlURL
+		result.Links = append(result.Links, &hyperfeed.Link{Href: htmlURL, Rel: "alternate", Mimetype: "text/html", Origin: "metadata"})
+	}
+	if feed.Metadata.Author != "" {
+		byline, err := feed.Metadata.toHyperFeedByline(website)
+		if err != nil {
+			return nil, fmt.Errorf("feed byline: %w", err)
+		}
+		result.Bylines = []hyperfeed.Byline{byline}
 	}
 	for _, page := range feed.Pages {
-		result.Entries = append(result.Entries, page.AtomEntry(website))
-	}
-	return result
-}
-
-func (feed Feed) WriteAtom(build *Build, w io.Writer) error {
-	if w == nil {
-		w = os.Stdout
-	}
-	atomPath, err := build.AbsolutePath(strings.TrimPrefix(feed.URL.Path, "/"))
-	if err != nil {
-		return err
-	}
-	bytes, err := xml.MarshalIndent(feed.Atom(build.Website), "", "\t")
-	if err != nil {
-		return err
-	}
-	if err = os.MkdirAll(filepath.Dir(atomPath), 0755); err != nil {
-		return err
-	}
-	if err = build.WriteFile(atomPath, bytes, w); err != nil {
-		return err
-	}
-	build.Status.Bytes.Increment(len(bytes), "feeds")
-	build.Status.Feeds.Increment(1, "written")
-	return nil
-}
-
-func atomPersons(website *Website, bylines []*Byline) ([]*atom.Author, error) {
-	persons := make([]*atom.Author, 0, len(bylines))
-	for _, byline := range bylines {
-		person, err := atomPerson(website, byline)
+		item, err := page.toHyperFeedItem(website)
 		if err != nil {
 			return nil, err
 		}
-		persons = append(persons, person)
+		result.Items = append(result.Items, item)
 	}
-	return persons, nil
+	return result, nil
 }
 
-func atomPerson(website *Website, byline *Byline) (*atom.Author, error) {
-	if byline == nil {
-		return nil, nil
-	}
-	uri, err := website.ResolveHref(byline.Href)
+func (metadata FeedMeta) toHyperFeedByline(website *Website) (hyperfeed.Byline, error) {
+	byline, err := (&Byline{Name: metadata.Author, Email: metadata.Email, Favicon: metadata.Favicon}).toHyperFeedByline(website, "author", 1)
 	if err != nil {
-		return nil, err
+		return hyperfeed.Byline{}, err
 	}
-	favicon, err := website.ResolveHref(byline.Favicon)
-	if err != nil {
-		return nil, err
-	}
-	return &atom.Author{Name: byline.Name, URI: uri.String(), Favicon: favicon.String(), Email: byline.Email}, nil
+	byline.Href = nil // FeedMeta has no author URL; retain the existing Atom feed author shape.
+	return byline, nil
 }
 
 func (website *Website) HydrateFeeds() error {

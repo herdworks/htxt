@@ -19,7 +19,8 @@ import (
 
 	"github.com/herdworks/httt"
 	htfiles "github.com/herdworks/httt/files"
-	"github.com/herdworks/hyperfeed/atom"
+	"github.com/herdworks/hyperfeed"
+	"github.com/herdworks/hyperfeed/href"
 )
 
 // Page
@@ -256,6 +257,92 @@ func (page *Page) CanonicalURL(website *Website) (*url.URL, error) {
 	return website.URL().ResolveReference(&page.PublicURL), nil
 }
 
+func (page *Page) toHyperFeedItem(website *Website) (*hyperfeed.Item, error) {
+	canonicalURL, err := page.CanonicalURL(website)
+	if err != nil {
+		return nil, err
+	}
+	itemURL, err := href.Parse(canonicalURL)
+	if err != nil {
+		return nil, fmt.Errorf("page canonical URL: %w", err)
+	}
+	publishedAt, err := parseRFC3339Time(page.publishedAt())
+	if err != nil {
+		return nil, fmt.Errorf("page published timestamp: %w", err)
+	}
+	modifiedAt, err := parseRFC3339Time(page.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("page updated timestamp: %w", err)
+	}
+	result := &hyperfeed.Item{
+		GUID:        canonicalURL.String(),
+		URL:         itemURL,
+		Title:       page.Title,
+		PublishedAt: publishedAt,
+		ModifiedAt:  modifiedAt,
+		Summary:     page.feedSummary(),
+		Content:     page.Content,
+	}
+	if slices.Contains(WebsiteVisible, page.Visibility) {
+		result.Links = append(result.Links, &hyperfeed.Link{Href: itemURL, Rel: "alternate", Mimetype: "text/html", Origin: "metadata"})
+	}
+	for _, link := range page.Links {
+		if !strings.EqualFold(link.Rel, "comments") && !strings.EqualFold(link.Rel, "replies") {
+			continue
+		}
+		hyperfeedLink, err := link.toHyperFeedLink(canonicalURL)
+		if err != nil {
+			return nil, fmt.Errorf("page discussion link: %w", err)
+		}
+		if hyperfeedLink == nil {
+			continue
+		}
+		hyperfeedLink.Rel = "replies"
+		if hyperfeedLink.Mimetype == "" {
+			hyperfeedLink.Mimetype = "text/html"
+			if strings.EqualFold(hyperfeedLink.Href.URL().Scheme, "mailto") {
+				hyperfeedLink.Mimetype = "text/x-url"
+			}
+		}
+		result.Links = append(result.Links, hyperfeedLink)
+	}
+	for _, attachment := range page.Attachments {
+		link, err := attachment.toHyperFeedLink(canonicalURL)
+		if err != nil {
+			return nil, fmt.Errorf("page link attachment: %w", err)
+		}
+		if link != nil {
+			result.Links = append(result.Links, link)
+		}
+		enclosure, err := attachment.toHyperFeedAttachment(page.Source, canonicalURL)
+		if err != nil {
+			return nil, fmt.Errorf("page enclosure attachment: %w", err)
+		}
+		if enclosure != nil {
+			result.Attachments = append(result.Attachments, *enclosure)
+		}
+	}
+	byline := page.Byline
+	if byline == nil {
+		byline = &website.Byline
+	}
+	if byline != nil {
+		value, err := byline.toHyperFeedByline(website, "author", 1)
+		if err != nil {
+			return nil, fmt.Errorf("page byline: %w", err)
+		}
+		result.Bylines = append(result.Bylines, value)
+	}
+	for index, contributor := range page.Contributors {
+		value, err := contributor.toHyperFeedByline(website, "contributor", index+2)
+		if err != nil {
+			return nil, fmt.Errorf("page contributor: %w", err)
+		}
+		result.Bylines = append(result.Bylines, value)
+	}
+	return result, nil
+}
+
 // Page.ApplyComputedProperties()
 //
 // Applies computed properties to the page template data.
@@ -379,6 +466,26 @@ func (page *Page) publishedAt() string {
 		return page.UpdatedAt
 	}
 	return page.CreatedAt
+}
+
+func (page *Page) feedSummary() string {
+	if page.Summary != "" {
+		return page.Summary
+	}
+	if page.Content != "" {
+		return page.Content
+	}
+	if links := page.Attachments.FilteredBy(AttachmentKindLink); len(links) > 0 {
+		description, ok := links[0].Data.Get("hypergraph.description").(string)
+		if ok && strings.TrimSpace(description) != "" {
+			return description
+		}
+	}
+	publishedAt := page.publishedAt()
+	if timestamp, err := time.Parse(time.RFC3339, publishedAt); err == nil {
+		return timestamp.Format("Monday, January 2, 2006")
+	}
+	return publishedAt
 }
 
 func (pages Pages) Add(incoming ...*Page) Pages {
@@ -573,85 +680,6 @@ func (page *Page) AssetNames() (names []string) {
 	return names
 }
 
-func (page Page) AtomEntry(website *Website) (entry *atom.Entry) {
-	var atomLinks []atom.Link
-	var atomIDURL *url.URL
-	var atomAuthor *atom.Author
-	var atomContributors []*atom.Author
-	var err error
-	if atomLinks, err = page.AtomEntryLinks(website); err != nil {
-		return nil
-	}
-	if atomIDURL, err = page.CanonicalURL(website); err != nil {
-		return nil
-	}
-	if atomAuthor, err = page.AtomEntryAuthor(website); err != nil {
-		return nil
-	}
-	if atomContributors, err = page.AtomEntryContributors(website); err != nil {
-		return nil
-	}
-	return &atom.Entry{
-		Title:        page.AtomEntryTitle(),
-		ID:           atomIDURL.String(),
-		Links:        atomLinks,
-		Published:    atom.TimeStamp(page.publishedAt()),
-		Updated:      atom.TimeStamp(page.UpdatedAt),
-		Authors:      []*atom.Author{atomAuthor},
-		Contributors: atomContributors,
-		Summary:      page.AtomSummary(),
-		Content:      page.AtomContent(),
-	}
-}
-
-func (page *Page) AtomEntryLinks(website *Website) (atomLinks []atom.Link, err error) {
-	var atomURL *url.URL
-	if atomURL, err = page.CanonicalURL(website); err != nil {
-		return nil, err
-	}
-	if slices.Contains(WebsiteVisible, page.Visibility) {
-		atomLinks = append(atomLinks, atom.Link{Rel: "alternate", Type: "text/html", Href: atomURL.String()})
-	}
-	for _, link := range page.Links {
-		if (!strings.EqualFold(link.Rel, "comments") && !strings.EqualFold(link.Rel, "replies")) || strings.TrimSpace(link.Href) == "" {
-			continue
-		}
-		linkURL, parseErr := url.Parse(link.Href)
-		if parseErr != nil {
-			return nil, fmt.Errorf("page discussion link: %w", parseErr)
-		}
-		defaultType := "text/html"
-		if strings.EqualFold(linkURL.Scheme, "mailto") {
-			// Temporary convention for email replies until RSS feed generation.
-			defaultType = "text/x-url"
-		}
-		atomLinks = append(atomLinks, atom.Link{
-			Rel:      "replies",
-			Href:     atomURL.ResolveReference(linkURL).String(),
-			Type:     cmp.Or(link.Type, defaultType),
-			Title:    link.Title,
-			HrefLang: link.HrefLang,
-		})
-	}
-	for _, attachment := range page.Attachments {
-		if attachment == nil || attachment.Href == nil || attachment.Href.String() == "" {
-			continue
-		}
-		attachmentURL := atomURL.ResolveReference(&attachment.Href.URL)
-		switch {
-		case attachment.IsLink():
-			atomLinks = append(atomLinks, atom.Link{Rel: "related", Type: "text/html", Href: attachmentURL.String(), Title: attachment.Title()})
-		case attachment.IsEnclosure():
-			link := atom.Link{Rel: "enclosure", Href: attachmentURL.String(), Type: attachment.AtomMIMEType(attachmentURL), Title: attachment.Title()}
-			if length := page.AtomAttachmentLength(attachment); length > 0 {
-				link.Length = length
-			}
-			atomLinks = append(atomLinks, link)
-		}
-	}
-	return atomLinks, nil
-}
-
 func (Page) JSONSchemaTitle() string {
 	return "HyperTexting page"
 }
@@ -660,73 +688,6 @@ func (Page) JSONSchemaSummary() string { return "Page source data file." }
 
 func (Page) JSONSchemaDescription() string {
 	return "A page source file may use Markdown, YAML, or JSON. For Markdown files, object properties form YAML front matter and the Markdown body is the 'content' field."
-}
-
-func (page *Page) AtomAttachmentLength(attachment *Attachment) uint {
-	uri := page.Source.URI()
-	if uri == nil || attachment == nil || attachment.Href == nil {
-		return 0
-	}
-	ref := &attachment.Href.URL
-	if ref.IsAbs() || ref.Path == "" || strings.HasPrefix(ref.Path, "/") {
-		return 0
-	}
-	pageDir := filepath.Dir(uri.Path)
-	filePath := filepath.Clean(filepath.Join(pageDir, filepath.FromSlash(ref.Path)))
-	relPath, err := filepath.Rel(pageDir, filePath)
-	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) || filepath.IsAbs(relPath) {
-		return 0
-	}
-	info, err := os.Stat(filePath)
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-		return 0
-	}
-	return uint(info.Size())
-}
-
-func (page *Page) AtomEntryAuthor(website *Website) (person *atom.Author, err error) {
-	if page.Byline == nil {
-		page.Byline = &website.Byline
-	}
-	return atomPerson(website, page.Byline)
-}
-
-func (page *Page) AtomEntryContributors(website *Website) (contributors []*atom.Author, err error) {
-	return atomPersons(website, page.Contributors)
-}
-
-func (page *Page) AtomEntryTitle() (title string) {
-	if len(page.Title) > 0 {
-		return page.Title
-	}
-	return ""
-}
-
-func (page *Page) AtomSummary() (summary atom.Text) {
-	if len(page.Summary) > 0 {
-		return atom.Text{Type: "html", Body: page.Summary}
-	}
-	if len(page.Content) > 0 {
-		return atom.Text{Type: "html", Body: page.Content}
-	}
-	if links := page.Attachments.FilteredBy(AttachmentKindLink); len(links) > 0 {
-		description, ok := links[0].Data.Get("hypergraph.description").(string)
-		if ok && len(strings.TrimSpace(description)) > 0 {
-			return atom.Text{Type: "html", Body: description}
-		}
-	}
-	publishedAt := page.publishedAt()
-	ts, err := time.Parse(time.RFC3339, publishedAt)
-	if err != nil {
-		return atom.Text{Type: "html", Body: publishedAt}
-	}
-	return atom.Text{Type: "html", Body: ts.Format("Monday, January 2, 2006")}
-}
-func (page *Page) AtomContent() (content atom.Text) {
-	if len(page.Content) > 0 {
-		return atom.Text{Type: "html", Body: page.Content}
-	}
-	return atom.Text{Type: "html", Body: ""}
 }
 
 func (page *Page) MarshalYAML() (any, error) {

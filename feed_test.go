@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/herdworks/httt"
+	"github.com/herdworks/hyperfeed/generator"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,11 +40,15 @@ func TestFeedAtomIncludesResolvedMetadata(t *testing.T) {
 		Metadata: FeedMeta{Title: "Blog", Description: "Recent writing", Author: "Feed Author", Email: "author@example.com", Favicon: "/feed-icon.png"},
 		URL:      url.URL{Scheme: "https", Host: "example.com", Path: "/feeds/blog.xml"},
 	}
-	bytes, err := xml.Marshal(feed.Atom(website))
+	model, err := feed.toHyperFeedFeed(website)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<title>Blog</title>", "<subtitle>Recent writing</subtitle>", "<author><name>Feed Author</name><hypergraph:favicon>https://example.com/feed-icon.png</hypergraph:favicon><email>author@example.com</email></author>"} {
+	bytes, err := generator.Atom(model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<title>Blog</title>", "<subtitle>Recent writing</subtitle>", "<name>Feed Author</name>", "<hypergraph:favicon>https://example.com/feed-icon.png</hypergraph:favicon>", "<email>author@example.com</email>"} {
 		if !strings.Contains(string(bytes), want) {
 			t.Errorf("Atom output missing %q:\n%s", want, bytes)
 		}
@@ -202,8 +207,11 @@ func TestTagFeedUsesTagPageAsAtomAlternate(t *testing.T) {
 	website := &Website{BaseURL: "https://example.com/", Config: WebsiteConfig{FeedPath: "/feeds", TagPath: "/tags"}}
 	feed := website.Feed(TagFeed, "news", FeedConfig{})
 	feed.HTMLURL = website.tagPageURL("news")
-	atom := feed.Atom(website)
-	if got, want := atom.Links[1].Href, "https://example.com/tags/news/"; got != want {
+	model, err := feed.toHyperFeedFeed(website)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := model.Links[1].Href.String(), "https://example.com/tags/news/"; got != want {
 		t.Fatalf("tag alternate = %q, want %q", got, want)
 	}
 }
@@ -293,8 +301,13 @@ func TestFeedAtomDiscussionLinks(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			feed := Feed{Pages: Pages{page}}
-			data, err := xml.Marshal(feed.Atom(website))
+			feed := website.Feed(UserFeed, "updates", FeedConfig{})
+			feed.Pages = Pages{page}
+			model, err := feed.toHyperFeedFeed(website)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := generator.Atom(model)
 			if err != nil {
 				t.Fatal(err)
 			}

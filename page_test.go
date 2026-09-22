@@ -447,17 +447,17 @@ func TestPageAtomEntryUsesCanonicalURLForIDAndAlternateLink(t *testing.T) {
 		Redirect:  "https://elsewhere.example/post/",
 	}
 
-	entry := page.AtomEntry(website)
-	if entry == nil {
-		t.Fatal("AtomEntry() returned nil")
+	item, err := page.toHyperFeedItem(website)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got, want := entry.ID, "https://example.com/about/"; got != want {
-		t.Fatalf("entry ID = %q, want %q", got, want)
+	if got, want := item.GUID, "https://example.com/about/"; got != want {
+		t.Fatalf("item GUID = %q, want %q", got, want)
 	}
 
 	links := map[string]string{}
-	for _, link := range entry.Links {
-		links[link.Rel] = link.Href
+	for _, link := range item.Links {
+		links[link.Rel] = link.Href.String()
 	}
 	if got, want := links["alternate"], "https://example.com/about/"; got != want {
 		t.Fatalf("alternate link = %q, want %q", got, want)
@@ -489,33 +489,36 @@ func TestPageAtomEntryLinksRepresentAttachments(t *testing.T) {
 		},
 	}
 
-	entry := page.AtomEntry(website)
-	if entry == nil {
-		t.Fatal("AtomEntry() returned nil")
+	item, err := page.toHyperFeedItem(website)
+	if err != nil {
+		t.Fatal(err)
 	}
 	related := []string{}
 	enclosures := map[string]struct {
 		mimetype string
-		length   uint
+		length   int64
 	}{}
-	for _, link := range entry.Links {
+	for _, link := range item.Links {
 		switch link.Rel {
 		case "alternate":
-			if got, want := link.Href, "https://example.com/s/123/"; got != want {
+			if got, want := link.Href.String(), "https://example.com/s/123/"; got != want {
 				t.Fatalf("alternate link = %q, want %q", got, want)
 			}
 		case "via":
 			t.Fatalf("unexpected via link: %#v", link)
 		case "related":
-			related = append(related, link.Href)
-			if link.Href == "https://example.org/article" && link.Title != "Example Article" {
+			related = append(related, link.Href.String())
+			if link.Href.String() == "https://example.org/article" && link.Title != "Example Article" {
 				t.Fatalf("related title = %q, want Example Article", link.Title)
 			}
-		case "enclosure":
-			enclosures[link.Href] = struct {
+		}
+	}
+	for _, attachment := range item.Attachments {
+		if attachment.Enclosure {
+			enclosures[attachment.Href.String()] = struct {
 				mimetype string
-				length   uint
-			}{mimetype: link.Type, length: link.Length}
+				length   int64
+			}{mimetype: attachment.Mimetype, length: attachment.Size}
 		}
 	}
 	if got, want := strings.Join(related, ","), "https://example.org/article,https://example.net/second"; got != want {

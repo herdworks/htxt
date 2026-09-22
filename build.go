@@ -25,6 +25,7 @@ import (
 	htvariable "github.com/herdworks/httt/variable"
 	"github.com/herdworks/htup"
 	"github.com/herdworks/htxt/href"
+	"github.com/herdworks/hyperfeed/generator"
 )
 
 type Build struct {
@@ -629,11 +630,39 @@ func (build *Build) WriteFeeds(ctx context.Context, w io.Writer) (err error) {
 				if err := contextCancellationCheckpoint(taskContext); err != nil {
 					return err
 				}
-				return feed.WriteAtom(build, w)
+				return build.WriteFeed(feed, w)
 			})
 		}
 	}
 	return taskgroup.Wait()
+}
+
+func (build *Build) WriteFeed(feed Feed, w io.Writer) (err error) {
+	if w == nil {
+		w = os.Stdout
+	}
+	feedPath, err := build.AbsolutePath(strings.TrimPrefix(feed.URL.Path, "/"))
+	if err != nil {
+		return err
+	}
+	model, err := feed.toHyperFeedFeed(build.Website)
+	if err != nil {
+		return err
+	}
+	// TODO: Switch on the configured feed format when RSS generation is available.
+	feedBytes, err := generator.Atom(model)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(feedPath), 0755); err != nil {
+		return err
+	}
+	if err = build.WriteFile(feedPath, feedBytes, w); err != nil {
+		return err
+	}
+	build.Status.Bytes.Increment(len(feedBytes), "feeds")
+	build.Status.Feeds.Increment(1, "written")
+	return nil
 }
 
 func (build *Build) WritePages(ctx context.Context, w io.Writer) (err error) {

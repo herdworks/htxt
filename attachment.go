@@ -4,10 +4,15 @@ import (
 	"errors"
 	"mime"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
+	"strings"
 
 	"github.com/herdworks/httt"
-	"github.com/herdworks/htxt/href"
+	"github.com/herdworks/htxt/href" // TODO: Use github.com/herdworks/hypermedia/href when it is available.
+	"github.com/herdworks/hyperfeed"
+	hyperhref "github.com/herdworks/hyperfeed/href" // TODO: Use github.com/herdworks/hypermedia/href when it is available.
 )
 
 type Attachment struct {
@@ -130,6 +135,54 @@ func (attachment *Attachment) AtomMIMEType(u *url.URL) string {
 		return mimetype
 	}
 	return mediatype
+}
+
+// toHyperFeedLink converts link attachments into related feed metadata links.
+func (attachment *Attachment) toHyperFeedLink(base *url.URL) (*hyperfeed.Link, error) {
+	if !attachment.IsLink() || attachment.Href == nil || attachment.Href.String() == "" {
+		return nil, nil
+	}
+	attachmentURL := base.ResolveReference(&attachment.Href.URL)
+	attachmentHref, err := hyperhref.Parse(attachmentURL)
+	if err != nil {
+		return nil, err
+	}
+	return &hyperfeed.Link{Href: attachmentHref, Rel: "related", Mimetype: "text/html", Title: attachment.Title(), Origin: "metadata"}, nil
+}
+
+// toHyperFeedAttachment converts file-like attachments into feed enclosures.
+func (attachment *Attachment) toHyperFeedAttachment(source PageSource, base *url.URL) (*hyperfeed.Attachment, error) {
+	if !attachment.IsEnclosure() || attachment.Href == nil || attachment.Href.String() == "" {
+		return nil, nil
+	}
+	attachmentURL := base.ResolveReference(&attachment.Href.URL)
+	attachmentHref, err := hyperhref.Parse(attachmentURL)
+	if err != nil {
+		return nil, err
+	}
+	return &hyperfeed.Attachment{Href: attachmentHref, Mimetype: attachment.AtomMIMEType(attachmentURL), Title: attachment.Title(), Enclosure: true, Size: attachment.Size(source)}, nil
+}
+
+func (attachment *Attachment) Size(source PageSource) int64 {
+	uri := source.URI()
+	if uri == nil || attachment == nil || attachment.Href == nil {
+		return 0
+	}
+	ref := &attachment.Href.URL
+	if ref.IsAbs() || ref.Path == "" || strings.HasPrefix(ref.Path, "/") {
+		return 0
+	}
+	pageDir := filepath.Dir(uri.Path)
+	filePath := filepath.Clean(filepath.Join(pageDir, filepath.FromSlash(ref.Path)))
+	relPath, err := filepath.Rel(pageDir, filePath)
+	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(os.PathSeparator)) || filepath.IsAbs(relPath) {
+		return 0
+	}
+	info, err := os.Stat(filePath)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		return 0
+	}
+	return info.Size()
 }
 
 // ============================================================================

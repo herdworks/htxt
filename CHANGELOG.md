@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Changed:** Atom feed generation converts resolved CMS feeds into HyperFeed's
+  normalized feed, item, byline, link, and attachment types before serialization
+  through `hyperfeed/generator`. Feed selection, metadata inheritance, discussion
+  links, enclosure metadata, output paths, and build accounting are preserved.
+* **Changed:** Feed generation propagates URL, byline, and timestamp conversion
+  errors to the build. Nonempty publication and update timestamps must parse as
+  RFC 3339. Inherited page bylines are resolved without mutating the page.
+* **Changed:** Updated HyperFeed from v0.28.1 to v0.29.0.
+* **Changed:** `Page.AtomAttachmentLength(attachment)` is now 
+  `Attachment.Size(source)`, which returns local file sizes as `int64`.
+* **Removed:** `Feed.Atom`, `Feed.WriteAtom`, and the page-level
+  `AtomEntry`, `AtomEntryLinks`, `AtomEntryAuthor`, `AtomEntryContributors`,
+  `AtomEntryTitle`, `AtomSummary`, and `AtomContent` methods. Feed writing now
+  belongs to `Build.WriteFeed(feed, writer)`. 
+
 ## v0.49.3 (2026-09-19)
 
 * **Added:** Atom entry discussion links from `page.links` with

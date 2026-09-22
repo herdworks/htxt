@@ -856,8 +856,12 @@ feeds:
 	if !ok || !feed.Pages.Contains(status) {
 		t.Fatalf("status page is absent from updates feed: %#v", feed)
 	}
-	if links, err := status.AtomEntryLinks(build.Website); err != nil || len(links) != 0 {
-		t.Fatalf("status Atom links = %#v, %v; want none", links, err)
+	item, err := status.toHyperFeedItem(build.Website)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(item.Links) != 0 {
+		t.Fatalf("status feed links = %#v; want none", item.Links)
 	}
 	if err := build.Execute(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
