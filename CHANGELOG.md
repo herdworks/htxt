@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.50.0 (2026-09-22)
+
 * **Changed:** Atom feed generation converts resolved CMS feeds into HyperFeed's
   normalized feed, item, byline, link, and attachment types before serialization
   through `hyperfeed/generator`. Feed selection, metadata inheritance, discussion
