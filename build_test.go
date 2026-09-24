@@ -195,11 +195,14 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 	}
 	feed, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "feeds", "blog.xml"))
 	if err != nil {
-		t.Fatalf("ReadFile(blog Atom feed) error = %v", err)
+		t.Fatalf("ReadFile(blog RSS feed) error = %v", err)
+	}
+	if !bytes.Contains(feed, []byte(`<rss version="2.0"`)) {
+		t.Errorf("blog feed is not RSS:\n%s", feed)
 	}
 	for _, title := range []string{"Hello world", "Hello again"} {
 		if !bytes.Contains(feed, []byte("<title>"+title+"</title>")) {
-			t.Errorf("blog Atom feed is missing %q:\n%s", title, feed)
+			t.Errorf("blog RSS feed is missing %q:\n%s", title, feed)
 		}
 	}
 }

@@ -60,6 +60,24 @@ func TestAttachmentDataUnmarshalsJSONObject(t *testing.T) {
 	}
 }
 
+func TestAttachmentPublishingFieldsRoundTrip(t *testing.T) {
+	var attachment Attachment
+	if err := json.Unmarshal([]byte(`{"kind":"audio","href":"episode.mp3","poster":"poster.png","duration":61,"width":640,"height":360}`), &attachment); err != nil {
+		t.Fatal(err)
+	}
+	if attachment.Poster != "poster.png" || attachment.Duration != 61 || attachment.Width != 640 || attachment.Height != 360 {
+		t.Fatalf("attachment = %#v", attachment)
+	}
+	if got := attachment.TemplateData(); got["poster"] != "poster.png" || got["duration"] != int64(61) || got["width"] != 640 || got["height"] != 360 {
+		t.Fatalf("attachment template data = %#v", got)
+	}
+	for _, invalid := range []Attachment{{Kind: AttachmentKindAudio, Href: attachment.Href, Duration: -1}, {Kind: AttachmentKindAudio, Href: attachment.Href, Width: -1}, {Kind: AttachmentKindAudio, Href: attachment.Href, Height: -1}} {
+		if err := invalid.Validate(); err == nil {
+			t.Fatalf("Attachment.Validate accepted %#v", invalid)
+		}
+	}
+}
+
 func TestAttachmentDataRejectsJSONString(t *testing.T) {
 	var attachment Attachment
 	if err := json.Unmarshal([]byte(`{

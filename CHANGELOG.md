@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** `htxt server --host` (`HTXT_HOST`) sets the hostname used in generated
+  preview URLs independently of `--bind`, enabling previews from other devices.
+  The default remains `localhost`.
+* **Added:** `site.config.feed_format` selects one generated feed format for a
+  build. It defaults to RSS; `atom` retains Atom 1.0 output. Built-in HTML
+  alternate links now use the selected format's MIME type.
+* **Added:** Website, feed, page, and attachment publishing metadata for RSS:
+  cover URLs, feed medium, item explicitness, tag categories, and attachment
+  poster, duration, and dimensions. Relative URLs resolve into HyperFeed before
+  generation; attachment duration is expressed in seconds.
+* **Changed:** Atom generation no longer emits HyperGraph namespace extensions.
+* **Changed:** Renamed `Attachment.AtomMIMEType` to `Attachment.MIMEType` to
+  reflect its format-independent MIME selection.
+* **Changed:** Updated HyperFeed to v0.29.1.
+
 ## v0.50.0 (2026-09-22)
 
 * **Changed:** Atom feed generation converts resolved CMS feeds into HyperFeed's

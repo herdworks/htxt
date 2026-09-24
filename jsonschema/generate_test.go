@@ -189,8 +189,8 @@ func TestGenerateSupportsWebsiteAndPage(t *testing.T) {
 			}
 			for name, want := range map[string]string{
 				"github.com/herdworks/htxt.Byline":         "Attribution details for a website, page, or feed.",
-				"github.com/herdworks/htxt.FeedConfig":     "Defines Atom metadata, selectors, ordering, and an HTML alternate URL for a site feed.",
-				"github.com/herdworks/htxt.FeedMeta":       "Optional Atom feed metadata that overrides the website defaults.",
+				"github.com/herdworks/htxt.FeedConfig":     "Defines feed metadata, selectors, ordering, and an HTML alternate URL for a site feed.",
+				"github.com/herdworks/htxt.FeedMeta":       "Optional feed metadata that overrides website defaults where applicable.",
 				"github.com/herdworks/htxt.FeedSelector":   "Matches pages by path expression or tag for a site feed.",
 				"github.com/herdworks/htxt.HTMLLink":       "An HTML link element represented as source data.",
 				"github.com/herdworks/htxt.HTMLMeta":       "An HTML meta element represented as source data.",

@@ -12,7 +12,7 @@ require (
 	github.com/herdworks/httt v0.41.2
 	github.com/herdworks/htup v0.27.3
 	github.com/herdworks/htxtd v0.2.0
-	github.com/herdworks/hyperfeed v0.29.0
+	github.com/herdworks/hyperfeed v0.29.1
 )
 
 // local development dependencies (replacements)
@@ -67,7 +67,7 @@ require (
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
-	github.com/herdworks/hq v0.24.0 // indirect
+	github.com/herdworks/hq v0.24.0
 	github.com/herdworks/hypermedia v0.2.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect

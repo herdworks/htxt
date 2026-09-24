@@ -649,8 +649,15 @@ func (build *Build) WriteFeed(feed Feed, w io.Writer) (err error) {
 	if err != nil {
 		return err
 	}
-	// TODO: Switch on the configured feed format when RSS generation is available.
-	feedBytes, err := generator.Atom(model)
+	var feedBytes []byte
+	switch build.Website.Config.FeedFormat {
+	case RSSFeedFormat:
+		feedBytes, err = generator.RSS(model)
+	case AtomFeedFormat:
+		feedBytes, err = generator.Atom(model)
+	default:
+		return fmt.Errorf("unsupported feed format %q", build.Website.Config.FeedFormat)
+	}
 	if err != nil {
 		return err
 	}

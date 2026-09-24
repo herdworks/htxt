@@ -41,13 +41,14 @@ type Website struct {
 	BaseURL      string                       `json:"base_url" yaml:"base_url" jsonschema:"required,format=uri,pattern=^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]+,description=An absolute URL with a scheme and host."`
 	Title        string                       `json:"title" yaml:"title" jsonschema:"required"`
 	Description  string                       `json:"description" yaml:"description" jsonschema:"required"`
+	CoverURL     string                       `json:"cover_url,omitempty" yaml:"cover_url,omitempty" jsonschema:"format=uri-reference,description=Website artwork URL."`
 	Byline       Byline                       `json:"byline,omitempty" yaml:"byline,omitempty" jsonschema:"required"`
 	Contact      *Contact                     `json:"contact,omitempty" yaml:"contact,omitempty" jsonschema:"description=Public contact metadata; a nonblank name generates contact.vcf."`
 	Favicon      WebsiteFavicon               `json:"favicon,omitempty" yaml:"favicon,omitempty"`
 	Links        []HTMLLink                   `json:"links,omitempty" yaml:"links,omitempty"`
 	Metadata     []HTMLMeta                   `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Config       WebsiteConfig                `json:"config" yaml:"config"`
-	Feeds        FeedConfigs                  `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named Atom feed definitions."`
+	Feeds        FeedConfigs                  `json:"feeds,omitempty" yaml:"feeds,omitempty" jsonschema:"description=Named feed definitions."`
 	Sync         *hsync.SyncConfig            `json:"sync,omitempty" yaml:"sync,omitempty"`
 	Providers    htup.HostingProviders        `json:"providers,omitempty" yaml:"providers,omitempty"`
 	Environments map[string]*htup.Environment `json:"environments,omitempty" yaml:"environments,omitempty"`
@@ -104,6 +105,7 @@ type WebsiteConfig struct {
 	ThemesDirectory      string         `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
 	ThemePath            string         `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
 	FeedPath             string         `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
+	FeedFormat           FeedFormat     `json:"feed_format,omitempty" yaml:"feed_format,omitempty" jsonschema:"default=rss,description=Generated feed format: rss or atom."`
 	TagPath              string         `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
 	TagLayout            string         `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
 	StatusLayout         string         `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
@@ -257,6 +259,11 @@ func (website *Website) Validate() error {
 	}
 	if !website.Byline.Ready() {
 		return fmt.Errorf("site.byline is not valid")
+	}
+	if website.CoverURL != "" {
+		if _, err := website.ResolveHref(website.CoverURL); err != nil {
+			return fmt.Errorf("site.cover_url: %w", err)
+		}
 	}
 	if err := website.ValidateConfig(); err != nil {
 		return err
@@ -498,6 +505,9 @@ func (website *Website) ResolveConfig(overrides *WebsiteConfig) {
 		website.Config.FeedPath = "/feeds"
 	}
 	website.Config.FeedPath = "/" + strings.Trim(website.Config.FeedPath, "/")
+	if website.Config.FeedFormat == "" {
+		website.Config.FeedFormat = RSSFeedFormat
+	}
 	website.Theme.ResolveConfig()
 }
 
@@ -1004,6 +1014,8 @@ func (website *Website) configTemplateData() httt.TemplateData {
 		"themes_dir":      website.Config.ThemesDirectory,
 		"theme":           website.Config.ThemePath,
 		"feed_path":       website.Config.FeedPath,
+		"feed_format":     website.Config.FeedFormat,
+		"feed_mimetype":   website.Config.FeedFormat.MIMEType(),
 		"tag_path":        website.Config.TagPath,
 		"tag_layout":      website.Config.TagLayout,
 		"status_layout":   website.Config.StatusLayout,
@@ -1121,6 +1133,9 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 }
 
 func (config *WebsiteConfig) Validate() error {
+	if config.FeedFormat != "" && config.FeedFormat != RSSFeedFormat && config.FeedFormat != AtomFeedFormat {
+		return fmt.Errorf("site.config.feed_format must be %q or %q", RSSFeedFormat, AtomFeedFormat)
+	}
 	fields := []struct {
 		name string
 		path string

@@ -16,7 +16,7 @@ Where HyperTemplates is concerned with the lower-level building blocks of templa
 * Attachments
 * Tags
 * Feeds 2.0: declarative `site.feeds` definitions, page-local `page.feeds`
-  views, Atom output, and automatic tag feeds.
+  views, RSS output by default, optional Atom output, and automatic tag feeds.
 * Status pages: feed-only `page.visibility: status` content (including
   `feed`, `story`, `chat`, `message`, `response`, and `reply` aliases) renders
   a redirect landing page configured by `site.config.status_layout` and
@@ -25,6 +25,22 @@ Where HyperTemplates is concerned with the lower-level building blocks of templa
 * Content Types
 * Builds
 * Providers
+
+## Local network previews
+
+Use `--host` to set the hostname used in generated preview URLs independently
+of the address the server listens on:
+
+```sh
+htxt server --bind 0.0.0.0 --host blackbook.local --port 5555
+```
+
+This listens on all IPv4 interfaces and builds canonical and feed URLs using
+`http://blackbook.local:5555/`. The hostname must resolve from the devices viewing
+the preview. `--host` defaults to `localhost` and can also be set with `HTXT_HOST`;
+an explicit flag overrides the environment variable. Supply only the hostname
+or IP address, with the port supplied separately by `--port` or
+`config.preview.port`.
 
 ## hsync initialization
 

@@ -27,6 +27,9 @@ func TestBuiltinThemeUsesHTXTPack(t *testing.T) {
 	if !strings.Contains(string(data), `href='/css/chroma-palette.css?v=${ site.version, build.id }'`) {
 		t.Errorf("expected builtin chroma palette link, got:\n%s", data)
 	}
+	if !strings.Contains(string(data), `type='${ site.config.feed_mimetype }'`) {
+		t.Errorf("expected configured feed MIME type, got:\n%s", data)
+	}
 }
 
 func TestBuiltinsIncludeStatusLayout(t *testing.T) {

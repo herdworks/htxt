@@ -16,9 +16,13 @@ import (
 )
 
 type Attachment struct {
-	Kind AttachmentKind    `json:"kind,omitempty" yaml:"kind,omitempty" jsonschema:"required"`
-	Href *href.Href        `json:"href,omitempty" yaml:"href,omitempty" jsonschema:"required,type=string,format=uri-reference,description=A URI reference. It may be absolute or relative."`
-	Data httt.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
+	Kind     AttachmentKind    `json:"kind,omitempty" yaml:"kind,omitempty" jsonschema:"required"`
+	Href     *href.Href        `json:"href,omitempty" yaml:"href,omitempty" jsonschema:"required,type=string,format=uri-reference,description=A URI reference. It may be absolute or relative."`
+	Poster   string            `json:"poster,omitempty" yaml:"poster,omitempty" jsonschema:"format=uri-reference,description=Poster image URI reference."`
+	Duration int64             `json:"duration,omitempty" yaml:"duration,omitempty" jsonschema:"description=Media duration in seconds."`
+	Width    int               `json:"width,omitempty" yaml:"width,omitempty"`
+	Height   int               `json:"height,omitempty" yaml:"height,omitempty"`
+	Data     httt.TemplateData `json:"data,omitempty" yaml:"data,omitempty"`
 }
 type Attachments []*Attachment
 
@@ -77,9 +81,13 @@ func (attachment *Attachment) TemplateData() (data httt.TemplateData) {
 		href = attachment.Href.String()
 	}
 	return httt.TemplateData{
-		"kind": attachment.Kind,
-		"href": href,
-		"data": attachment.Data,
+		"kind":     attachment.Kind,
+		"href":     href,
+		"poster":   attachment.posterString(),
+		"duration": attachment.Duration,
+		"width":    attachment.Width,
+		"height":   attachment.Height,
+		"data":     attachment.Data,
 	}
 }
 
@@ -102,6 +110,12 @@ func (attachment *Attachment) Validate() (err error) {
 	if attachment.Href == nil || attachment.Href.String() == "" {
 		return errors.New(AttachmentErrorMissingHref)
 	}
+	if attachment.Duration < 0 {
+		return errors.New("attachment.duration must not be negative")
+	}
+	if attachment.Width < 0 || attachment.Height < 0 {
+		return errors.New("attachment dimensions must not be negative")
+	}
 	return nil
 }
 
@@ -115,7 +129,7 @@ func (attachments Attachments) FilteredBy(kind AttachmentKind) Attachments {
 	return filtered
 }
 
-func (attachment *Attachment) AtomMIMEType(u *url.URL) string {
+func (attachment *Attachment) MIMEType(u *url.URL) string {
 	if attachment != nil && attachment.Data != nil {
 		for _, key := range []string{"mimetype", "mime_type", "type"} {
 			if mimetype, ok := attachment.Data.Get(key).(string); ok && mimetype != "" {
@@ -160,7 +174,26 @@ func (attachment *Attachment) toHyperFeedAttachment(source PageSource, base *url
 	if err != nil {
 		return nil, err
 	}
-	return &hyperfeed.Attachment{Href: attachmentHref, Mimetype: attachment.AtomMIMEType(attachmentURL), Title: attachment.Title(), Enclosure: true, Size: attachment.Size(source)}, nil
+	result := &hyperfeed.Attachment{Href: attachmentHref, Mimetype: attachment.MIMEType(attachmentURL), Title: attachment.Title(), Enclosure: true, Size: attachment.Size(source), Duration: attachment.Duration, Width: attachment.Width, Height: attachment.Height}
+	if attachment.Poster != "" {
+		posterReference, err := url.Parse(attachment.Poster)
+		if err != nil {
+			return nil, err
+		}
+		posterURL := base.ResolveReference(posterReference)
+		result.Poster, err = hyperhref.Parse(posterURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func (attachment *Attachment) posterString() string {
+	if attachment == nil {
+		return ""
+	}
+	return attachment.Poster
 }
 
 func (attachment *Attachment) Size(source PageSource) int64 {

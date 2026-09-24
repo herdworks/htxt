@@ -9,15 +9,16 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/herdworks/hq"
 	"github.com/herdworks/hsync"
 	"github.com/herdworks/httt"
 	"github.com/herdworks/hyperfeed"
 	"github.com/herdworks/hyperfeed/href"
 )
 
-// FeedConfig is declarative configuration for site.feeds
+// FeedConfig is declarative configuration for site.feeds.
 type FeedConfig struct {
-	Metadata FeedMeta       `json:"metadata,omitempty" yaml:"metadata,omitempty" jsonschema:"description=Atom feed metadata overrides."`
+	Metadata FeedMeta       `json:"metadata,omitempty" yaml:"metadata,omitempty" jsonschema:"description=Feed metadata overrides."`
 	Include  []FeedSelector `json:"include,omitempty" yaml:"include,omitempty" jsonschema:"description=Selectors that include pages in this feed."`
 	Exclude  []FeedSelector `json:"exclude,omitempty" yaml:"exclude,omitempty" jsonschema:"description=Selectors that exclude pages from this feed."`
 	Sort     []FeedSort     `json:"sort,omitempty" yaml:"sort,omitempty" jsonschema:"description=Ordered feed entry sort rules."`
@@ -25,13 +26,15 @@ type FeedConfig struct {
 }
 type FeedConfigs map[string]FeedConfig
 
-// FeedMeta defines Atom feed identity fields.
+// FeedMeta defines feed identity and publishing metadata.
 type FeedMeta struct {
 	Title       string `json:"title,omitempty" yaml:"title,omitempty" jsonschema:"description=Atom feed title."`
 	Description string `json:"description,omitempty" yaml:"description,omitempty" jsonschema:"description=Atom feed subtitle."`
 	Author      string `json:"author,omitempty" yaml:"author,omitempty" jsonschema:"description=Atom feed author name."`
 	Email       string `json:"email,omitempty" yaml:"email,omitempty" jsonschema:"format=email,description=Atom feed author email address."`
 	Favicon     string `json:"favicon,omitempty" yaml:"favicon,omitempty" jsonschema:"format=uri-reference,description=Atom feed author favicon URL."`
+	CoverURL    string `json:"cover_url,omitempty" yaml:"cover_url,omitempty" jsonschema:"format=uri-reference,description=Feed artwork URL."`
+	Medium      string `json:"medium,omitempty" yaml:"medium,omitempty" jsonschema:"description=Podcasting 2.0 feed medium."`
 }
 
 // Feed is the resolved feed catalog containing pages and template data
@@ -43,6 +46,8 @@ type Feed struct {
 	Items    []httt.TemplateData
 	URL      url.URL
 	HTMLURL  url.URL
+	CoverURL url.URL
+	Medium   string
 	config   FeedConfig
 }
 
@@ -67,30 +72,39 @@ type FeedSelector struct {
 type FeedSort map[string]string
 
 type FeedKind string
+type FeedFormat string
 
 const (
 	UserFeed FeedKind = "user"
 	TagFeed  FeedKind = "tag"
+
+	RSSFeedFormat  FeedFormat = "rss"
+	AtomFeedFormat FeedFormat = "atom"
 )
+
+func (format FeedFormat) MIMEType() string {
+	if format == AtomFeedFormat {
+		return "application/atom+xml"
+	}
+	return "application/rss+xml"
+}
 
 func (FeedConfig) JSONSchemaTitle() string {
 	return "Website feed configuration"
 }
 func (FeedConfig) JSONSchemaName() string    { return "feed-config" }
-func (FeedConfig) JSONSchemaSummary() string { return "Defines an Atom feed in site.feeds." }
+func (FeedConfig) JSONSchemaSummary() string { return "Defines a site feed in site.feeds." }
 
 func (FeedConfig) JSONSchemaDescription() string {
-	return "Defines Atom metadata, selectors, ordering, and an HTML alternate URL for a site feed."
+	return "Defines feed metadata, selectors, ordering, and an HTML alternate URL for a site feed."
 }
 
-func (FeedMeta) JSONSchemaTitle() string {
-	return "Atom feed metadata"
-}
+func (FeedMeta) JSONSchemaTitle() string   { return "Feed metadata" }
 func (FeedMeta) JSONSchemaName() string    { return "feed-meta" }
-func (FeedMeta) JSONSchemaSummary() string { return "Atom feed identity metadata." }
+func (FeedMeta) JSONSchemaSummary() string { return "Feed identity and publishing metadata." }
 
 func (FeedMeta) JSONSchemaDescription() string {
-	return "Optional Atom feed metadata that overrides the website defaults."
+	return "Optional feed metadata that overrides website defaults where applicable."
 }
 
 func (configs FeedConfigs) Validate(website *Website) error {
@@ -112,6 +126,11 @@ func (configs FeedConfigs) Validate(website *Website) error {
 		if config.Metadata.Favicon != "" {
 			if _, err := website.ResolveHref(config.Metadata.Favicon); err != nil {
 				return fmt.Errorf("site.feeds.%s metadata.favicon: %w", id, err)
+			}
+		}
+		if config.Metadata.CoverURL != "" {
+			if _, err := website.ResolveHref(config.Metadata.CoverURL); err != nil {
+				return fmt.Errorf("site.feeds.%s metadata.cover_url: %w", id, err)
 			}
 		}
 		for _, selector := range append(append([]FeedSelector{}, config.Include...), config.Exclude...) {
@@ -278,10 +297,21 @@ func (feed Feed) toHyperFeedFeed(website *Website) (*hyperfeed.Feed, error) {
 		Links: []*hyperfeed.Link{{
 			Href:     feedURL,
 			Rel:      "self",
-			Mimetype: "application/atom+xml",
+			Mimetype: website.Config.FeedFormat.MIMEType(),
 			Origin:   "metadata",
 		}},
 	}
+	if result.Website, err = website.toHyperFeedWebsite(); err != nil {
+		return nil, fmt.Errorf("feed website: %w", err)
+	}
+	if feed.CoverURL.String() != "" {
+		coverURL, err := href.Parse(&feed.CoverURL)
+		if err != nil {
+			return nil, fmt.Errorf("feed cover URL: %w", err)
+		}
+		result.CoverURL = coverURL
+	}
+	result.Medium = feed.Medium
 	if feed.HTMLURL.String() != "" {
 		htmlURL, err := href.Parse(&feed.HTMLURL)
 		if err != nil {
@@ -303,6 +333,25 @@ func (feed Feed) toHyperFeedFeed(website *Website) (*hyperfeed.Feed, error) {
 			return nil, err
 		}
 		result.Items = append(result.Items, item)
+	}
+	return result, nil
+}
+
+func (website *Website) toHyperFeedWebsite() (result hyperfeed.Website, err error) {
+	result.Entity = hq.Entity{HTMLURL: website.URL().String()}
+	if website.CoverURL != "" {
+		coverURL, err := website.ResolveHref(website.CoverURL)
+		if err != nil {
+			return result, err
+		}
+		result.CoverURL = coverURL.String()
+	}
+	if website.Favicon.Href != "" {
+		faviconURL, err := website.ResolveHref(website.Favicon.Href)
+		if err != nil {
+			return result, err
+		}
+		result.FaviconURL = faviconURL.String()
 	}
 	return result, nil
 }
@@ -359,7 +408,11 @@ func (website *Website) Feed(kind FeedKind, id string, config FeedConfig) Feed {
 	if kind == TagFeed {
 		metadata.Title, metadata.Description = tagFeedIdentity(id)
 	}
-	return Feed{Metadata: metadata, Kind: kind, ID: id, URL: *website.URL().ResolveReference(&url.URL{Path: path}), config: config}
+	feed := Feed{Metadata: metadata, Kind: kind, ID: id, URL: *website.URL().ResolveReference(&url.URL{Path: path}), Medium: metadata.Medium, config: config}
+	if metadata.CoverURL != "" {
+		feed.CoverURL = website.feedHTMLURL(metadata.CoverURL)
+	}
+	return feed
 }
 
 func (website *Website) feedMetadata(overrides FeedMeta) FeedMeta {
@@ -369,6 +422,9 @@ func (website *Website) feedMetadata(overrides FeedMeta) FeedMeta {
 		Author:      website.Byline.Name,
 		Email:       website.Byline.Email,
 		Favicon:     website.Byline.Favicon,
+	}
+	if metadata.Email == "" && website.Contact != nil && len(website.Contact.Email) > 0 {
+		metadata.Email = website.Contact.Email[0].Address
 	}
 	if overrides.Title != "" {
 		metadata.Title = overrides.Title
@@ -384,6 +440,12 @@ func (website *Website) feedMetadata(overrides FeedMeta) FeedMeta {
 	}
 	if overrides.Favicon != "" {
 		metadata.Favicon = overrides.Favicon
+	}
+	if overrides.CoverURL != "" {
+		metadata.CoverURL = overrides.CoverURL
+	}
+	if overrides.Medium != "" {
+		metadata.Medium = overrides.Medium
 	}
 	return metadata
 }

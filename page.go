@@ -45,6 +45,8 @@ type Page struct {
 	Content      string             `json:"content,omitempty" yaml:"content,omitempty" jsonschema:"description=In Markdown files this is the Markdown body not a YAML front-matter property."`
 	Summary      string             `json:"summary,omitempty" yaml:"summary,omitempty"`
 	More         string             `json:"more,omitempty" yaml:"more,omitempty"`
+	CoverURL     string             `json:"cover_url,omitempty" yaml:"cover_url,omitempty" jsonschema:"format=uri-reference,description=Feed artwork URL for this page."`
+	Explicit     *bool              `json:"explicit,omitempty" yaml:"explicit,omitempty" jsonschema:"description=Whether this page contains explicit material."`
 	Byline       *Byline            `json:"byline,omitempty" yaml:"byline,omitempty"`
 	Contributors Bylines            `json:"contributors,omitempty" yaml:"contributors,omitempty"`
 	Attachments  Attachments        `json:"attachments,omitempty" yaml:"attachments,omitempty"`
@@ -165,6 +167,11 @@ func (page *Page) Validate() (err error) {
 	if page.Byline != nil && !page.Byline.Ready() {
 		return fmt.Errorf("page.byline invalid (%s)", uri.Path)
 	}
+	for _, attachment := range page.Attachments {
+		if err := attachment.Validate(); err != nil {
+			return fmt.Errorf("page.attachment: %w", err)
+		}
+	}
 	if err := page.validateTagNames(); err != nil {
 		return err
 	}
@@ -282,6 +289,20 @@ func (page *Page) toHyperFeedItem(website *Website) (*hyperfeed.Item, error) {
 		ModifiedAt:  modifiedAt,
 		Summary:     page.feedSummary(),
 		Content:     page.Content,
+		Explicit:    page.Explicit,
+	}
+	if page.CoverURL != "" {
+		coverURL, err := website.ResolveHref(page.CoverURL)
+		if err != nil {
+			return nil, fmt.Errorf("page cover URL: %w", err)
+		}
+		result.CoverURL, err = href.Parse(coverURL)
+		if err != nil {
+			return nil, fmt.Errorf("page cover URL: %w", err)
+		}
+	}
+	for _, tag := range page.Tags {
+		result.Categories = append(result.Categories, hyperfeed.NewCategory(tag))
 	}
 	if slices.Contains(WebsiteVisible, page.Visibility) {
 		result.Links = append(result.Links, &hyperfeed.Link{Href: itemURL, Rel: "alternate", Mimetype: "text/html", Origin: "metadata"})
@@ -303,6 +324,9 @@ func (page *Page) toHyperFeedItem(website *Website) (*hyperfeed.Item, error) {
 			if strings.EqualFold(hyperfeedLink.Href.URL().Scheme, "mailto") {
 				hyperfeedLink.Mimetype = "text/x-url"
 			}
+		}
+		if result.CommentsURL == nil {
+			result.CommentsURL = hyperfeedLink.Href
 		}
 		result.Links = append(result.Links, hyperfeedLink)
 	}
@@ -413,6 +437,12 @@ func (page *Page) ResolveTemplateData(website *Website) {
 	}
 	if len(page.Summary) > 0 {
 		page.TemplateData.Set("summary", page.Summary)
+	}
+	if page.CoverURL != "" {
+		page.TemplateData.Set("cover_url", page.CoverURL)
+	}
+	if page.Explicit != nil {
+		page.TemplateData.Set("explicit", *page.Explicit)
 	}
 	if len(page.More) > 0 {
 		page.TemplateData.Set("more", page.More)
@@ -696,7 +726,7 @@ func (page *Page) MarshalYAML() (any, error) {
 		Other httt.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
-		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
+		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "cover_url", "explicit", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
 	}, nil
 }
 

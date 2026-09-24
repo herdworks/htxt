@@ -3,12 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
-	"github.com/herdworks/clic"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/herdworks/clic"
 )
 
 func TestCLIComposesWebsiteCommands(t *testing.T) {
@@ -43,6 +44,7 @@ func TestCLIUsesHTXTEnvironmentPrefix(t *testing.T) {
 		DeploymentEnvironmentOption(),
 		DeploymentProvidersOption(),
 		ServerBindOption(),
+		ServerHostOption(),
 		ServerPortOption(),
 	} {
 		if !strings.HasPrefix(option.Meta.EnvName, "{{ .EnvPrefix }}") {

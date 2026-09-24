@@ -32,6 +32,16 @@ func TestFeedConfigMetadataUnmarshalsAndOverridesWebsiteDefaults(t *testing.T) {
 	if got, want := feed.Metadata, (FeedMeta{Title: "Site Title", Description: "Site Description", Author: "Site Author", Email: "site@example.com", Favicon: "/site-icon.png"}); got != want {
 		t.Fatalf("default metadata = %#v, want %#v", got, want)
 	}
+	website.Byline.Email = ""
+	website.Contact = &Contact{Email: []ContactEmail{{Address: "contact@example.com"}}}
+	feed = website.Feed(UserFeed, "contact", FeedConfig{})
+	if got, want := feed.Metadata.Email, "contact@example.com"; got != want {
+		t.Fatalf("contact email = %q, want %q", got, want)
+	}
+	feed = website.Feed(UserFeed, "override", FeedConfig{Metadata: FeedMeta{Email: "feed@example.com"}})
+	if got, want := feed.Metadata.Email, "feed@example.com"; got != want {
+		t.Fatalf("feed email = %q, want %q", got, want)
+	}
 }
 
 func TestFeedAtomIncludesResolvedMetadata(t *testing.T) {
@@ -48,10 +58,89 @@ func TestFeedAtomIncludesResolvedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<title>Blog</title>", "<subtitle>Recent writing</subtitle>", "<name>Feed Author</name>", "<hypergraph:favicon>https://example.com/feed-icon.png</hypergraph:favicon>", "<email>author@example.com</email>"} {
+	for _, want := range []string{"<title>Blog</title>", "<subtitle>Recent writing</subtitle>", "<name>Feed Author</name>", "<email>author@example.com</email>"} {
 		if !strings.Contains(string(bytes), want) {
 			t.Errorf("Atom output missing %q:\n%s", want, bytes)
 		}
+	}
+	if strings.Contains(string(bytes), "hypergraph:") {
+		t.Fatalf("Atom output includes a HyperGraph extension:\n%s", bytes)
+	}
+}
+
+func TestFeedRSSNormalizesPublishingMetadata(t *testing.T) {
+	explicit := true
+	website := &Website{
+		BaseURL:  "https://example.com/",
+		CoverURL: "/site-cover.png",
+		Favicon:  WebsiteFavicon{Href: "/favicon.ico"},
+		Config:   WebsiteConfig{FeedFormat: RSSFeedFormat},
+	}
+	feed := Feed{
+		Metadata: FeedMeta{Title: "Podcast", Description: "Episodes"},
+		URL:      url.URL{Scheme: "https", Host: "example.com", Path: "/feeds/podcast.xml"},
+		CoverURL: url.URL{Scheme: "https", Host: "example.com", Path: "/podcast-cover.png"},
+		Medium:   "podcast",
+		Pages: Pages{&Page{
+			PublicURL: url.URL{Path: "/episodes/one/"},
+			Title:     "One",
+			Tags:      []string{"News"},
+			CoverURL:  "/episode-cover.png",
+			Explicit:  &explicit,
+			Attachments: Attachments{&Attachment{
+				Kind: AttachmentKindAudio, Href: mustHref(t, "episode.mp3"), Poster: "/episode-poster.png", Duration: 61, Width: 640, Height: 360,
+			}},
+		}},
+	}
+	model, err := feed.toHyperFeedFeed(website)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := model.Website.CoverURL, "https://example.com/site-cover.png"; got != want {
+		t.Fatalf("website cover URL = %q, want %q", got, want)
+	}
+	if model.CoverURL == nil || model.CoverURL.String() != "https://example.com/podcast-cover.png" || model.Medium != "podcast" {
+		t.Fatalf("feed publishing metadata = %#v", model)
+	}
+	item := model.Items[0]
+	if item.CoverURL == nil || item.CoverURL.String() != "https://example.com/episode-cover.png" || item.Explicit == nil || !*item.Explicit || len(item.Categories) != 1 || item.Categories[0].Label != "News" {
+		t.Fatalf("item publishing metadata = %#v", item)
+	}
+	attachment := item.Attachments[0]
+	if attachment.Poster == nil || attachment.Poster.String() != "https://example.com/episode-poster.png" || attachment.Duration != 61 || attachment.Width != 640 || attachment.Height != 360 {
+		t.Fatalf("attachment publishing metadata = %#v", attachment)
+	}
+	bytes, err := generator.RSS(model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"xmlns:itunes=", "xmlns:media=", "<itunes:explicit>true</itunes:explicit>", "<podcast:medium>podcast</podcast:medium>", "<media:keywords>News</media:keywords>"} {
+		if !strings.Contains(string(bytes), want) {
+			t.Errorf("RSS output missing %q:\n%s", want, bytes)
+		}
+	}
+}
+
+func TestFeedFormatDefaultsToRSSAndRejectsUnknownValues(t *testing.T) {
+	website := &Website{Config: WebsiteConfig{}}
+	website.ResolveConfig(nil)
+	if website.Config.FeedFormat != RSSFeedFormat {
+		t.Fatalf("default feed format = %q, want rss", website.Config.FeedFormat)
+	}
+	if err := (&WebsiteConfig{FeedFormat: "json"}).Validate(); err == nil {
+		t.Fatal("WebsiteConfig.Validate accepted an unsupported feed format")
+	}
+	atomWebsite := &Website{BaseURL: "https://example.com/", Config: WebsiteConfig{FeedFormat: AtomFeedFormat}}
+	feed := Feed{URL: url.URL{Scheme: "https", Host: "example.com", Path: "/feeds/main.xml"}}
+	model, err := feed.toHyperFeedFeed(atomWebsite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := model.Links[0].Mimetype, "application/atom+xml"; got != want {
+		t.Fatalf("Atom self-link type = %q, want %q", got, want)
+	}
+	if bytes, err := generator.Atom(model); err != nil || !strings.Contains(string(bytes), `<feed xmlns="http://www.w3.org/2005/Atom"`) {
+		t.Fatalf("Atom generation = %q, %v", bytes, err)
 	}
 }
 
@@ -340,6 +429,16 @@ func TestFeedAtomDiscussionLinks(t *testing.T) {
 			}
 			if link := links[4]; link.Rel != "replies" || link.Type != "text/plain" || link.Href != "mailto:hello@example.com" {
 				t.Fatalf("explicit email reply type = %#v", link)
+			}
+			if got, want := model.Items[0].CommentsURL.String(), "https://example.com/post/#comments"; got != want {
+				t.Fatalf("comments URL = %q, want %q", got, want)
+			}
+			rssData, err := generator.RSS(model)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := string(rssData); !strings.Contains(got, "<comments>https://example.com/post/#comments</comments>") || strings.Contains(got, `rel="replies"`) || strings.Contains(got, `rel="alternate"`) {
+				t.Fatalf("RSS discussion output = %s", rssData)
 			}
 		})
 	}

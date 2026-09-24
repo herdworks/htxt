@@ -2,6 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/herdworks/clic"
 	"github.com/herdworks/htxt"
@@ -33,6 +37,7 @@ func ServerCommand() clic.Command {
 				BuildDataFileOption,
 				BuildLogFileOption,
 				ServerBindOption,
+				ServerHostOption,
 				ServerPortOption,
 			),
 			Validator: expectedPositionalArguments(0),
@@ -55,6 +60,20 @@ func ServerBindOption() clic.Option {
 	}
 }
 
+func ServerHostOption() clic.Option {
+	return clic.Option{
+		Meta: clic.OptionMeta{
+			EnvName:     "{{ .EnvPrefix }}HOST",
+			Description: "Hostname or IP address used in generated preview URLs (independent of bind).",
+			Default:     "localhost",
+		},
+		Spec: clic.OptionSpec{
+			Key:  "host",
+			Kind: clic.StringOption,
+		},
+	}
+}
+
 func ServerPortOption() clic.Option {
 	return clic.Option{
 		Meta: clic.OptionMeta{
@@ -70,15 +89,23 @@ func ServerPortOption() clic.Option {
 }
 
 func serverHandler(execution *clic.Execution) error {
+	server, err := serverForExecution(execution)
+	if err != nil {
+		return err
+	}
+	return server.Run(execution.Context)
+}
+
+func serverForExecution(execution *clic.Execution) (*htxt.Server, error) {
 	options := execution.Options
 	websiteURI, err := href.Parse(options["config"].StringValue())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var port int
 	if value := options["port"].StringValue(); value != "" {
 		if port, err = parseServerPort(value); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	server := &htxt.Server{
@@ -102,12 +129,34 @@ func serverHandler(execution *clic.Execution) error {
 		},
 	}
 	if err = server.ResolveConfig(); err != nil {
-		return err
+		return nil, err
+	}
+	if server.BaseURL, err = serverBaseURL(options["host"].StringValue(), server.Port); err != nil {
+		return nil, err
 	}
 	if err = server.Validate(); err != nil {
-		return err
+		return nil, err
 	}
-	return server.Run(execution.Context)
+	return server, nil
+}
+
+func serverBaseURL(host string, port int) (string, error) {
+	// Accept bracketed IPv6 literals as well as bare addresses.
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+		if net.ParseIP(host) == nil {
+			return "", fmt.Errorf("invalid preview host: %q", host)
+		}
+	}
+	if host == "" || strings.ContainsAny(host, "/?#@\\ \t\r\n") ||
+		(strings.Contains(host, ":") && net.ParseIP(host) == nil) {
+		return "", fmt.Errorf("host %q must be a hostname or IP address without a scheme, port, or path", host)
+	}
+	baseURL := "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/"
+	if _, err := url.Parse(baseURL); err != nil {
+		return "", fmt.Errorf("invalid preview host %q: %w", host, err)
+	}
+	return baseURL, nil
 }
 
 func parseServerPort(value string) (int, error) {
