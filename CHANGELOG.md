@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.50.3 (2026-09-24)
+
 * **Changed:** Renamed the serialized `Page.CoverURL` key from `cover_url` to
   `cover`. This unreleased breaking change applies to page JSON, YAML, Markdown
   front matter, template data, and the C/Swift page contracts.
