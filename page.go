@@ -45,7 +45,7 @@ type Page struct {
 	Content      string             `json:"content,omitempty" yaml:"content,omitempty" jsonschema:"description=In Markdown files this is the Markdown body not a YAML front-matter property."`
 	Summary      string             `json:"summary,omitempty" yaml:"summary,omitempty"`
 	More         string             `json:"more,omitempty" yaml:"more,omitempty"`
-	CoverURL     string             `json:"cover_url,omitempty" yaml:"cover_url,omitempty" jsonschema:"format=uri-reference,description=Feed artwork URL for this page."`
+	CoverURL     string             `json:"cover,omitempty" yaml:"cover,omitempty" jsonschema:"format=uri-reference,description=Feed artwork URL for this page."`
 	Explicit     *bool              `json:"explicit,omitempty" yaml:"explicit,omitempty" jsonschema:"description=Whether this page contains explicit material."`
 	Byline       *Byline            `json:"byline,omitempty" yaml:"byline,omitempty"`
 	Contributors Bylines            `json:"contributors,omitempty" yaml:"contributors,omitempty"`
@@ -439,7 +439,7 @@ func (page *Page) ResolveTemplateData(website *Website) {
 		page.TemplateData.Set("summary", page.Summary)
 	}
 	if page.CoverURL != "" {
-		page.TemplateData.Set("cover_url", page.CoverURL)
+		page.TemplateData.Set("cover", page.CoverURL)
 	}
 	if page.Explicit != nil {
 		page.TemplateData.Set("explicit", *page.Explicit)
@@ -726,7 +726,7 @@ func (page *Page) MarshalYAML() (any, error) {
 		Other httt.TemplateData `yaml:",inline"`
 	}{
 		Page:  page,
-		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "cover_url", "explicit", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
+		Other: page.TemplateData.Without("created_at", "updated_at", "layout", "slug", "author", "contributors", "title", "description", "summary", "cover", "explicit", "preview", "tags", "visibility", "ugly_url", "redirect", "attachments", "feeds"),
 	}, nil
 }
 

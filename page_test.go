@@ -1,6 +1,7 @@
 package htxt
 
 import (
+	"encoding/json"
 	"io"
 	"net/url"
 	"os"
@@ -418,6 +419,63 @@ func TestPageResolveTemplateDataSetsCanonicalURL(t *testing.T) {
 	page.ResolveTemplateData(website)
 	if got, want := page.TemplateData.Get("canonical_url"), "https://example.com/about/"; got != want {
 		t.Fatalf("canonical_url = %q, want %q", got, want)
+	}
+}
+
+func TestPageCoverURLSerializesAsCover(t *testing.T) {
+	page := &Page{CoverURL: "/episode-cover.png"}
+
+	for _, format := range []string{"json", "yaml", "markdown"} {
+		t.Run(format, func(t *testing.T) {
+			data, err := page.Clone().RenderData(nil, format)
+			if err != nil {
+				t.Fatalf("RenderData() error = %v", err)
+			}
+			if strings.Contains(string(data), "cover_url") {
+				t.Fatalf("serialized page contains legacy cover_url: %s", data)
+			}
+			if format != "json" && !strings.Contains(string(data), "cover: /episode-cover.png") {
+				t.Fatalf("serialized page does not contain cover: %s", data)
+			}
+		})
+	}
+
+	data, err := json.Marshal(page)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var serialized map[string]any
+	if err := json.Unmarshal(data, &serialized); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if got, want := serialized["cover"], "/episode-cover.png"; got != want {
+		t.Fatalf("JSON cover = %#v, want %q", got, want)
+	}
+	if _, exists := serialized["cover_url"]; exists {
+		t.Fatalf("JSON contains legacy cover_url: %s", data)
+	}
+	var legacyJSON Page
+	if err := json.Unmarshal([]byte(`{"cover_url":"/legacy-cover.png"}`), &legacyJSON); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if legacyJSON.CoverURL != "" {
+		t.Fatalf("legacy JSON cover_url decoded as CoverURL = %q", legacyJSON.CoverURL)
+	}
+
+	parsed := &Page{}
+	if err := parsed.Parse(httt.TemplateData{"cover": "/episode-cover.png"}); err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got, want := parsed.CoverURL, "/episode-cover.png"; got != want {
+		t.Fatalf("parsed CoverURL = %q, want %q", got, want)
+	}
+
+	legacy := &Page{}
+	if err := legacy.Parse(httt.TemplateData{"cover_url": "/legacy-cover.png"}); err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if legacy.CoverURL != "" {
+		t.Fatalf("legacy cover_url decoded as CoverURL = %q", legacy.CoverURL)
 	}
 }
 
