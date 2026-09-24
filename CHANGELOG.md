@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Changed:** `site.config.feed_format` now defaults to Atom 1.0. Set it to
+  `rss` to retain RSS 2.0 output.
+
 ## v0.50.3 (2026-09-24)
 
 * **Changed:** Renamed the serialized `Page.CoverURL` key from `cover_url` to

@@ -121,11 +121,11 @@ func TestFeedRSSNormalizesPublishingMetadata(t *testing.T) {
 	}
 }
 
-func TestFeedFormatDefaultsToRSSAndRejectsUnknownValues(t *testing.T) {
+func TestFeedFormatDefaultsToAtomAndRejectsUnknownValues(t *testing.T) {
 	website := &Website{Config: WebsiteConfig{}}
 	website.ResolveConfig(nil)
-	if website.Config.FeedFormat != RSSFeedFormat {
-		t.Fatalf("default feed format = %q, want rss", website.Config.FeedFormat)
+	if website.Config.FeedFormat != AtomFeedFormat {
+		t.Fatalf("default feed format = %q, want atom", website.Config.FeedFormat)
 	}
 	website = &Website{Config: WebsiteConfig{FeedFormat: RSSFeedFormat}}
 	website.ResolveConfig(&WebsiteConfig{FeedFormat: AtomFeedFormat})

@@ -105,7 +105,7 @@ type WebsiteConfig struct {
 	ThemesDirectory      string         `json:"themes_dir,omitempty" yaml:"themes_dir,omitempty" jsonschema:"default=themes"`
 	ThemePath            string         `json:"theme,omitempty" yaml:"theme,omitempty" jsonschema:"default=theme.json"`
 	FeedPath             string         `json:"feed_path,omitempty" yaml:"feed_path,omitempty" jsonschema:"default=/feeds"`
-	FeedFormat           FeedFormat     `json:"feed_format,omitempty" yaml:"feed_format,omitempty" jsonschema:"default=rss,description=Generated feed format: rss or atom."`
+	FeedFormat           FeedFormat     `json:"feed_format,omitempty" yaml:"feed_format,omitempty" jsonschema:"default=atom,description=Generated feed format: rss or atom."`
 	TagPath              string         `json:"tag_path,omitempty" yaml:"tag_path,omitempty" jsonschema:"default=/tags"` // path prefix for tag pages, e.g. "/tags/"
 	TagLayout            string         `json:"tag_layout,omitempty" yaml:"tag_layout,omitempty" jsonschema:"default=default"`
 	StatusLayout         string         `json:"status_layout,omitempty" yaml:"status_layout,omitempty" jsonschema:"default=builtin/status.html"`
@@ -506,7 +506,7 @@ func (website *Website) ResolveConfig(overrides *WebsiteConfig) {
 	}
 	website.Config.FeedPath = "/" + strings.Trim(website.Config.FeedPath, "/")
 	if website.Config.FeedFormat == "" {
-		website.Config.FeedFormat = RSSFeedFormat
+		website.Config.FeedFormat = AtomFeedFormat
 	}
 	website.Theme.ResolveConfig()
 }
