@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.50.2 (2026-09-24)
+
 * **Fixed:** Per-build `config.feed_format` overrides now apply when resolving a
   website configuration. Builds, deployments, and previews can select `atom`
   without changing the site's default feed format.
