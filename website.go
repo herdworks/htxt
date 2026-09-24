@@ -1083,6 +1083,9 @@ func (config *WebsiteConfig) Resolve(overrides *WebsiteConfig) {
 		if len(overrides.FeedPath) > 0 {
 			config.FeedPath = overrides.FeedPath
 		}
+		if overrides.FeedFormat != "" {
+			config.FeedFormat = overrides.FeedFormat
+		}
 		if len(overrides.StatusLayout) > 0 {
 			config.StatusLayout = overrides.StatusLayout
 		}

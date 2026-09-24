@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Fixed:** Per-build `config.feed_format` overrides now apply when resolving a
+  website configuration. Builds, deployments, and previews can select `atom`
+  without changing the site's default feed format.
+
 ## v0.50.1 (2026-09-23)
 
 * **Added:** `htxt server --host` (`HTXT_HOST`) sets the hostname used in generated

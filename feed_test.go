@@ -127,6 +127,11 @@ func TestFeedFormatDefaultsToRSSAndRejectsUnknownValues(t *testing.T) {
 	if website.Config.FeedFormat != RSSFeedFormat {
 		t.Fatalf("default feed format = %q, want rss", website.Config.FeedFormat)
 	}
+	website = &Website{Config: WebsiteConfig{FeedFormat: RSSFeedFormat}}
+	website.ResolveConfig(&WebsiteConfig{FeedFormat: AtomFeedFormat})
+	if website.Config.FeedFormat != AtomFeedFormat {
+		t.Fatalf("overridden feed format = %q, want atom", website.Config.FeedFormat)
+	}
 	if err := (&WebsiteConfig{FeedFormat: "json"}).Validate(); err == nil {
 		t.Fatal("WebsiteConfig.Validate accepted an unsupported feed format")
 	}
