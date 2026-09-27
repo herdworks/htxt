@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.50.5 (2026-09-27)
+
 * **Fixed:** Page cover URLs in generated feeds now resolve relative references
   against the page's canonical URL, matching page links and attachments.
   Root-relative and absolute cover URLs remain unchanged.
