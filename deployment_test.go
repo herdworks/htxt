@@ -2,6 +2,7 @@ package htxt
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -130,7 +131,7 @@ func TestDeploymentRejectsDraftsDirectory(t *testing.T) {
 	}
 }
 
-func TestDeploymentWritesBuildRelativeLog(t *testing.T) {
+func TestDeploymentProviderFailureWritesLifecycleResults(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	writeBuildSelectionFile(t, fixture.sitePath, `base_url: https://example.com/
 title: Test Site
@@ -151,8 +152,35 @@ providers:
 		WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
 		ID:            "deployment",
 	}}, Writer: &output}
-	if err := deployment.Execute(t.Context()); err == nil {
+	err := deployment.Execute(t.Context())
+	if err == nil {
 		t.Fatal("Execute() error = nil, want missing provider error")
+	}
+	wantOutput := filepath.Join(fixture.root, "deployments", "deployment")
+	if got := deployment.Build.Config.URI.Path; got != wantOutput {
+		t.Fatalf("deployment output = %q, want %q", got, wantOutput)
+	}
+	resultData, readErr := os.ReadFile(filepath.Join(wantOutput, htup.DeploymentInstructionsFile))
+	if readErr != nil {
+		t.Fatalf("ReadFile(%s) error = %v", htup.DeploymentInstructionsFile, readErr)
+	}
+	var result htup.DeploymentResult
+	if unmarshalErr := json.Unmarshal(resultData, &result); unmarshalErr != nil {
+		t.Fatalf("Unmarshal(%s) error = %v", htup.DeploymentInstructionsFile, unmarshalErr)
+	}
+	if result.Status != htup.DeploymentFailed || result.CompletedAt == nil || result.Error != err.Error() {
+		t.Fatalf("deployment result = %#v, want failed lifecycle for %v", result, err)
+	}
+	buildData, readErr := os.ReadFile(filepath.Join(wantOutput, htup.BuildResultFile))
+	if readErr != nil {
+		t.Fatalf("ReadFile(%s) error = %v", htup.BuildResultFile, readErr)
+	}
+	var buildResult BuildResult
+	if unmarshalErr := json.Unmarshal(buildData, &buildResult); unmarshalErr != nil {
+		t.Fatalf("Unmarshal(%s) error = %v", htup.BuildResultFile, unmarshalErr)
+	}
+	if buildResult.Status != BuildResultSucceeded {
+		t.Fatalf("build result = %#v, want succeeded", buildResult)
 	}
 	if got, want := output.String(), "No deployment target specified; using default environment \"default\"\n"; !strings.Contains(got, want) {
 		t.Fatalf("deployment output = %q, want %q", got, want)
@@ -163,6 +191,39 @@ providers:
 	}
 	if len(entries) != 1 {
 		t.Fatalf("deployment logs = %d, want 1", len(entries))
+	}
+}
+
+func TestDeploymentBuildFailureWritesFailedLifecycleResults(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	deployment := &Deployment{Config: DeploymentConfig{Build: BuildConfig{
+		WebsiteConfig: WebsiteConfig{Path: fixture.sitePath},
+		ID:            "build-failure",
+		Incremental:   true,
+		Page:          fixture.sitePath,
+	}}}
+	err := deployment.Execute(t.Context())
+	if err == nil {
+		t.Fatal("Execute() error = nil, want build failure")
+	}
+	output := filepath.Join(fixture.root, "deployments", "build-failure")
+	result, readErr := htup.LoadDeploymentResult(output)
+	if readErr != nil {
+		t.Fatalf("LoadDeploymentResult() error = %v", readErr)
+	}
+	if result.Status != htup.DeploymentFailed || result.CompletedAt == nil || result.Error != err.Error() {
+		t.Fatalf("deployment result = %#v, want failed lifecycle for %v", result, err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(output, htup.BuildResultFile))
+	if readErr != nil {
+		t.Fatalf("ReadFile(%s) error = %v", htup.BuildResultFile, readErr)
+	}
+	var buildResult BuildResult
+	if unmarshalErr := json.Unmarshal(data, &buildResult); unmarshalErr != nil {
+		t.Fatalf("Unmarshal(%s) error = %v", htup.BuildResultFile, unmarshalErr)
+	}
+	if buildResult.Status != BuildResultFailed || buildResult.Error != err.Error() {
+		t.Fatalf("build result = %#v, want failed lifecycle for %v", buildResult, err)
 	}
 }
 

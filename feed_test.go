@@ -121,6 +121,34 @@ func TestFeedRSSNormalizesPublishingMetadata(t *testing.T) {
 	}
 }
 
+func TestPageCoverURLResolvesAgainstCanonicalURL(t *testing.T) {
+	website := &Website{BaseURL: "https://example.com/"}
+	page := &Page{PublicURL: url.URL{Path: "/episodes/one/"}}
+	tests := []struct {
+		name     string
+		coverURL string
+		want     string
+	}{
+		{name: "page relative", coverURL: "cover.jpg", want: "https://example.com/episodes/one/cover.jpg"},
+		{name: "nested page relative", coverURL: "images/cover.jpg", want: "https://example.com/episodes/one/images/cover.jpg"},
+		{name: "website root relative", coverURL: "/images/cover.jpg", want: "https://example.com/images/cover.jpg"},
+		{name: "absolute", coverURL: "https://cdn.example/cover.jpg", want: "https://cdn.example/cover.jpg"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page.CoverURL = test.coverURL
+			item, err := page.toHyperFeedItem(website)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if item.CoverURL == nil || item.CoverURL.String() != test.want {
+				t.Fatalf("cover URL = %v, want %q", item.CoverURL, test.want)
+			}
+		})
+	}
+}
+
 func TestFeedFormatDefaultsToAtomAndRejectsUnknownValues(t *testing.T) {
 	website := &Website{Config: WebsiteConfig{}}
 	website.ResolveConfig(nil)

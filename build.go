@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -51,7 +52,6 @@ type BuildConfig struct {
 	Page        string   `json:"page,omitempty" yaml:"page,omitempty"`
 	Preview     bool     `json:"preview,omitempty" yaml:"preview,omitempty"`
 	BaseURL     string   `json:"base_url,omitempty" yaml:"base_url,omitempty"`
-	DataFile    string   `json:"data_file,omitempty" yaml:"data_file,omitempty"`
 	LogFile     string   `json:"log_file,omitempty" yaml:"log_file,omitempty"`
 	Verbose     bool     `json:"verbose,omitempty" yaml:"verbose,omitempty"`
 
@@ -71,15 +71,32 @@ type BuildStatus struct {
 }
 
 type BuildResult struct {
-	ID         string         `json:"id,omitempty"`
-	URI        string         `json:"uri,omitempty"`
-	PageCount  int            `json:"page_count"`
-	FeedCount  int            `json:"feed_count"`
-	Assets     map[string]int `json:"assets,omitempty"`
-	Tags       map[string]int `json:"tags,omitempty"`
-	Bytes      map[string]int `json:"bytes,omitempty"`
-	DurationMS int            `json:"duration_ms"`
+	ID          string            `json:"id,omitempty"`
+	URI         string            `json:"uri,omitempty"`
+	Status      BuildResultStatus `json:"status,omitempty"`
+	StartedAt   *time.Time        `json:"started_at,omitempty"`
+	CompletedAt *time.Time        `json:"completed_at,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	Preview     bool              `json:"preview,omitempty"`
+	Incremental bool              `json:"incremental,omitempty"`
+	BaseURL     string            `json:"base_url,omitempty"`
+	DraftsDir   string            `json:"drafts_dir,omitempty"`
+	Page        string            `json:"page,omitempty"`
+	PageCount   int               `json:"page_count"`
+	FeedCount   int               `json:"feed_count"`
+	Assets      map[string]int    `json:"assets,omitempty"`
+	Tags        map[string]int    `json:"tags,omitempty"`
+	Bytes       map[string]int    `json:"bytes,omitempty"`
+	DurationMS  int               `json:"duration_ms"`
 }
+
+type BuildResultStatus string
+
+const (
+	BuildResultRunning   BuildResultStatus = "running"
+	BuildResultSucceeded BuildResultStatus = "succeeded"
+	BuildResultFailed    BuildResultStatus = "failed"
+)
 
 // GeneratedBuildAsset is a build-owned file written after regular assets.
 type GeneratedBuildAsset struct {
@@ -108,15 +125,26 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 	if build.Config.URI, err = build.ResolveURI(); err != nil {
 		return err
 	}
+	buildDataStartedAt := time.Now().UTC()
+	if err = build.writeBuildData(build.buildDataResult(BuildResultRunning, buildDataStartedAt, nil, ""), io.Discard); err != nil {
+		return fmt.Errorf("write initial build data: %w", err)
+	}
+	defer func() {
+		if dataErr := build.writeFinalBuildData(buildDataStartedAt, err, os.Stdout); dataErr != nil {
+			err = errors.Join(err, dataErr)
+		}
+	}()
 
 	// load an io.Writer for stdout & optional file logging
-	w, wc, err := build.logger()
+	w := io.Writer(os.Stdout)
+	var wc func()
+	w, wc, err = build.logger()
 	if err != nil {
 		return err
 	}
 	defer wc() // close the log writer
 	defer func() {
-		// ensure post-logger errors are written to w before returning
+		// Ensure post-logger errors are written to w before returning.
 		if err != nil {
 			_, _ = fmt.Fprintf(w, "build %q failed: %v\n", build.Config.ID, err)
 		}
@@ -162,10 +190,10 @@ func (build *Build) Execute(ctx context.Context) (err error) {
 		return err
 	}
 
-	// finalize build
+	// Finalize build output. The lifecycle artifact is finalized by the defer so
+	// it also captures errors from every earlier return path.
 	build.Status.DurationMS = int(time.Since(start).Milliseconds())
 	result := build.Result()
-	build.writeBuildData(result, w)
 	build.writeDeploymentInstructions(w)
 	fmt.Fprintf(w, "build %q completed\n", build.Config.ID)
 	build.logResult(result, w)
@@ -202,11 +230,8 @@ func (build *Build) logger() (w io.Writer, wc func(), err error) {
 	w = io.Writer(os.Stdout)
 	wc = func() {}
 	if build.Config.LogFile != "" {
-		if filepath.IsAbs(build.Config.LogFile) {
-			return nil, nil, fmt.Errorf("build artifact path must be relative: %s", build.Config.LogFile)
-		}
-		if strings.HasSuffix(build.Config.LogFile, "/") || strings.HasSuffix(build.Config.LogFile, string(filepath.Separator)) {
-			return nil, nil, fmt.Errorf("build artifact path must be a file: %s", build.Config.LogFile)
+		if err = validateBuildArtifactPath(build.Config.LogFile); err != nil {
+			return nil, nil, err
 		}
 		logFile, err := build.AbsolutePath(build.Config.LogFile)
 		if err != nil {
@@ -417,22 +442,8 @@ func (build *Build) Validate() (err error) {
 	if build.Config.URI.Path == "" {
 		return fmt.Errorf("build.uri is required")
 	}
-	if filepath.IsAbs(build.Config.DataFile) {
-		return fmt.Errorf("build artifact path must be relative: %s", build.Config.DataFile)
-	}
-	if filepath.IsAbs(build.Config.LogFile) {
-		return fmt.Errorf("build artifact path must be relative: %s", build.Config.LogFile)
-	}
-	if strings.HasSuffix(build.Config.DataFile, "/") || strings.HasSuffix(build.Config.DataFile, string(filepath.Separator)) {
-		return fmt.Errorf("build artifact path must be a file: %s", build.Config.DataFile)
-	}
-	if strings.HasSuffix(build.Config.LogFile, "/") || strings.HasSuffix(build.Config.LogFile, string(filepath.Separator)) {
-		return fmt.Errorf("build artifact path must be a file: %s", build.Config.LogFile)
-	}
-	if build.Config.DataFile != "" {
-		if _, err := build.AbsolutePath(build.Config.DataFile); err != nil {
-			return err
-		}
+	if err = validateBuildArtifactPath(build.Config.LogFile); err != nil {
+		return err
 	}
 	if build.Config.LogFile != "" {
 		if _, err := build.AbsolutePath(build.Config.LogFile); err != nil {
@@ -837,11 +848,16 @@ func (*Build) logResult(result BuildResult, w io.Writer) {
 
 func (build *Build) Result() BuildResult {
 	result := BuildResult{
-		ID:         build.Config.ID,
-		Assets:     build.Status.Assets.Map(),
-		Tags:       build.Status.Tags.Map(),
-		Bytes:      build.Status.Bytes.Map(),
-		DurationMS: build.Status.DurationMS,
+		ID:          build.Config.ID,
+		Preview:     build.Config.Preview,
+		Incremental: build.Config.Incremental,
+		BaseURL:     build.Config.BaseURL,
+		DraftsDir:   build.Config.DraftsDirectory,
+		Page:        build.Config.Page,
+		Assets:      build.Status.Assets.Map(),
+		Tags:        build.Status.Tags.Map(),
+		Bytes:       build.Status.Bytes.Map(),
+		DurationMS:  build.Status.DurationMS,
 	}
 	if build.Config.URI != nil {
 		result.URI = build.Config.URI.String()
@@ -851,31 +867,84 @@ func (build *Build) Result() BuildResult {
 	return result
 }
 
-func (build *Build) writeBuildData(result BuildResult, w io.Writer) {
+func (build *Build) buildDataResult(status BuildResultStatus, startedAt time.Time, completedAt *time.Time, message string) BuildResult {
+	result := build.Result()
+	result.Status = status
+	result.StartedAt = &startedAt
+	result.CompletedAt = completedAt
+	result.Error = message
+	return result
+}
+
+func (build *Build) writeFinalBuildData(startedAt time.Time, buildErr error, w io.Writer) error {
+	completedAt := time.Now().UTC()
+	status := BuildResultSucceeded
+	message := ""
+	if buildErr != nil {
+		status = BuildResultFailed
+		message = buildErr.Error()
+	}
+	if err := build.writeBuildData(build.buildDataResult(status, startedAt, &completedAt, message), w); err != nil {
+		return fmt.Errorf("write final build data: %w", err)
+	}
+	return nil
+}
+
+func (build *Build) writeBuildData(result BuildResult, w io.Writer) error {
 	if w == nil {
 		w = os.Stdout
 	}
-	if build.Config.DataFile == "" {
-		return
-	}
-	dataFile, err := build.AbsolutePath(build.Config.DataFile)
+	dataFile, err := build.AbsolutePath(htup.BuildResultFile)
 	if err != nil {
-		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
-		return
+		return err
 	}
 	fileBytes, err := json.MarshalIndent(result, "", "\t")
 	if err != nil {
-		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
-		return
+		return err
 	}
 	fileBytes = append(fileBytes, '\n')
 	if err := os.MkdirAll(filepath.Dir(dataFile), 0755); err != nil {
-		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
-		return
+		return err
 	}
-	if err := build.WriteFile(dataFile, fileBytes, w); err != nil {
-		fmt.Fprintf(w, "build data %q skipped: %v\n", build.Config.DataFile, err)
+	file, err := os.CreateTemp(filepath.Dir(dataFile), "."+filepath.Base(dataFile)+".*")
+	if err != nil {
+		return err
 	}
+	tempFile := file.Name()
+	defer os.Remove(tempFile)
+	if _, err := file.Write(fileBytes); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Chmod(0644); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempFile, dataFile); err != nil {
+		return err
+	}
+	dataRelPath, err := build.RelativePath(dataFile)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "writing %d bytes to %s\n", len(fileBytes), filepath.ToSlash(filepath.Join(build.Config.ID, dataRelPath)))
+	return nil
+}
+
+func validateBuildArtifactPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if filepath.IsAbs(path) {
+		return fmt.Errorf("build artifact path must be relative: %s", path)
+	}
+	if strings.HasSuffix(path, "/") || strings.HasSuffix(path, string(filepath.Separator)) {
+		return fmt.Errorf("build artifact path must be a file: %s", path)
+	}
+	return nil
 }
 
 func (build *Build) writeDeploymentInstructions(w io.Writer) {
@@ -901,11 +970,18 @@ func (build *Build) writeDeploymentInstructions(w io.Writer) {
 		return
 	}
 	root := filepath.Dir(instructionsPath)
-	instructions, err := htup.LoadDeploymentInstructions(root)
+	if _, err := os.Stat(instructionsPath); errors.Is(err, os.ErrNotExist) {
+		return
+	} else if err != nil {
+		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
+		return
+	}
+	result, err := htup.LoadDeploymentResult(root)
 	if err != nil {
 		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
 		return
 	}
+	instructions := result.DeploymentInstructions
 	seen := map[string]bool{}
 	normalizedIgnore := make([]string, 0, len(instructions.Ignore)+len(paths))
 	for _, configured := range instructions.Ignore {
@@ -931,23 +1007,15 @@ func (build *Build) writeDeploymentInstructions(w io.Writer) {
 	if !changed {
 		return
 	}
-	if err := os.MkdirAll(root, 0755); err != nil {
-		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
-		return
-	}
-	data, err := json.Marshal(instructions)
-	if err != nil {
-		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
-		return
-	}
-	if err := build.WriteFile(instructionsPath, data, w); err != nil {
+	result.DeploymentInstructions = instructions
+	if err := htup.WriteDeploymentResult(root, result); err != nil {
 		fmt.Fprintf(w, "deployment instructions skipped: %v\n", err)
 	}
 }
 
 func (build *Build) deploymentIgnoreArtifactPaths() ([]string, error) {
 	var paths []string
-	for _, configured := range []string{build.Config.DataFile, build.Config.LogFile} {
+	for _, configured := range []string{build.Config.LogFile} {
 		if configured == "" {
 			continue
 		}

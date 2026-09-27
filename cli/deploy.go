@@ -33,7 +33,6 @@ func DeployCommand() clic.Command {
 				BuildDataDirOption,
 				BuildStaticDirOption,
 				BuildThemeOption,
-				BuildDataFileOption,
 				BuildLogFileOption,
 				DeploymentEnvironmentOption,
 				DeploymentProvidersOption,

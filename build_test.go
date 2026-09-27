@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/herdworks/httt"
+	"github.com/herdworks/htup"
 	"github.com/herdworks/htxt/href"
 )
 
@@ -600,10 +601,9 @@ func TestBuildLoadContextUsesBuildConfig(t *testing.T) {
 	}
 }
 
-func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
+func TestBuildExecuteWritesNativeResultAndConfiguredLog(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.Config.DataFile = "build.json"
 	build.Config.LogFile = "build.log"
 	build.Config.Verbose = true
 
@@ -622,26 +622,35 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 		t.Fatalf("build.log = %q, want website load log", got)
 	}
 
-	dataBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.json"))
+	dataBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, htup.BuildResultFile))
 	if err != nil {
-		t.Fatalf("ReadFile(build.json) error = %v", err)
+		t.Fatalf("ReadFile(%s) error = %v", htup.BuildResultFile, err)
 	}
 	var data BuildResult
 	if err := json.Unmarshal(dataBytes, &data); err != nil {
-		t.Fatalf("Unmarshal(build.json) error = %v", err)
+		t.Fatalf("Unmarshal(%s) error = %v", htup.BuildResultFile, err)
 	}
 	var rawData map[string]any
 	if err := json.Unmarshal(dataBytes, &rawData); err != nil {
-		t.Fatalf("Unmarshal(build.json map) error = %v", err)
+		t.Fatalf("Unmarshal(%s map) error = %v", htup.BuildResultFile, err)
 	}
-	if _, ok := rawData["status"]; ok {
-		t.Fatalf("build.json contains nested status: %s", dataBytes)
+	if rawData["status"] != string(BuildResultSucceeded) {
+		t.Fatalf("%s status = %#v, want %q", htup.BuildResultFile, rawData["status"], BuildResultSucceeded)
 	}
 	if _, ok := rawData["bytes"]; !ok {
-		t.Fatalf("build.json missing top-level bytes: %s", dataBytes)
+		t.Fatalf("%s missing top-level bytes: %s", htup.BuildResultFile, dataBytes)
 	}
 	if data.ID != "test" {
 		t.Fatalf("build data id = %q, want test", data.ID)
+	}
+	if data.Status != BuildResultSucceeded {
+		t.Fatalf("build data status = %q, want %q", data.Status, BuildResultSucceeded)
+	}
+	if data.StartedAt == nil || data.StartedAt.IsZero() {
+		t.Fatal("build data started_at is zero")
+	}
+	if data.CompletedAt == nil || data.CompletedAt.Before(*data.StartedAt) {
+		t.Fatalf("build data completed_at = %v, want a time at or after %s", data.CompletedAt, data.StartedAt)
 	}
 	if data.PageCount != 1 {
 		t.Fatalf("build data page_count = %d, want 1", data.PageCount)
@@ -656,20 +665,27 @@ func TestBuildExecuteWritesConfiguredArtifacts(t *testing.T) {
 		t.Fatalf("bytes pages = %d, want %d", data.Bytes["pages"], len("<h1>Home</h1>"))
 	}
 
-	instructionsBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deployment.json"))
+}
+
+func TestBuildResultIncludesIncrementalPage(t *testing.T) {
+	fixture := newBuildExecutionFixture(t)
+	build := fixture.build()
+	build.Config.Incremental = true
+	build.Config.Page = "content/index.html"
+
+	if err := build.Execute(t.Context()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(fixture.buildPath, htup.BuildResultFile))
 	if err != nil {
-		t.Fatalf("ReadFile(.deployment.json) error = %v", err)
+		t.Fatal(err)
 	}
-	var instructions struct {
-		Ignore []string `json:"ignore"`
+	var result BuildResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatal(err)
 	}
-	if err := json.Unmarshal(instructionsBytes, &instructions); err != nil {
-		t.Fatalf("Unmarshal(.deployment.json) error = %v", err)
-	}
-	for _, want := range []string{"build.json", "build.log"} {
-		if !slices.Contains(instructions.Ignore, want) {
-			t.Fatalf(".deployment.json ignore = %#v, want %q", instructions.Ignore, want)
-		}
+	if result.Page != build.Config.Page {
+		t.Fatalf("BuildResult.Page = %q, want %q", result.Page, build.Config.Page)
 	}
 }
 
@@ -885,17 +901,20 @@ feeds:
 	}
 }
 
-func TestBuildExecuteUnsetArtifactFilesWritesNoArtifacts(t *testing.T) {
+func TestBuildExecuteWritesNativeResultWithoutOptionalArtifacts(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
 
 	if err := build.Execute(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	for _, rel := range []string{"build.json", "build.log", ".deployment.json"} {
+	for _, rel := range []string{"build.log", ".deployment.json"} {
 		if _, err := os.Stat(filepath.Join(fixture.buildPath, rel)); !os.IsNotExist(err) {
 			t.Fatalf("%s exists or stat error = %v, want not exist", rel, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(fixture.buildPath, htup.BuildResultFile)); err != nil {
+		t.Fatalf("%s missing: %v", htup.BuildResultFile, err)
 	}
 }
 
@@ -976,7 +995,6 @@ func TestBuildValidateRejectsAbsoluteArtifactPaths(t *testing.T) {
 		name   string
 		config BuildConfig
 	}{
-		{name: "data file", config: BuildConfig{DataFile: filepath.Join(t.TempDir(), "build.json")}},
 		{name: "log file", config: BuildConfig{LogFile: filepath.Join(t.TempDir(), "build.log")}},
 	}
 	for _, tc := range tests {
@@ -995,20 +1013,40 @@ func TestBuildValidateRejectsAbsoluteArtifactPaths(t *testing.T) {
 	}
 }
 
-func TestBuildExecuteRejectsInvalidDataFileBeforeWritingOutput(t *testing.T) {
+func TestBuildExecuteWritesFailedNativeResult(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.Config.DataFile = filepath.Join(t.TempDir(), "build.json")
+	build.Config.LogFile = "build.log"
+	build.Config.Preview = true
+	build.Config.DraftsDirectory = "drafts"
+	build.Config.BaseURL = "http://localhost:8080/"
+	build.Config.Incremental = true
+	build.Config.Page = fixture.sitePath
 
-	err := build.Execute(context.Background())
+	err := build.Execute(t.Context())
 	if err == nil {
-		t.Fatal("Execute() error = nil, want invalid data file error")
+		t.Fatal("Execute() error = nil, want invalid incremental page error")
 	}
-	if !strings.Contains(err.Error(), "build artifact path must be relative") {
-		t.Fatalf("Execute() error = %v, want relative artifact path error", err)
+
+	dataBytes, readErr := os.ReadFile(filepath.Join(fixture.buildPath, htup.BuildResultFile))
+	if readErr != nil {
+		t.Fatalf("ReadFile(%s) error = %v", htup.BuildResultFile, readErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(fixture.buildPath, "index.html")); !os.IsNotExist(statErr) {
-		t.Fatalf("build output exists or stat error = %v, want not exist", statErr)
+	var data BuildResult
+	if unmarshalErr := json.Unmarshal(dataBytes, &data); unmarshalErr != nil {
+		t.Fatalf("Unmarshal(%s) error = %v", htup.BuildResultFile, unmarshalErr)
+	}
+	if data.Status != BuildResultFailed {
+		t.Fatalf("build data status = %q, want %q", data.Status, BuildResultFailed)
+	}
+	if data.StartedAt == nil || data.StartedAt.IsZero() || data.CompletedAt == nil || data.CompletedAt.Before(*data.StartedAt) {
+		t.Fatalf("build data lifecycle = started %v completed %v, want ordered timestamps", data.StartedAt, data.CompletedAt)
+	}
+	if data.Error != err.Error() {
+		t.Fatalf("build data error = %q, want %q", data.Error, err)
+	}
+	if !data.Preview || !data.Incremental || data.BaseURL != build.Config.BaseURL || data.DraftsDir != "drafts" {
+		t.Fatalf("build data configuration = %#v, want preview configuration", data)
 	}
 }
 
@@ -1035,59 +1073,25 @@ func TestBuildExecuteContinuesWhenDeploymentInstructionsFail(t *testing.T) {
 	}
 }
 
-func TestBuildExecuteContinuesWhenBuildDataFails(t *testing.T) {
+func TestBuildExecuteFailsWhenInitialBuildResultCannotBeWritten(t *testing.T) {
 	fixture := newBuildExecutionFixture(t)
 	build := fixture.build()
-	build.Config.DataFile = "reports/build.json"
 	build.Config.LogFile = "build.log"
 	if err := os.MkdirAll(fixture.buildPath, 0755); err != nil {
 		t.Fatalf("MkdirAll(buildPath) error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(fixture.buildPath, "reports"), []byte("not a directory"), 0644); err != nil {
-		t.Fatalf("WriteFile(reports) error = %v", err)
+	if err := os.Mkdir(filepath.Join(fixture.buildPath, htup.BuildResultFile), 0755); err != nil {
+		t.Fatalf("Mkdir(%s) error = %v", htup.BuildResultFile, err)
 	}
 
-	if err := build.Execute(context.Background()); err != nil {
-		t.Fatalf("Execute() error = %v", err)
+	err := build.Execute(context.Background())
+	if err == nil {
+		t.Fatal("Execute() error = nil, want build data write error")
 	}
-	if _, err := os.Stat(filepath.Join(fixture.buildPath, "index.html")); err != nil {
-		t.Fatalf("build output missing: %v", err)
+	if _, statErr := os.Stat(filepath.Join(fixture.buildPath, "index.html")); !os.IsNotExist(statErr) {
+		t.Fatalf("build output exists or stat error = %v, want not exist", statErr)
 	}
-	logBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, "build.log"))
-	if err != nil {
-		t.Fatalf("ReadFile(build.log) error = %v", err)
-	}
-	if got := string(logBytes); !strings.Contains(got, `build data "reports/build.json" skipped:`) {
-		t.Fatalf("build.log = %q, want build data warning", got)
-	}
-}
-
-func TestBuildWriteDeploymentInstructionsLogsBuildRelativePath(t *testing.T) {
-	fixture := newBuildExecutionFixture(t)
-	build := fixture.build()
-	build.Config.DataFile = filepath.Join("artifacts", "build.json")
-
-	var log bytes.Buffer
-	build.writeDeploymentInstructions(&log)
-
-	if got, want := log.String(), "writing 35 bytes to test/.deployment.json\n"; got != want {
-		t.Fatalf("log = %q, want %q", got, want)
-	}
-}
-
-func TestBuildExecuteAddsNestedArtifactToDeploymentInstructions(t *testing.T) {
-	fixture := newBuildExecutionFixture(t)
-	build := fixture.build()
-	build.Config.DataFile = filepath.Join("artifacts", "build.json")
-
-	if err := build.Execute(context.Background()); err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	instructionsBytes, err := os.ReadFile(filepath.Join(fixture.buildPath, ".deployment.json"))
-	if err != nil {
-		t.Fatalf("ReadFile(.deployment.json) error = %v", err)
-	}
-	if !strings.Contains(string(instructionsBytes), "artifacts/build.json") {
-		t.Fatalf(".deployment.json = %q, want artifacts/build.json", instructionsBytes)
+	if !strings.Contains(err.Error(), "write initial build data") {
+		t.Fatalf("Execute() error = %v, want initial build data failure", err)
 	}
 }

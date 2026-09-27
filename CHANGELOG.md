@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Fixed:** Page cover URLs in generated feeds now resolve relative references
+  against the page's canonical URL, matching page links and attachments.
+  Root-relative and absolute cover URLs remain unchanged.
+* **Added:** Builds now atomically write durable `.build.json` lifecycle
+  records before rendering and finalize them on success or failure. Records
+  include build identity, configuration, timestamps, result counters, and
+  errors; build metadata is reserved from deployment uploads.
+* **Added:** Deployments now write durable `.deployment.json` lifecycle
+  records in the website deployment directory while retaining embedded
+  deployment instructions and independently recording build output.
+* **Removed:** `BuildConfig.DataFile` and the `--data-file` option. Build
+  result metadata is always written to `.build.json` in the output directory.
+
 ## v0.50.4 (2026-09-24)
 
 * **Changed:** `site.config.feed_format` now defaults to Atom 1.0. Set it to

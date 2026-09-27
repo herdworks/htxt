@@ -292,11 +292,11 @@ func (page *Page) toHyperFeedItem(website *Website) (*hyperfeed.Item, error) {
 		Explicit:    page.Explicit,
 	}
 	if page.CoverURL != "" {
-		coverURL, err := website.ResolveHref(page.CoverURL)
+		coverReference, err := url.Parse(page.CoverURL)
 		if err != nil {
 			return nil, fmt.Errorf("page cover URL: %w", err)
 		}
-		result.CoverURL, err = href.Parse(coverURL)
+		result.CoverURL, err = href.Parse(canonicalURL.ResolveReference(coverReference))
 		if err != nil {
 			return nil, fmt.Errorf("page cover URL: %w", err)
 		}

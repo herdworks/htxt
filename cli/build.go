@@ -30,7 +30,6 @@ func BuildCommand() clic.Command {
 				BuildDataDirOption,
 				BuildStaticDirOption,
 				BuildThemeOption,
-				BuildDataFileOption,
 				BuildLogFileOption,
 			),
 			Validator: buildValidator,
@@ -141,18 +140,6 @@ func BuildThemeOption() clic.Option {
 		},
 	}
 }
-func BuildDataFileOption() clic.Option {
-	return clic.Option{
-		Meta: clic.OptionMeta{
-			Description: "Relative path to write an optional build data JSON file (e.g. build.json).",
-		},
-		Spec: clic.OptionSpec{
-			Key:      "data-file",
-			Kind:     clic.StringOption,
-			Required: false,
-		},
-	}
-}
 func BuildLogFileOption() clic.Option {
 	return clic.Option{
 		Meta: clic.OptionMeta{
@@ -197,7 +184,6 @@ func buildConfig(execution *clic.Execution) htxt.BuildConfig {
 		Page:            execution.Options.StringValue("page"),
 		DraftsDirectory: execution.Options.StringValue("drafts-dir"),
 		Preview:         execution.Options.StringValue("drafts-dir") != "",
-		DataFile:        execution.Options.StringValue("data-file"),
 		LogFile:         execution.Options.StringValue("log-file"),
 		Verbose:         true,
 	}
