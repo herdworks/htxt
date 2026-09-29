@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Updated:** bumped github.com/herdworks/hyperfeed from v0.29.1 to v0.29.2
+
 ## v0.50.5 (2026-09-27)
 
 * **Fixed:** Page cover URLs in generated feeds now resolve relative references
