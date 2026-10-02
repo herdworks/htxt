@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Updated:** updated github.com/herdworks/htup to version 0.28.0
+
 ## v0.50.7 (2026-10-02)
 
 * **Added:** `htxt init` now configures an unfiltered `main` feed alongside the
