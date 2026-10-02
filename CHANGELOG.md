@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.50.7 (2026-10-02)
+
 * **Added:** `htxt init` now configures an unfiltered `main` feed alongside the
   `/blog/*/**` `blog` feed. New sites publish both `/feeds/main.xml` and
   `/feeds/blog.xml`.
