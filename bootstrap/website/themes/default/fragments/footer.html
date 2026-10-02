@@ -20,12 +20,12 @@
                 <a ht-apply href='${ site.byline.href, "/" }' target='_blank'>${ site.byline.name, site.byline.username, "Placeholder" }</a>
             </span>
 
-            <a href='/blog/atom.xml'>
+            <a ht-apply href='${ site.config.feed_path }/main.xml'>
                 <svg ht-include='fragments/icons/feed.svg'></svg>
             </a>
 
             <span>
-                Made with ❤️ using <a href='https://preview.hypertemplates.net/'>HyperTemplates</a>
+                Made with ❤️ using <a href='https://hypertexting.com/'>HyperTexting</a>
             </span>
         </content-row>
     </content-container>

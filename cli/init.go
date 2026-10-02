@@ -11,7 +11,7 @@ import (
 	href "github.com/herdworks/htxt/href"
 )
 
-const defaultWebsiteDescription = "This website is powered by HyperTemplates."
+const defaultWebsiteDescription = "This website is powered by HyperTexting."
 
 // InitCommand initializes a website in the current or selected directory.
 func InitCommand() clic.Command {

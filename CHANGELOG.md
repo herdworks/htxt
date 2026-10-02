@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* **Added:** `htxt init` now configures an unfiltered `main` feed alongside the
+  `/blog/*/**` `blog` feed. New sites publish both `/feeds/main.xml` and
+  `/feeds/blog.xml`.
+* **Changed:** `htxt init` reports created files and the website configuration
+  as quoted paths relative to the new website root.
+* **Changed:** The bootstrap website now uses HyperTexting branding, links its
+  footer feed icon to the site-wide main feed, and updates sample content for
+  the current feed URLs.
+* **Removed:** The bootstrap's duplicate Chroma stylesheet; new sites use the
+  built-in Chroma palette instead.
+
 ## v0.50.6 (2026-09-27)
 
 * **Updated:** bumped github.com/herdworks/hyperfeed from v0.29.1 to v0.29.2

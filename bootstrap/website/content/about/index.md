@@ -4,7 +4,7 @@ title: About this website
 description: About this website
 ---
 
-This website is powered by [HyperTemplates].
+This website is powered by [HyperTexting].
 
 <!-- Links -->
-[HyperTemplates]: https://preview.hypertemplates.net/
+[HyperTexting]: https://hypertexting.com/

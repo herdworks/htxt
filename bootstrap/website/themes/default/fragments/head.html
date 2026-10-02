@@ -13,9 +13,8 @@
 <link ht-each='link in ${ site.links }' rel='${ link.rel }' href='${ link.href }' sizes='${ link.sizes }' type='${ link.type }'>
 
 <!-- Default Styles -->
-<link rel='stylesheet' href='/css/reset.css' />
-<link rel='stylesheet' href='/css/style.css' />
-<link rel='stylesheet' href='/css/chroma-base16-snazzy.css' />
+<link ht-apply rel='stylesheet' href='/css/reset.css?v=${ site.version, build.id, 1 }' />
+<link ht-apply rel='stylesheet' href='/css/style.css?v=${ site.version, build.id, 1 }' />
 
 <!-- Default Scripts -->
 <script src='/js/main.js' defer></script>

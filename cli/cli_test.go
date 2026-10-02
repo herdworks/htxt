@@ -84,19 +84,65 @@ func TestCLIUsageTemplatesAreMountable(t *testing.T) {
 
 func TestInitUsesWorkingDirectoryAndDefaults(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "example")
-	result := CLI.Run(testExecution(t, filepath.Dir(directory)), clic.Arguments{"init", filepath.Base(directory)})
+	execution := testExecution(t, filepath.Dir(directory))
+	result := CLI.Run(execution, clic.Arguments{"init", filepath.Base(directory)})
 	if result.Error != nil {
 		t.Fatalf("init error = %v", result.Error)
+	}
+	if got, want := execution.Stdout.(*bytes.Buffer).String(), `file "content/about/index.md" created
+file "content/blog/hello-again/index.md" created
+file "content/blog/hello-world/index.md" created
+file "content/blog/index.md" created
+file "content/index.md" created
+file "data/nav.yaml" created
+file "static/css/reset.css" created
+file "static/css/style.css" created
+file "static/favicon.ico" created
+file "static/js/components/example-component.js" created
+file "static/js/components/relative-time.js" created
+file "static/js/main.js" created
+file "themes/default/fragments/footer.html" created
+file "themes/default/fragments/head.html" created
+file "themes/default/fragments/header.html" created
+file "themes/default/fragments/icons/feed.svg" created
+file "themes/default/layouts/blog.html" created
+file "themes/default/layouts/default.html" created
+file "themes/default/theme.json" created
+website "site.yaml" created
+`; got != want {
+		t.Errorf("init output =\n%s\nwant:\n%s", got, want)
 	}
 	content, err := os.ReadFile(filepath.Join(directory, "site.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	head, err := os.ReadFile(filepath.Join(directory, "themes", "default", "fragments", "head.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(head), "chroma-base16-snazzy.css") {
+		t.Errorf("bootstrap head still links removed Chroma stylesheet:\n%s", head)
+	}
+	footer, err := os.ReadFile(filepath.Join(directory, "themes", "default", "fragments", "footer.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(footer), "href='${ site.config.feed_path }/main.xml'"; !strings.Contains(got, want) {
+		t.Errorf("bootstrap footer does not link the generated main feed:\n%s", got)
+	}
+	helloWorld, err := os.ReadFile(filepath.Join(directory, "content", "blog", "hello-world", "index.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(helloWorld), "[feed]: /feeds/main.xml"; !strings.Contains(got, want) {
+		t.Errorf("bootstrap hello-world post does not link the generated main feed:\n%s", got)
+	}
 	for _, value := range []string{
 		"title: example",
 		"name: example",
 		"base_url: http://localhost",
-		"description: This website is powered by HyperTemplates.",
+		"description: This website is powered by HyperTexting.",
+		"feeds:\n    blog:\n        include:\n            - path: /blog/*/**\n    main: {}",
 	} {
 		if !strings.Contains(string(content), value) {
 			t.Errorf("site.yaml does not contain %q:\n%s", value, content)

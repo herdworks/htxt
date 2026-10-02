@@ -173,6 +173,12 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 	if _, err := os.Stat(website.Theme.URI.Path); err != nil {
 		t.Fatalf("created website theme file: %v", err)
 	}
+	if main, ok := website.Feeds["main"]; !ok || len(main.Include) != 0 {
+		t.Fatalf("created website main feed = %#v, want an unfiltered feed", main)
+	}
+	if blog, ok := website.Feeds["blog"]; !ok || len(blog.Include) != 1 || blog.Include[0].Path != "/blog/*/**" || len(blog.Include[0].Tags) != 0 {
+		t.Fatalf("created website blog feed = %#v, want blog path selector", blog)
+	}
 
 	build := &Build{
 		Config: BuildConfig{
@@ -204,6 +210,15 @@ func TestBootstrapPackageBuildsWithCurrentDirectives(t *testing.T) {
 	for _, title := range []string{"Hello world", "Hello again"} {
 		if !bytes.Contains(feed, []byte("<title>"+title+"</title>")) {
 			t.Errorf("blog Atom feed is missing %q:\n%s", title, feed)
+		}
+	}
+	mainFeed, err := os.ReadFile(filepath.Join(build.Config.URI.Path, "feeds", "main.xml"))
+	if err != nil {
+		t.Fatalf("ReadFile(main Atom feed) error = %v", err)
+	}
+	for _, title := range []string{"Hello world", "Hello again", "About this website"} {
+		if !bytes.Contains(mainFeed, []byte("<title>"+title+"</title>")) {
+			t.Errorf("main Atom feed is missing %q:\n%s", title, mainFeed)
 		}
 	}
 }

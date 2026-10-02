@@ -557,7 +557,10 @@ func (website *Website) CreatePackage(w io.Writer) (err error) {
 	website.Config.TidyMode = true // always enable tidy mode when creating new websites
 	website.Theme.URI = website.ThemeURI()
 	if website.Feeds == nil {
-		website.Feeds = FeedConfigs{"blog": {Include: []FeedSelector{{Path: "/blog/*/**"}}}}
+		website.Feeds = FeedConfigs{
+			"main": {},
+			"blog": {Include: []FeedSelector{{Path: "/blog/*/**"}}},
+		}
 	}
 
 	// ensure website directory
@@ -578,6 +581,7 @@ func (website *Website) CreatePackage(w io.Writer) (err error) {
 		var srcFile fs.File
 		var dstPath string = filepath.Join(website.RootDir(), strings.TrimPrefix(srcPath, "website/"))
 		var dstFile *os.File
+		var relPath string
 		if entry.IsDir() {
 			return nil // skip directories
 		}
@@ -595,12 +599,23 @@ func (website *Website) CreatePackage(w io.Writer) (err error) {
 		if _, err = io.Copy(dstFile, srcFile); err != nil {
 			return err // copy file contents
 		}
-		fmt.Fprintf(w, "file %s created\n", dstPath)
+		if relPath, err = filepath.Rel(website.RootDir(), dstPath); err != nil {
+			return fmt.Errorf("relative website file path %q: %w", dstPath, err)
+		}
+		if _, err = fmt.Fprintf(w, "file %q created\n", relPath); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "website \"%s\" created\n", website.URI.Path)
+	var relPath string
+	if relPath, err = filepath.Rel(website.RootDir(), website.URI.Path); err != nil {
+		return fmt.Errorf("relative website configuration path %q: %w", website.URI.Path, err)
+	}
+	if _, err = fmt.Fprintf(w, "website %q created\n", relPath); err != nil {
+		return err
+	}
 
 	return nil
 }
