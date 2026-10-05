@@ -33,20 +33,19 @@ func (SyncConfigManager) Read(directory, filename string) (hsync.RepositoryConfi
 	if err != nil {
 		return hsync.RepositoryConfig{}, err
 	}
-	if config.Sync == nil {
-		return hsync.RepositoryConfig{}, fmt.Errorf("sync configuration is empty")
-	}
-	website := &Website{URI: &href.Href{URL: url.URL{Path: config.Path}}}
-	if err = website.Load(false, nil, io.Discard); err != nil {
-		return hsync.RepositoryConfig{}, err
-	}
-	effective, err := websiteEffectiveSyncConfig(website, *config.Sync)
-	if err != nil {
-		return hsync.RepositoryConfig{}, err
-	}
-	config.Sync = &effective
-	if err = config.Sync.Validate(); err != nil {
-		return hsync.RepositoryConfig{}, err
+	if config.Sync != nil && config.Sync.Remote != "" {
+		website := &Website{URI: &href.Href{URL: url.URL{Path: config.Path}}}
+		if err = website.Load(false, nil, io.Discard); err != nil {
+			return hsync.RepositoryConfig{}, err
+		}
+		effective, err := websiteEffectiveSyncConfig(website, *config.Sync)
+		if err != nil {
+			return hsync.RepositoryConfig{}, err
+		}
+		config.Sync = &effective
+		if err = config.Sync.Validate(); err != nil {
+			return hsync.RepositoryConfig{}, err
+		}
 	}
 	if explicitFilename && directory != "" {
 		provided, err := filepath.Abs(directory)

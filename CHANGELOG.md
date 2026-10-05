@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+* Changed: Website deployments now treat omitted `site.sync` or an empty
+  `sync.remote` as synchronization-disabled while still running provider
+  deployment. Configured synchronization policy remains retained and validated
+  when a remote is present.
+* Updated github.com/herdworks/hsync to v0.7.4.
+
 ## v0.50.8 (2026-10-02)
 
 * **Updated:** updated github.com/herdworks/htup to version 0.28.0

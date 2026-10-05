@@ -271,7 +271,7 @@ func (website *Website) Validate() error {
 	if err := website.Contact.Validate(); err != nil {
 		return err
 	}
-	if website.Sync != nil {
+	if website.Sync != nil && website.Sync.Remote != "" {
 		if err := website.Sync.Validate(); err != nil {
 			return err
 		}

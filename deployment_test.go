@@ -124,6 +124,29 @@ func TestDeploymentAllowsPreviewBuild(t *testing.T) {
 	}
 }
 
+func TestDeploymentConfiguresWithDisabledSync(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "site.yaml")
+	writeBuildSelectionFile(t, path, `base_url: https://example.com/
+title: Test Site
+description: Test description
+byline:
+  name: Test Author
+config:
+  theme: theme.json
+sync: {}
+`)
+	website := &Website{
+		URI:          &href.Href{URL: url.URL{Path: path}},
+		Providers:    htup.HostingProviders{"pages": {Kind: "git", Endpoint: "https://example.com"}},
+		Environments: map[string]*htup.Environment{"default": ptr(htup.Environment{"pages"})},
+	}
+	build := &Build{Config: BuildConfig{URI: &url.URL{Path: filepath.Join(root, "deployments", "test")}}, Website: website}
+	if _, err := (&Deployment{Build: build}).configure(); err != nil {
+		t.Fatalf("configure() error = %v", err)
+	}
+}
+
 func TestDeploymentRejectsDraftsDirectory(t *testing.T) {
 	deployment := &Deployment{Config: DeploymentConfig{Build: BuildConfig{DraftsDirectory: "drafts"}}}
 	if err := deployment.Execute(t.Context()); err == nil || !strings.Contains(err.Error(), "does not support build.config.drafts_dir") {

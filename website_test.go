@@ -7,10 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"gopkg.in/yaml.v3"
 
 	hsync "github.com/herdworks/hsync"
 	"github.com/herdworks/httt"
@@ -362,40 +365,79 @@ func TestWebsiteConfigValidateRejectsUnsafePaths(t *testing.T) {
 
 func TestWebsiteValidateRejectsInvalidSyncConfig(t *testing.T) {
 	tests := []hsync.SyncConfig{
-		{},
 		{Remote: "/.sync/latest.json"},
 		{Remote: "https://example.com/.sync/latest.json?preview=1"},
 		{Remote: "https://example.com/.sync/latest.json#head"},
 	}
 	for _, sync := range tests {
-		website := &Website{
-			URI:         mustHref(t, "site.yaml"),
-			BaseURL:     "https://example.com",
-			Title:       "Example",
-			Description: "Example website",
-			Byline:      Byline{Name: "Example"},
-			Sync:        &sync,
-		}
+		website, _ := testWebsite(t)
+		website.Title = "Example"
+		website.Description = "Example website"
+		website.Byline = Byline{Name: "Example"}
+		website.Sync = &sync
 		if err := website.Validate(); err == nil {
 			t.Fatalf("Website.Validate() error = nil for sync %#v", sync)
 		}
 	}
 }
 
-func TestWebsiteSyncIsOptionalAndDecodesConfiguration(t *testing.T) {
+func TestWebsiteValidateAllowsDisabledSync(t *testing.T) {
+	for _, sync := range []*hsync.SyncConfig{nil, {}} {
+		website, _ := testWebsite(t)
+		website.Title = "Example"
+		website.Description = "Example website"
+		website.Byline = Byline{Name: "Example"}
+		website.Sync = sync
+		if err := website.Validate(); err != nil {
+			t.Fatalf("Website.Validate() error = %v for sync %#v", err, sync)
+		}
+	}
+}
+
+func TestWebsiteSyncSerializationRoundTrip(t *testing.T) {
+	sync := &hsync.SyncConfig{
+		Remote:       "https://example.com/.sync/latest.json",
+		Include:      hsync.Rules{Paths: []string{"content/**"}, Mimetypes: []string{"text/*"}},
+		Ignore:       hsync.Rules{Paths: []string{"content/private/**"}, Mimetypes: []string{"image/*"}},
+		MaxFileBytes: 42,
+	}
+	for _, format := range []struct {
+		name   string
+		encode func(Website) ([]byte, error)
+		decode func([]byte, *Website) error
+	}{
+		{
+			name:   "JSON",
+			encode: func(website Website) ([]byte, error) { return json.Marshal(website) },
+			decode: func(data []byte, website *Website) error { return json.Unmarshal(data, website) },
+		},
+		{
+			name:   "YAML",
+			encode: func(website Website) ([]byte, error) { return yaml.Marshal(website) },
+			decode: func(data []byte, website *Website) error { return yaml.Unmarshal(data, website) },
+		},
+	} {
+		t.Run(format.name, func(t *testing.T) {
+			encoded, err := format.encode(Website{Sync: sync})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var website Website
+			if err = format.decode(encoded, &website); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(website.Sync, sync) {
+				t.Fatalf("sync = %#v, want %#v", website.Sync, sync)
+			}
+		})
+	}
+
 	encoded, err := json.Marshal(Website{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(encoded), `"sync"`) {
 		t.Fatalf("empty website unexpectedly encoded sync: %s", encoded)
-	}
-	var website Website
-	if err := json.Unmarshal([]byte(`{"sync":{"remote":"https://example.com/.sync/latest.json"}}`), &website); err != nil {
-		t.Fatal(err)
-	}
-	if website.Sync == nil || website.Sync.Remote != "https://example.com/.sync/latest.json" {
-		t.Fatalf("decoded sync = %#v", website.Sync)
 	}
 }
 

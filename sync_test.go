@@ -3,6 +3,7 @@ package htxt
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -132,6 +133,47 @@ sync:
 	}
 	if !slices.Contains(config.Sync.Include.Paths, "content/**") {
 		t.Fatalf("include paths = %v", config.Sync.Include.Paths)
+	}
+}
+
+func TestSyncConfigManagerPreservesDisabledSync(t *testing.T) {
+	root := t.TempDir()
+	manager := SyncConfigManager{}
+	for _, test := range []struct {
+		name     string
+		contents string
+		wantSync *hsync.SyncConfig
+	}{
+		{
+			name:     "missing",
+			contents: "title: Example\n",
+		},
+		{
+			name: "empty remote",
+			contents: `sync:
+  include:
+    paths: [content/**]
+  ignore:
+    mimetypes: [image/*]
+  max_file_bytes: 42
+`,
+			wantSync: &hsync.SyncConfig{
+				Include:      hsync.Rules{Paths: []string{"content/**"}},
+				Ignore:       hsync.Rules{Mimetypes: []string{"image/*"}},
+				MaxFileBytes: 42,
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			writeSyncTestFile(t, filepath.Join(root, "site.yaml"), test.contents)
+			config, err := manager.Read(root, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(config.Sync, test.wantSync) {
+				t.Fatalf("sync = %#v, want %#v", config.Sync, test.wantSync)
+			}
+		})
 	}
 }
 
