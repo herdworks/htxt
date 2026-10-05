@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.50.9 (2026-10-05)
+
 * Changed: Website deployments now treat omitted `site.sync` or an empty
   `sync.remote` as synchronization-disabled while still running provider
   deployment. Configured synchronization policy remains retained and validated
