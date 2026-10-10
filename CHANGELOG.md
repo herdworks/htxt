@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
 
 ## Unreleased
 
+## v0.51.0 (2026-10-10)
+
+* Changed: generated contacts are now created at /.well-known/contact.vcf
+
 ## v0.50.9 (2026-10-05)
 
 * Changed: Website deployments now treat omitted `site.sync` or an empty
