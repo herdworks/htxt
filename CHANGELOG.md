@@ -115,7 +115,7 @@ The format is based on [Keep a Changelog], and this project adheres to [Semantic
   favicon URL syntax, is validated during website loading without filesystem
   or network I/O.
 * **Added:** Full and incremental builds generate
-  `/.well-known/hypertexting/contact.vcf` for contacts with a nonblank name.
+  `/.well-known/contact.vcf` for contacts with a nonblank name.
   vCard 3.0 output includes a hostname-derived nickname, Apple-compatible social
   profiles and grouped labels, and combined type/preference metadata, including
   preferred links. Blank names omit generation; existing output is not reconciled.

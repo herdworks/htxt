@@ -61,7 +61,7 @@ type ContactLink struct {
 }
 
 const (
-	contactAssetPath         = ".well-known/hypertexting/contact.vcf"
+	contactAssetPath         = ".well-known/contact.vcf"
 	contactPhotoMaxDimension = 4096
 )
 

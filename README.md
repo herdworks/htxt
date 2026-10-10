@@ -58,7 +58,7 @@ reconciliation, provider coordination, and finalization.
 ## Website contact vCard
 
 An optional top-level `contact` block in `site.yaml` (or `site.json`) publishes
-`/.well-known/hypertexting/contact.vcf` whenever `name` contains non-whitespace
+`/.well-known/contact.vcf` whenever `name` contains non-whitespace
 text. A name alone is sufficient. Other contact details are optional and use
 exactly four collections: `email`, `phone`, `social`, and `links`.
 
